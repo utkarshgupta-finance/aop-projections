@@ -64,8 +64,10 @@ async function fetchUniverseDeals(accessToken) {
   const pageSize = 200;
   for (;;) {
     // Closing_Date is also persisted to deals.closing_date below, driving the dashboard's month tabs.
-    // Adjusted_NRR is NRR_Amount already weighted by Probability (same commit logic as MRR_Amount).
-    const query = `select id, Deal_Name, Closing_Date, Probability, MRR_Amount, Adjusted_NRR, Currency, ` +
+    // NRR_Amount is the raw "Expected NRR" field -- tracked unweighted, not Adjusted_NRR
+    // (which discounts it by Probability). The Probability >= 70 filter below still gates
+    // which deals qualify for the universe at all; it just doesn't scale the NRR dollar figure.
+    const query = `select id, Deal_Name, Closing_Date, Probability, MRR_Amount, NRR_Amount, Currency, ` +
       `Deal_Type_New_or_Existing, Account_Name from Deals where ` +
       `(Closing_Date > '${closingDateGT}' and Closing_Date <= '${closingDateLTE}') ` +
       `and Probability >= 70 limit ${offset},${pageSize}`;
@@ -109,13 +111,13 @@ async function main() {
   const dealsRaw = await fetchUniverseDeals(accessToken);
   console.log(`Zoho universe (before MRR!=0 filter): ${dealsRaw.length} deals`);
 
-  // Union universe: a deal is tracked if it has nonzero MRR commit OR nonzero (probability-adjusted)
-  // NRR commit. MRR-only and NRR-only deals both belong in `deals`; each metric's snapshot table
-  // only gets a row when that metric is actually nonzero for the deal.
+  // Union universe: a deal is tracked if it has nonzero MRR commit OR nonzero (raw, unweighted)
+  // Expected NRR. MRR-only and NRR-only deals both belong in `deals`; each metric's snapshot
+  // table only gets a row when that metric is actually nonzero for the deal.
   const universe = [];
   for (const d of dealsRaw) {
     const mrr = d.MRR_Amount || 0;
-    const nrr = d.Adjusted_NRR || 0;
+    const nrr = d.NRR_Amount || 0;
     if (mrr === 0 && nrr === 0) continue;
     const rate = CURRENCY_RATES[d.Currency];
     if (rate === undefined) {
