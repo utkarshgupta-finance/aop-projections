@@ -1,0 +1,932 @@
+[
+  {
+    "id": "10574000054107017",
+    "name": "Basco- Integration Live",
+    "bu": "MEA BU",
+    "account": "Basco Paints( Duracoat)- MEA",
+    "mrr": 22000,
+    "deal_type": "Farming",
+    "snapshot_date": "2026-07-08",
+    "probability_at_capture": null
+  },
+  {
+    "id": "10574000078638061",
+    "name": "CDPL- Outlet deduplication",
+    "bu": "KAM BU",
+    "account": "Creamline Dairy Products Limited",
+    "mrr": 82500,
+    "deal_type": "Farming",
+    "snapshot_date": "2026-07-08",
+    "probability_at_capture": null
+  },
+  {
+    "id": "10574000078658079",
+    "name": "Anmol-DIY",
+    "bu": "India MM BU",
+    "account": "ANMOL INDUSTRIES LIMITED",
+    "mrr": 40000,
+    "deal_type": "Farming",
+    "snapshot_date": "2026-07-08",
+    "probability_at_capture": null
+  },
+  {
+    "id": "10574000084105650",
+    "name": "Bella-Vita Suggeted Order",
+    "bu": "India MM BU",
+    "account": "Bella Vita Organic",
+    "mrr": 35000,
+    "deal_type": "Farming",
+    "snapshot_date": "2026-07-08",
+    "probability_at_capture": null
+  },
+  {
+    "id": "10574000084630001",
+    "name": "BAT Indonesia - EDP Go-live",
+    "bu": "BAT BU",
+    "account": "BAT - Indonesia",
+    "mrr": 50000,
+    "deal_type": "Farming",
+    "snapshot_date": "2026-07-08",
+    "probability_at_capture": null
+  },
+  {
+    "id": "10574000087379075",
+    "name": "JKC - Tally User Onboarding",
+    "bu": "India ENT BU",
+    "account": "jk cement",
+    "mrr": 3000,
+    "deal_type": "Farming",
+    "snapshot_date": "2026-07-08",
+    "probability_at_capture": null
+  },
+  {
+    "id": "10574000088263115",
+    "name": "RB Egypt - Geofencing & MSL",
+    "bu": "MEA BU",
+    "account": "RB Egypt - MEA",
+    "mrr": 27500,
+    "deal_type": "Farming",
+    "snapshot_date": "2026-07-08",
+    "probability_at_capture": null
+  },
+  {
+    "id": "10574000088520138",
+    "name": "BAT PNG - EDP Go-live",
+    "bu": "BAT BU",
+    "account": "BAT - PnG",
+    "mrr": 50000,
+    "deal_type": "Farming",
+    "snapshot_date": "2026-07-08",
+    "probability_at_capture": null
+  },
+  {
+    "id": "10574000088520190",
+    "name": "BAT Solomon Islands - EDP Go-live",
+    "bu": "BAT BU",
+    "account": "BAT - Solomon Island",
+    "mrr": 50000,
+    "deal_type": "Farming",
+    "snapshot_date": "2026-07-08",
+    "probability_at_capture": null
+  },
+  {
+    "id": "10574000088817312",
+    "name": "SAP Integration - Prayagh",
+    "bu": "India MM BU",
+    "account": "Prayagh Nutri Products Pvt Ltd",
+    "mrr": 8000,
+    "deal_type": "Farming",
+    "snapshot_date": "2026-07-08",
+    "probability_at_capture": null
+  },
+  {
+    "id": "10574000088842499",
+    "name": "FSIPL - Tour Program",
+    "bu": "SME BU",
+    "account": "Food Service (India) Private Limited",
+    "mrr": 15000,
+    "deal_type": "Farming",
+    "snapshot_date": "2026-07-08",
+    "probability_at_capture": null
+  },
+  {
+    "id": "10574000088892021",
+    "name": "Olam Ghana - Smart Merchandising",
+    "bu": "MEA BU",
+    "account": "Olam Nigeria & Ghana - MEA",
+    "mrr": 90000,
+    "deal_type": "Farming",
+    "snapshot_date": "2026-07-08",
+    "probability_at_capture": null
+  },
+  {
+    "id": "10574000089320756",
+    "name": "TIDC || Tour Program",
+    "bu": "India MM BU",
+    "account": "TI Group",
+    "mrr": 10000,
+    "deal_type": "Farming",
+    "snapshot_date": "2026-07-08",
+    "probability_at_capture": null
+  },
+  {
+    "id": "10574000091023416",
+    "name": "Wilmar- Go Live phase 1",
+    "bu": "MEA BU",
+    "account": "Wilmar Nigeria - MEA",
+    "mrr": 150000,
+    "deal_type": "Farming",
+    "snapshot_date": "2026-07-08",
+    "probability_at_capture": null
+  },
+  {
+    "id": "10574000091045931",
+    "name": "DIY Analytics <> Pankaja kasthuri",
+    "bu": "India MM BU",
+    "account": "Pankajakasthuri",
+    "mrr": 40000,
+    "deal_type": "Farming",
+    "snapshot_date": "2026-07-08",
+    "probability_at_capture": null
+  },
+  {
+    "id": "10574000091608037",
+    "name": "TGI - ARS Alerts",
+    "bu": "MEA BU",
+    "account": "TGI Nigeria - MEA",
+    "mrr": 15000,
+    "deal_type": "Farming",
+    "snapshot_date": "2026-07-08",
+    "probability_at_capture": null
+  },
+  {
+    "id": "10574000091771141",
+    "name": "JKC - RI Perfect Call",
+    "bu": "India ENT BU",
+    "account": "jk cement",
+    "mrr": 20000,
+    "deal_type": "Farming",
+    "snapshot_date": "2026-07-08",
+    "probability_at_capture": null
+  },
+  {
+    "id": "10574000091901005",
+    "name": "JKC - Payout & Incentive Calculator",
+    "bu": "India ENT BU",
+    "account": "jk cement",
+    "mrr": 30000,
+    "deal_type": "Farming",
+    "snapshot_date": "2026-07-08",
+    "probability_at_capture": null
+  },
+  {
+    "id": "10574000092424001",
+    "name": "JGI: degrowth",
+    "bu": "India MM BU",
+    "account": "Jawalakhel Distillery Pvt Ltd(JGI)",
+    "mrr": -130000,
+    "deal_type": "Farming",
+    "snapshot_date": "2026-07-08",
+    "probability_at_capture": null
+  },
+  {
+    "id": "10574000092439548",
+    "name": "Healthkart - Bundled deal - Joint Working",
+    "bu": "India MM BU",
+    "account": "Healthkart",
+    "mrr": 10000,
+    "deal_type": "Farming",
+    "snapshot_date": "2026-07-08",
+    "probability_at_capture": null
+  },
+  {
+    "id": "10574000092439700",
+    "name": "Paras Dairy HRMS integration & User claims",
+    "bu": "India MM BU",
+    "account": "VRS Foods ( Paras Dairy ) - India",
+    "mrr": 35000,
+    "deal_type": "Farming",
+    "snapshot_date": "2026-07-08",
+    "probability_at_capture": null
+  },
+  {
+    "id": "10574000092738107",
+    "name": "Keventer Asset Management",
+    "bu": "India MM BU",
+    "account": "Keventer Agro Ltd",
+    "mrr": 5000,
+    "deal_type": "Farming",
+    "snapshot_date": "2026-07-08",
+    "probability_at_capture": null
+  },
+  {
+    "id": "10574000093065446",
+    "name": "Promoter Module",
+    "bu": "SME BU",
+    "account": "B.N. Agritech Limited (Nutrica)",
+    "mrr": 20000,
+    "deal_type": "Farming",
+    "snapshot_date": "2026-07-08",
+    "probability_at_capture": null
+  },
+  {
+    "id": "10574000093522447",
+    "name": "GCPL - Rural WOW - Microsite recurring",
+    "bu": "KAM BU",
+    "account": "Godrej Consumer Products Ltd.",
+    "mrr": 200000,
+    "deal_type": "Farming",
+    "snapshot_date": "2026-07-08",
+    "probability_at_capture": null
+  },
+  {
+    "id": "10574000093863263",
+    "name": "Joint Working",
+    "bu": "SME BU",
+    "account": "Avanti Petcare",
+    "mrr": 4000,
+    "deal_type": "Farming",
+    "snapshot_date": "2026-07-08",
+    "probability_at_capture": null
+  },
+  {
+    "id": "10574000093866120",
+    "name": "JKC - Tally Onboarding & deployment Support Services",
+    "bu": "India ENT BU",
+    "account": "jk cement",
+    "mrr": 100000,
+    "deal_type": "Farming",
+    "snapshot_date": "2026-07-08",
+    "probability_at_capture": null
+  },
+  {
+    "id": "10574000094093101",
+    "name": "Gamification",
+    "bu": "SME BU",
+    "account": "kanin India (Kangaro)",
+    "mrr": 10000,
+    "deal_type": "Farming",
+    "snapshot_date": "2026-07-08",
+    "probability_at_capture": null
+  },
+  {
+    "id": "10574000094110501",
+    "name": "Hero - Loyalty",
+    "bu": "India ENT BU",
+    "account": "Hero Cycles",
+    "mrr": 10000,
+    "deal_type": "Farming",
+    "snapshot_date": "2026-07-08",
+    "probability_at_capture": null
+  },
+  {
+    "id": "10574000094355031",
+    "name": "Sturlite Electric | Go-live",
+    "bu": "India MM BU",
+    "account": "Sturlite Electric Private Limited",
+    "mrr": 100000,
+    "deal_type": "Farming",
+    "snapshot_date": "2026-07-08",
+    "probability_at_capture": null
+  },
+  {
+    "id": "10574000094428001",
+    "name": "GEF - SUMMARIZATION AGENT",
+    "bu": "India MM BU",
+    "account": "Gemini Edibles (GEF India)",
+    "mrr": 25000,
+    "deal_type": "Farming",
+    "snapshot_date": "2026-07-08",
+    "probability_at_capture": null
+  },
+  {
+    "id": "10574000094646141",
+    "name": "DIY Analytics",
+    "bu": "SME BU",
+    "account": "Maggemane foods LL",
+    "mrr": 6500,
+    "deal_type": "Farming",
+    "snapshot_date": "2026-07-08",
+    "probability_at_capture": null
+  },
+  {
+    "id": "10574000095098085",
+    "name": "GRB || HRMS Integration",
+    "bu": "India MM BU",
+    "account": "GRB Dairy Foods Private Ltd - Bangalore",
+    "mrr": 10000,
+    "deal_type": "Farming",
+    "snapshot_date": "2026-07-08",
+    "probability_at_capture": null
+  },
+  {
+    "id": "10574000095098121",
+    "name": "Akshaykalpa || Asset Management Module",
+    "bu": "India MM BU",
+    "account": "Akshayakalpa Farms & Foods Pvt Ltd",
+    "mrr": 15000,
+    "deal_type": "Farming",
+    "snapshot_date": "2026-07-08",
+    "probability_at_capture": null
+  },
+  {
+    "id": "10574000095423074",
+    "name": "CMG <> DIY Analytics",
+    "bu": "India ENT BU",
+    "account": "Capital Maharaja Group Sri Lanka",
+    "mrr": 80000,
+    "deal_type": "Farming",
+    "snapshot_date": "2026-07-08",
+    "probability_at_capture": null
+  },
+  {
+    "id": "10574000095470090",
+    "name": "Annapurna Reverse Geo-coding",
+    "bu": "India MM BU",
+    "account": "Annapurna Group",
+    "mrr": 10000,
+    "deal_type": "Farming",
+    "snapshot_date": "2026-07-08",
+    "probability_at_capture": null
+  },
+  {
+    "id": "10574000095470108",
+    "name": "Paras-Outlet Color Coding",
+    "bu": "India MM BU",
+    "account": "VRS Foods ( Paras Dairy ) - India",
+    "mrr": 10000,
+    "deal_type": "Farming",
+    "snapshot_date": "2026-07-08",
+    "probability_at_capture": null
+  },
+  {
+    "id": "10574000095825205",
+    "name": "Hero Retailer Application - Initial Go Live",
+    "bu": "India ENT BU",
+    "account": "Hero Cycles",
+    "mrr": 90000,
+    "deal_type": "Farming",
+    "snapshot_date": "2026-07-08",
+    "probability_at_capture": null
+  },
+  {
+    "id": "10574000095825226",
+    "name": "Hero Retailer Application - Go Live Completion",
+    "bu": "India ENT BU",
+    "account": "Hero Cycles",
+    "mrr": 100000,
+    "deal_type": "Farming",
+    "snapshot_date": "2026-07-08",
+    "probability_at_capture": null
+  },
+  {
+    "id": "10574000095832012",
+    "name": "DFM Foods || Joint Working",
+    "bu": "India MM BU",
+    "account": "DFM Foods Ltd",
+    "mrr": 10000,
+    "deal_type": "Farming",
+    "snapshot_date": "2026-07-08",
+    "probability_at_capture": null
+  },
+  {
+    "id": "10574000096259184",
+    "name": "GCPL GT - Amazon Integretion",
+    "bu": "KAM BU",
+    "account": "Godrej Consumer Products Ltd.",
+    "mrr": 30000,
+    "deal_type": "Farming",
+    "snapshot_date": "2026-07-08",
+    "probability_at_capture": null
+  },
+  {
+    "id": "10574000096537043",
+    "name": "JKC: User transfer and degrowth",
+    "bu": "India ENT BU",
+    "account": "jk cement",
+    "mrr": -903000,
+    "deal_type": "Farming",
+    "snapshot_date": "2026-07-08",
+    "probability_at_capture": null
+  },
+  {
+    "id": "10574000096542001",
+    "name": "SAP Integration",
+    "bu": "SME BU",
+    "account": "GOA MEDICOS PRIVATE LIMITED",
+    "mrr": 19000,
+    "deal_type": "Farming",
+    "snapshot_date": "2026-07-08",
+    "probability_at_capture": null
+  },
+  {
+    "id": "10574000096546022",
+    "name": "Tally Integration",
+    "bu": "SME BU",
+    "account": "Everest Stabilizer",
+    "mrr": 8000,
+    "deal_type": "Farming",
+    "snapshot_date": "2026-07-08",
+    "probability_at_capture": null
+  },
+  {
+    "id": "10574000096685298",
+    "name": "WOW || User degrowth",
+    "bu": "India MM BU",
+    "account": "WOW Skin Science (ChrysCapital )",
+    "mrr": -47000,
+    "deal_type": "Farming",
+    "snapshot_date": "2026-07-08",
+    "probability_at_capture": null
+  },
+  {
+    "id": "10574000096697379",
+    "name": "GCPL Indo - PO Automation (MRR)",
+    "bu": "SEA BU",
+    "account": "PT Godrej Consumer Products Indonesia",
+    "mrr": 100000,
+    "deal_type": "Farming",
+    "snapshot_date": "2026-07-08",
+    "probability_at_capture": null
+  },
+  {
+    "id": "10574000096982089",
+    "name": "Olam Price Revision",
+    "bu": "MEA BU",
+    "account": "Olam Nigeria & Ghana - MEA",
+    "mrr": 40000,
+    "deal_type": "Farming",
+    "snapshot_date": "2026-07-08",
+    "probability_at_capture": null
+  },
+  {
+    "id": "10574000097029013",
+    "name": "Adora Churn Deal",
+    "bu": "MEA BU",
+    "account": "Adora Products - Kenya",
+    "mrr": -44000,
+    "deal_type": "Farming",
+    "snapshot_date": "2026-07-08",
+    "probability_at_capture": null
+  },
+  {
+    "id": "10574000097391190",
+    "name": "Delmonte || User Claims",
+    "bu": "India ENT BU",
+    "account": "Del Monte Foods Private Limited (Fieldfresh)",
+    "mrr": 25000,
+    "deal_type": "Farming",
+    "snapshot_date": "2026-07-08",
+    "probability_at_capture": null
+  },
+  {
+    "id": "10574000097415219",
+    "name": "Emami Agrotech || Churn",
+    "bu": "India ENT BU",
+    "account": "Emami Agrotech Limited",
+    "mrr": -493000,
+    "deal_type": "Farming",
+    "snapshot_date": "2026-07-08",
+    "probability_at_capture": null
+  },
+  {
+    "id": "10574000097442062",
+    "name": "E-Way BILLING",
+    "bu": "SME BU",
+    "account": "Popular Marketing Company",
+    "mrr": 1500,
+    "deal_type": "Farming",
+    "snapshot_date": "2026-07-08",
+    "probability_at_capture": null
+  },
+  {
+    "id": "10574000097443002",
+    "name": "mankind agritech - Google maps",
+    "bu": "India ENT BU",
+    "account": "Mankind Pharma",
+    "mrr": 20000,
+    "deal_type": "Farming",
+    "snapshot_date": "2026-07-08",
+    "probability_at_capture": null
+  },
+  {
+    "id": "10574000097450092",
+    "name": "EBCO - WhatsApp Invoicing",
+    "bu": "India ENT BU",
+    "account": "Ebco India Pvt Ltd",
+    "mrr": 12000,
+    "deal_type": "Farming",
+    "snapshot_date": "2026-07-08",
+    "probability_at_capture": null
+  },
+  {
+    "id": "10574000097455238",
+    "name": "J&J Go-live",
+    "bu": "KAM BU",
+    "account": "Johnson & Johnson Vision Care India",
+    "mrr": 337070,
+    "deal_type": "Farming",
+    "snapshot_date": "2026-07-08",
+    "probability_at_capture": null
+  },
+  {
+    "id": "10574000097700017",
+    "name": "ABG Cables and Wire - Go Live: Phase 2",
+    "bu": "India ENT BU",
+    "account": "Aditya Birla Group",
+    "mrr": 250000,
+    "deal_type": "Farming",
+    "snapshot_date": "2026-07-08",
+    "probability_at_capture": null
+  },
+  {
+    "id": "10574000097896021",
+    "name": "HRI RI Co-Pilot (GT)",
+    "bu": "India MM BU",
+    "account": "Hygienic Research Institute Private Limited (HRI)",
+    "mrr": 50000,
+    "deal_type": "Farming",
+    "snapshot_date": "2026-07-08",
+    "probability_at_capture": null
+  },
+  {
+    "id": "10574000097918111",
+    "name": "Osam Dairy II ChurnII",
+    "bu": "India MM BU",
+    "account": "OSAM Dairy",
+    "mrr": -133000,
+    "deal_type": "Farming",
+    "snapshot_date": "2026-07-08",
+    "probability_at_capture": null
+  },
+  {
+    "id": "10574000097920183",
+    "name": "Paras Dairy Joint Working",
+    "bu": "India MM BU",
+    "account": "VRS Foods ( Paras Dairy ) - India",
+    "mrr": 20000,
+    "deal_type": "Farming",
+    "snapshot_date": "2026-07-08",
+    "probability_at_capture": null
+  },
+  {
+    "id": "10574000097927056",
+    "name": "Janani User Degrowth",
+    "bu": "India MM BU",
+    "account": "Janani Pharma (part of DKT)",
+    "mrr": -10000,
+    "deal_type": "Farming",
+    "snapshot_date": "2026-07-08",
+    "probability_at_capture": null
+  },
+  {
+    "id": "10574000097927074",
+    "name": "Inbrew User Degrowth",
+    "bu": "India MM BU",
+    "account": "Inbrew Beverages Private Limited",
+    "mrr": -6000,
+    "deal_type": "Farming",
+    "snapshot_date": "2026-07-08",
+    "probability_at_capture": null
+  },
+  {
+    "id": "10574000097927114",
+    "name": "APIS HRMS Integration",
+    "bu": "India MM BU",
+    "account": "Apis India",
+    "mrr": 9000,
+    "deal_type": "Farming",
+    "snapshot_date": "2026-07-08",
+    "probability_at_capture": null
+  },
+  {
+    "id": "10574000097927132",
+    "name": "APIS Tour Program",
+    "bu": "India MM BU",
+    "account": "Apis India",
+    "mrr": 11000,
+    "deal_type": "Farming",
+    "snapshot_date": "2026-07-08",
+    "probability_at_capture": null
+  },
+  {
+    "id": "10574000097927202",
+    "name": "DS Spiceco Google Map",
+    "bu": "India MM BU",
+    "account": "DS Spiceco Pvt Ltd",
+    "mrr": 25000,
+    "deal_type": "Farming",
+    "snapshot_date": "2026-07-08",
+    "probability_at_capture": null
+  },
+  {
+    "id": "10574000097927220",
+    "name": "DS Dairy User Claims",
+    "bu": "India MM BU",
+    "account": "Dharampal Satyapal Limited (DS MFD)",
+    "mrr": 8000,
+    "deal_type": "Farming",
+    "snapshot_date": "2026-07-08",
+    "probability_at_capture": null
+  },
+  {
+    "id": "10574000098049078",
+    "name": "JKC - Integration Bundle deal",
+    "bu": "India ENT BU",
+    "account": "jk cement",
+    "mrr": 30000,
+    "deal_type": "Farming",
+    "snapshot_date": "2026-07-08",
+    "probability_at_capture": null
+  },
+  {
+    "id": "10574000098057001",
+    "name": "SAP Integration",
+    "bu": "SME BU",
+    "account": "The Whole Truth Foods",
+    "mrr": 15000,
+    "deal_type": "Farming",
+    "snapshot_date": "2026-07-08",
+    "probability_at_capture": null
+  },
+  {
+    "id": "10574000098089001",
+    "name": "Bajaj RI Co-Pilot Drop",
+    "bu": "India ENT BU",
+    "account": "Bajaj Electricals Limited",
+    "mrr": -150000,
+    "deal_type": "Farming",
+    "snapshot_date": "2026-07-08",
+    "probability_at_capture": null
+  },
+  {
+    "id": "10574000098100039",
+    "name": "Bauli user claims MRR",
+    "bu": "India MM BU",
+    "account": "Bauli India Bakes & Sweets Private Limited",
+    "mrr": 28000,
+    "deal_type": "Farming",
+    "snapshot_date": "2026-07-08",
+    "probability_at_capture": null
+  },
+  {
+    "id": "10574000098208349",
+    "name": "JKC - DIY Price Revision",
+    "bu": "India ENT BU",
+    "account": "jk cement",
+    "mrr": -70000,
+    "deal_type": "Farming",
+    "snapshot_date": "2026-07-08",
+    "probability_at_capture": null
+  },
+  {
+    "id": "10574000098218237",
+    "name": "Indonissin <> Whatsapp Invoicing Module Churn",
+    "bu": "India ENT BU",
+    "account": "Indo Nissin",
+    "mrr": -35000,
+    "deal_type": "Farming",
+    "snapshot_date": "2026-07-08",
+    "probability_at_capture": null
+  },
+  {
+    "id": "10574000098236079",
+    "name": "Levista <> DIY with API key",
+    "bu": "India MM BU",
+    "account": "Levista Coffee (SLN Coffee)",
+    "mrr": 15000,
+    "deal_type": "Farming",
+    "snapshot_date": "2026-07-08",
+    "probability_at_capture": null
+  },
+  {
+    "id": "10574000098386018",
+    "name": "Platform & Maintenance Fee",
+    "bu": "KAM BU",
+    "account": "Shell",
+    "mrr": 604901.92,
+    "deal_type": "Farming",
+    "snapshot_date": "2026-07-08",
+    "probability_at_capture": null
+  },
+  {
+    "id": "10574000098386097",
+    "name": "MRR Degrowth-Bizom custom charges for DMR Performance dashboard up to 4 months (65,000/93.64=694.15)",
+    "bu": "KAM BU",
+    "account": "Shell",
+    "mrr": -16250,
+    "deal_type": "Farming",
+    "snapshot_date": "2026-07-08",
+    "probability_at_capture": null
+  },
+  {
+    "id": "10574000098389197",
+    "name": "New Go Live",
+    "bu": "SME BU",
+    "account": "Bakers International",
+    "mrr": 10640,
+    "deal_type": "Farming",
+    "snapshot_date": "2026-07-08",
+    "probability_at_capture": null
+  },
+  {
+    "id": "10574000098389215",
+    "name": "Geofencing",
+    "bu": "SME BU",
+    "account": "Sunbeam Ventures",
+    "mrr": 7000,
+    "deal_type": "Farming",
+    "snapshot_date": "2026-07-08",
+    "probability_at_capture": null
+  },
+  {
+    "id": "10574000098397167",
+    "name": "New Go live - House of AR",
+    "bu": "SME BU",
+    "account": "Snacweet",
+    "mrr": 10000,
+    "deal_type": "Farming",
+    "snapshot_date": "2026-07-08",
+    "probability_at_capture": null
+  },
+  {
+    "id": "10574000098397335",
+    "name": "Sell Pro - Geo fencing",
+    "bu": "SME BU",
+    "account": "SellPro Commerce Pvt Ltd",
+    "mrr": 5000,
+    "deal_type": "Farming",
+    "snapshot_date": "2026-07-08",
+    "probability_at_capture": null
+  },
+  {
+    "id": "10574000098397353",
+    "name": "Indiraa Foods- Geo Fencing",
+    "bu": "SME BU",
+    "account": "Indiraa Foods",
+    "mrr": 5000,
+    "deal_type": "Farming",
+    "snapshot_date": "2026-07-08",
+    "probability_at_capture": null
+  },
+  {
+    "id": "10574000098405038",
+    "name": "Okaya warranty module",
+    "bu": "India ENT BU",
+    "account": "Okaya Power",
+    "mrr": 71000,
+    "deal_type": "Farming",
+    "snapshot_date": "2026-07-08",
+    "probability_at_capture": null
+  },
+  {
+    "id": "10574000098420007",
+    "name": "New Golive - August Assortments",
+    "bu": "SME BU",
+    "account": "August Assortments",
+    "mrr": 37500,
+    "deal_type": "Farming",
+    "snapshot_date": "2026-07-08",
+    "probability_at_capture": null
+  },
+  {
+    "id": "10574000098420036",
+    "name": "Geofencing",
+    "bu": "SME BU",
+    "account": "Atul Limited (Atulpolymers)",
+    "mrr": 9000,
+    "deal_type": "Farming",
+    "snapshot_date": "2026-07-08",
+    "probability_at_capture": null
+  },
+  {
+    "id": "10574000098420078",
+    "name": "new Go live",
+    "bu": "SME BU",
+    "account": "Thangam Foods",
+    "mrr": 10000,
+    "deal_type": "Farming",
+    "snapshot_date": "2026-07-08",
+    "probability_at_capture": null
+  },
+  {
+    "id": "10574000098431028",
+    "name": "MUG Decrease || Indira",
+    "bu": "SME BU",
+    "account": "Indira Foods Pvt Ltd",
+    "mrr": -12000,
+    "deal_type": "Farming",
+    "snapshot_date": "2026-07-08",
+    "probability_at_capture": null
+  },
+  {
+    "id": "10574000098431075",
+    "name": "DIY Analytics || Goa Medicos",
+    "bu": "SME BU",
+    "account": "GOA MEDICOS PRIVATE LIMITED",
+    "mrr": 15250,
+    "deal_type": "Farming",
+    "snapshot_date": "2026-07-08",
+    "probability_at_capture": null
+  },
+  {
+    "id": "10574000098431093",
+    "name": "New Go-Live || Ghar soaps",
+    "bu": "SME BU",
+    "account": "YMI Ghar Soaps Private Limited",
+    "mrr": 5500,
+    "deal_type": "Farming",
+    "snapshot_date": "2026-07-08",
+    "probability_at_capture": null
+  },
+  {
+    "id": "10574000098555041",
+    "name": "TGI - Distributor Onboarding",
+    "bu": "MEA BU",
+    "account": "TGI Nigeria - MEA",
+    "mrr": 63000,
+    "deal_type": "Farming",
+    "snapshot_date": "2026-07-08",
+    "probability_at_capture": null
+  },
+  {
+    "id": "10574000098587003",
+    "name": "Dynamic Rerouting",
+    "bu": "SME BU",
+    "account": "IncredibleIndriya Beauty Essentials Pvt Ltd",
+    "mrr": 5000,
+    "deal_type": "Farming",
+    "snapshot_date": "2026-07-08",
+    "probability_at_capture": null
+  },
+  {
+    "id": "10574000098591001",
+    "name": "Outlet Deduplication - Module Churn - Pankajakasthuri",
+    "bu": "India MM BU",
+    "account": "Pankajakasthuri",
+    "mrr": -30000,
+    "deal_type": "Farming",
+    "snapshot_date": "2026-07-08",
+    "probability_at_capture": null
+  },
+  {
+    "id": "10574000074152162",
+    "name": "Europa Locks Tally Connect",
+    "account": "Europa Locks",
+    "mrr": 40000,
+    "bu": "India MM BU",
+    "deal_type": "Hunting",
+    "snapshot_date": "2026-07-08",
+    "probability_at_capture": null
+  },
+  {
+    "id": "10574000091952057",
+    "name": "Bayer Consumer Health SFA",
+    "account": "Bayer - India",
+    "mrr": 242000,
+    "bu": "India ENT BU",
+    "deal_type": "Hunting",
+    "snapshot_date": "2026-07-08",
+    "probability_at_capture": null
+  },
+  {
+    "id": "10574000096737443",
+    "name": "BAT - Genesis Milestones 6",
+    "account": "British American Tobacco",
+    "mrr": 520000,
+    "bu": "BAT BU",
+    "deal_type": "Hunting",
+    "snapshot_date": "2026-07-08",
+    "probability_at_capture": null
+  },
+  {
+    "id": "10574000098397239",
+    "name": "Honest Farms (DeHaat)",
+    "account": "Honest Farms (DeHaat)",
+    "mrr": 79250,
+    "bu": "India MM BU",
+    "deal_type": "Hunting",
+    "snapshot_date": "2026-07-08",
+    "probability_at_capture": null
+  },
+  {
+    "id": "10574000098573309",
+    "name": "BAT - SriLanka Milestone 5&6",
+    "account": "British American Tobacco",
+    "mrr": 350000,
+    "bu": "BAT BU",
+    "deal_type": "Hunting",
+    "snapshot_date": "2026-07-08",
+    "probability_at_capture": null
+  },
+  {
+    "id": "10574000098589011",
+    "name": "Annai Dates",
+    "account": "Annai Food Products Private Limited",
+    "mrr": 29900,
+    "bu": "UNMAPPED",
+    "deal_type": "Hunting",
+    "snapshot_date": "2026-07-08",
+    "probability_at_capture": null
+  }
+]

@@ -1,0 +1,14 @@
+{
+  "name": "zoho-mrr-sync",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Weekly Zoho CRM -> Supabase sync for the MRR commit dashboard",
+  "type": "commonjs",
+  "main": "sync.js",
+  "scripts": {
+    "sync": "node sync.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.0"
+  }
+}

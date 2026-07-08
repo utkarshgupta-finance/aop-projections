@@ -1,0 +1,302 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MRR Commit Dashboard</title>
+<style>
+  .viz-root {
+    --surface-1:      #fcfcfb;
+    --page:           #f9f9f7;
+    --text-primary:   #0b0b0b;
+    --text-secondary: #52514e;
+    --text-muted:     #898781;
+    --gridline:       #e1e0d9;
+    --baseline:       #c3c2b7;
+    --border:         rgba(11,11,11,0.10);
+    --good:           #0ca30c;
+    --warning:        #fab219;
+    --series-1: #2a78d6; /* KAM BU */
+    --series-2: #1baf7a; /* MEA BU */
+    --series-3: #eda100; /* SEA BU */
+    --series-4: #008300; /* BAT BU */
+    --series-5: #4a3aa7; /* India MM BU */
+    --series-6: #e34948; /* India ENT BU */
+    --series-7: #e87ba4; /* SME BU */
+    --series-8: #eb6834; /* fallback / new BU */
+  }
+  @media (prefers-color-scheme: dark) {
+    .viz-root {
+      --surface-1:      #1a1a19;
+      --page:           #0d0d0d;
+      --text-primary:   #ffffff;
+      --text-secondary: #c3c2b7;
+      --text-muted:     #898781;
+      --gridline:       #2c2c2a;
+      --baseline:       #383835;
+      --border:         rgba(255,255,255,0.10);
+      --good:           #0ca30c;
+      --warning:        #fab219;
+      --series-1: #3987e5;
+      --series-2: #199e70;
+      --series-3: #c98500;
+      --series-4: #008300;
+      --series-5: #9085e9;
+      --series-6: #e66767;
+      --series-7: #d55181;
+      --series-8: #d95926;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--page);
+    color: var(--text-primary);
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 32px 20px 64px; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .subtitle { color: var(--text-secondary); font-size: 13px; margin: 0 0 28px; }
+  .card {
+    background: var(--surface-1);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px;
+    margin-bottom: 20px;
+  }
+  .card h2 { font-size: 14px; margin: 0 0 16px; color: var(--text-secondary); font-weight: 600; text-transform: uppercase; letter-spacing: 0.02em; }
+  .stat-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 16px; margin-bottom: 20px; }
+  .stat-tile { background: var(--surface-1); border: 1px solid var(--border); border-radius: 10px; padding: 16px 18px; }
+  .stat-label { font-size: 12px; color: var(--text-secondary); margin-bottom: 6px; }
+  .stat-value { font-size: 26px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .stat-value.warn { color: var(--warning); }
+  .badge { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; padding: 3px 8px; border-radius: 999px; background: rgba(250,178,25,0.15); color: #96650a; font-weight: 600; }
+  @media (prefers-color-scheme: dark) { .badge { color: var(--warning); } }
+  .bar-row { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+  .bar-label { width: 130px; font-size: 13px; color: var(--text-secondary); flex-shrink: 0; text-align: right; }
+  .bar-track { flex: 1; display: flex; height: 22px; position: relative; }
+  .bar-track::after { content: ''; position: absolute; left: 50%; top: -3px; bottom: -3px; width: 1px; background: var(--baseline); }
+  .bar-half { width: 50%; position: relative; }
+  .bar-fill { position: absolute; top: 0; height: 100%; border-radius: 3px; }
+  .bar-fill.neg { right: 0; border-radius: 3px 0 0 3px; }
+  .bar-fill.pos { left: 0; border-radius: 0 3px 3px 0; }
+  .bar-value { font-size: 12px; color: var(--text-primary); font-variant-numeric: tabular-nums; margin-left: 8px; white-space: nowrap; width: 110px; }
+  .split-row { display: flex; height: 28px; border-radius: 6px; overflow: hidden; }
+  .split-seg { display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; color: #fff; }
+  .legend { display: flex; gap: 18px; margin-top: 12px; flex-wrap: wrap; }
+  .legend-item { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-secondary); }
+  .legend-swatch { width: 10px; height: 10px; border-radius: 2px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--gridline); }
+  th { color: var(--text-secondary); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 0.02em; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .muted { color: var(--text-muted); }
+  .error { color: #d03b3b; font-size: 13px; }
+  tr:hover td { background: rgba(11,11,11,0.03); }
+  @media (prefers-color-scheme: dark) { tr:hover td { background: rgba(255,255,255,0.04); } }
+</style>
+</head>
+<body>
+<div class="viz-root">
+  <div class="wrap">
+    <h1>MRR Commit Dashboard</h1>
+    <p class="subtitle" id="subtitle">Loading latest snapshot…</p>
+
+    <div id="content"></div>
+  </div>
+</div>
+
+<script>
+const SUPABASE_URL = 'https://qnulyenilttpalbkmpvm.supabase.co';
+const SUPABASE_KEY = 'sb_publishable__ZX4BeZvlMqaYi8MWrP2Kg_itCCcMFZ';
+
+const BU_ORDER = ['KAM BU', 'MEA BU', 'SEA BU', 'BAT BU', 'India MM BU', 'India ENT BU', 'SME BU'];
+const BU_COLOR_VAR = { 'KAM BU': '--series-1', 'MEA BU': '--series-2', 'SEA BU': '--series-3', 'BAT BU': '--series-4', 'India MM BU': '--series-5', 'India ENT BU': '--series-6', 'SME BU': '--series-7' };
+
+function fmtINR(n) {
+  const sign = n < 0 ? '-' : '';
+  return sign + '₹' + Math.abs(n).toLocaleString('en-IN', { maximumFractionDigits: 0 });
+}
+
+async function sb(path) {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
+    headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` },
+  });
+  if (!res.ok) throw new Error(`Supabase request failed: ${res.status} ${await res.text()}`);
+  return res.json();
+}
+
+function colorVar(bu) {
+  return `var(${BU_COLOR_VAR[bu] || '--series-8'})`;
+}
+
+async function main() {
+  const content = document.getElementById('content');
+  let deals, snapshots;
+  try {
+    [deals, snapshots] = await Promise.all([
+      sb('deals?select=*'),
+      sb('mrr_snapshots?select=*&order=snapshot_date.asc'),
+    ]);
+  } catch (err) {
+    content.innerHTML = `<div class="card"><p class="error">Failed to load data: ${err.message}</p></div>`;
+    return;
+  }
+
+  const dealsById = new Map(deals.map(d => [d.deal_id, d]));
+  const dates = [...new Set(snapshots.map(s => s.snapshot_date))].sort();
+  const latestDate = dates[dates.length - 1];
+  document.getElementById('subtitle').textContent = `Latest snapshot: ${latestDate} · ${dates.length} snapshot${dates.length === 1 ? '' : 's'} tracked`;
+
+  const latest = snapshots.filter(s => s.snapshot_date === latestDate);
+
+  // ---- Stat tiles ----
+  const totalMRR = latest.reduce((a, s) => a + Number(s.mrr_amount), 0);
+  const farmingMRR = latest.filter(s => dealsById.get(s.deal_id)?.deal_type === 'Farming').reduce((a, s) => a + Number(s.mrr_amount), 0);
+  const huntingMRR = latest.filter(s => dealsById.get(s.deal_id)?.deal_type === 'Hunting').reduce((a, s) => a + Number(s.mrr_amount), 0);
+  const unmappedDeals = latest.filter(s => (dealsById.get(s.deal_id)?.business_unit || 'UNMAPPED') === 'UNMAPPED');
+
+  // ---- MRR by Business Unit ----
+  const buTotals = new Map();
+  for (const s of latest) {
+    const bu = dealsById.get(s.deal_id)?.business_unit || 'UNMAPPED';
+    buTotals.set(bu, (buTotals.get(bu) || 0) + Number(s.mrr_amount));
+  }
+  const buRows = [...buTotals.entries()].sort((a, b) => b[1] - a[1]);
+  const maxAbs = Math.max(...buRows.map(([, v]) => Math.abs(v)), 1);
+
+  // ---- Trend over time ----
+  const trend = dates.map(date => ({
+    date,
+    total: snapshots.filter(s => s.snapshot_date === date).reduce((a, s) => a + Number(s.mrr_amount), 0),
+  }));
+
+  content.innerHTML = `
+    <div class="stat-row">
+      <div class="stat-tile"><div class="stat-label">Total MRR (${latestDate})</div><div class="stat-value">${fmtINR(totalMRR)}</div></div>
+      <div class="stat-tile"><div class="stat-label">Farming MRR</div><div class="stat-value">${fmtINR(farmingMRR)}</div></div>
+      <div class="stat-tile"><div class="stat-label">Hunting MRR</div><div class="stat-value">${fmtINR(huntingMRR)}</div></div>
+      <div class="stat-tile">
+        <div class="stat-label">Unmapped deals</div>
+        <div class="stat-value ${unmappedDeals.length ? 'warn' : ''}">${unmappedDeals.length}</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>MRR by Business Unit</h2>
+      <div id="bu-chart"></div>
+      <div class="legend">
+        <div class="legend-item"><span class="legend-swatch" style="background:var(--series-1);"></span>Net add</div>
+        <div class="legend-item"><span class="legend-swatch" style="background:var(--series-6);"></span>Net churn</div>
+        <div class="legend-item"><span class="legend-swatch" style="background:var(--warning);"></span>Unmapped</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Farming vs Hunting</h2>
+      <div id="split-chart"></div>
+    </div>
+
+    <div class="card">
+      <h2>MRR trend over time</h2>
+      <div id="trend-chart"></div>
+    </div>
+
+    <div class="card">
+      <h2>Deals — latest snapshot</h2>
+      <div id="deals-table"></div>
+    </div>
+  `;
+
+  // BU bar chart -- diverging: net add (positive) vs net churn (negative) share a zero baseline,
+  // since a BU's total here is a net figure and same-length fills on a one-sided bar would make
+  // a churning BU visually indistinguishable from a growing one.
+  const buChart = document.getElementById('bu-chart');
+  buRows.forEach(([bu, val]) => {
+    const pct = (Math.abs(val) / maxAbs) * 100;
+    const isUnmapped = bu === 'UNMAPPED';
+    const fillColor = isUnmapped ? 'var(--warning)' : (val < 0 ? 'var(--series-6)' : 'var(--series-1)');
+    const row = document.createElement('div');
+    row.className = 'bar-row';
+    row.title = `${bu}: ${fmtINR(val)}`;
+    row.innerHTML = `
+      <div class="bar-label">${isUnmapped ? '⚠️ UNMAPPED' : bu}</div>
+      <div class="bar-track">
+        <div class="bar-half">${val < 0 ? `<div class="bar-fill neg" style="width:${pct}%; background:${fillColor};"></div>` : ''}</div>
+        <div class="bar-half">${val >= 0 ? `<div class="bar-fill pos" style="width:${pct}%; background:${fillColor};"></div>` : ''}</div>
+      </div>
+      <div class="bar-value">${fmtINR(val)}</div>
+    `;
+    buChart.appendChild(row);
+  });
+
+  // Farming vs Hunting split
+  const splitChart = document.getElementById('split-chart');
+  const splitTotal = Math.abs(farmingMRR) + Math.abs(huntingMRR) || 1;
+  const farmPct = (Math.abs(farmingMRR) / splitTotal) * 100;
+  const huntPct = 100 - farmPct;
+  splitChart.innerHTML = `
+    <div class="split-row">
+      <div class="split-seg" style="width:${farmPct}%; background:var(--series-1);" title="Farming: ${fmtINR(farmingMRR)}">${farmPct > 12 ? 'Farming' : ''}</div>
+      <div class="split-seg" style="width:${huntPct}%; background:var(--series-6);" title="Hunting: ${fmtINR(huntingMRR)}">${huntPct > 12 ? 'Hunting' : ''}</div>
+    </div>
+    <div class="legend">
+      <div class="legend-item"><span class="legend-swatch" style="background:var(--series-1);"></span>Farming · ${fmtINR(farmingMRR)}</div>
+      <div class="legend-item"><span class="legend-swatch" style="background:var(--series-6);"></span>Hunting · ${fmtINR(huntingMRR)}</div>
+    </div>
+  `;
+
+  // Trend line (SVG)
+  const trendChart = document.getElementById('trend-chart');
+  if (trend.length === 1) {
+    trendChart.innerHTML = `<p class="muted">Only one snapshot recorded so far (${trend[0].date}: ${fmtINR(trend[0].total)}). Trend line will appear once weekly syncs accumulate more dates.</p>`;
+  } else {
+    const w = 1000, h = 220, padL = 70, padB = 30, padT = 20, padR = 20;
+    const vals = trend.map(t => t.total);
+    const minV = Math.min(0, ...vals), maxV = Math.max(...vals);
+    const x = i => padL + (i / (trend.length - 1)) * (w - padL - padR);
+    const y = v => h - padB - ((v - minV) / (maxV - minV || 1)) * (h - padT - padB);
+    const points = trend.map((t, i) => `${x(i)},${y(t.total)}`).join(' ');
+    const gridLines = [0, 0.25, 0.5, 0.75, 1].map(f => {
+      const yy = padT + f * (h - padT - padB);
+      const val = maxV - f * (maxV - minV);
+      return `<line x1="${padL}" y1="${yy}" x2="${w - padR}" y2="${yy}" stroke="var(--gridline)" stroke-width="1"/>
+              <text x="${padL - 10}" y="${yy + 4}" font-size="11" fill="var(--text-muted)" text-anchor="end">${fmtINR(Math.round(val))}</text>`;
+    }).join('');
+    const dots = trend.map((t, i) => `<circle cx="${x(i)}" cy="${y(t.total)}" r="4" fill="var(--series-1)" stroke="var(--surface-1)" stroke-width="2"><title>${t.date}: ${fmtINR(t.total)}</title></circle>`).join('');
+    const labels = trend.map((t, i) => `<text x="${x(i)}" y="${h - 8}" font-size="11" fill="var(--text-muted)" text-anchor="middle">${t.date}</text>`).join('');
+    trendChart.innerHTML = `<svg viewBox="0 0 ${w} ${h}" width="100%" height="${h}">
+      ${gridLines}
+      <polyline points="${points}" fill="none" stroke="var(--series-1)" stroke-width="2"/>
+      ${dots}
+      ${labels}
+    </svg>`;
+  }
+
+  // Deals table
+  const dealsTable = document.getElementById('deals-table');
+  const sortedLatest = [...latest].sort((a, b) => Number(b.mrr_amount) - Number(a.mrr_amount));
+  const rows = sortedLatest.map(s => {
+    const d = dealsById.get(s.deal_id) || {};
+    const bu = d.business_unit || 'UNMAPPED';
+    const buCell = bu === 'UNMAPPED'
+      ? `<span class="badge">⚠️ UNMAPPED</span>`
+      : bu;
+    return `<tr>
+      <td>${d.current_name || s.deal_id}</td>
+      <td>${d.account_name || ''}</td>
+      <td>${d.deal_type || ''}</td>
+      <td>${buCell}</td>
+      <td class="num">${fmtINR(Number(s.mrr_amount))}</td>
+    </tr>`;
+  }).join('');
+  dealsTable.innerHTML = `<table>
+    <thead><tr><th>Deal</th><th>Account</th><th>Type</th><th>Business Unit</th><th style="text-align:right;">MRR</th></tr></thead>
+    <tbody>${rows}</tbody>
+  </table>`;
+}
+
+main();
+</script>
+</body>
+</html>

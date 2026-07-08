@@ -1,0 +1,94 @@
+deal_id,deal_name,business_unit,account_name,mrr_amount,deal_type,snapshot_date
+10574000054107017,Basco- Integration Live,MEA BU,Basco Paints( Duracoat)- MEA,22000,Farming,2026-07-08
+10574000078638061,CDPL- Outlet deduplication,KAM BU,Creamline Dairy Products Limited,82500,Farming,2026-07-08
+10574000078658079,Anmol-DIY,India MM BU,ANMOL INDUSTRIES LIMITED,40000,Farming,2026-07-08
+10574000084105650,Bella-Vita Suggeted Order,India MM BU,Bella Vita Organic,35000,Farming,2026-07-08
+10574000084630001,BAT Indonesia - EDP Go-live,BAT BU,BAT - Indonesia,50000,Farming,2026-07-08
+10574000087379075,JKC - Tally User Onboarding,India ENT BU,jk cement,3000,Farming,2026-07-08
+10574000088263115,RB Egypt - Geofencing & MSL,MEA BU,RB Egypt - MEA,27500,Farming,2026-07-08
+10574000088520138,BAT PNG - EDP Go-live,BAT BU,BAT - PnG,50000,Farming,2026-07-08
+10574000088520190,BAT Solomon Islands - EDP Go-live,BAT BU,BAT - Solomon Island,50000,Farming,2026-07-08
+10574000088817312,SAP Integration - Prayagh,India MM BU,Prayagh Nutri Products Pvt Ltd,8000,Farming,2026-07-08
+10574000088842499,FSIPL - Tour Program,SME BU,Food Service (India) Private Limited,15000,Farming,2026-07-08
+10574000088892021,Olam Ghana - Smart Merchandising,MEA BU,Olam Nigeria & Ghana - MEA,90000,Farming,2026-07-08
+10574000089320756,TIDC || Tour Program,India MM BU,TI Group,10000,Farming,2026-07-08
+10574000091023416,Wilmar- Go Live phase 1,MEA BU,Wilmar Nigeria - MEA,150000,Farming,2026-07-08
+10574000091045931,DIY Analytics <> Pankaja kasthuri,India MM BU,Pankajakasthuri,40000,Farming,2026-07-08
+10574000091608037,TGI - ARS Alerts,MEA BU,TGI Nigeria - MEA,15000,Farming,2026-07-08
+10574000091771141,JKC - RI Perfect Call,India ENT BU,jk cement,20000,Farming,2026-07-08
+10574000091901005,JKC - Payout & Incentive Calculator,India ENT BU,jk cement,30000,Farming,2026-07-08
+10574000092424001,JGI: degrowth,India MM BU,Jawalakhel Distillery Pvt Ltd(JGI),-130000,Farming,2026-07-08
+10574000092439548,Healthkart - Bundled deal - Joint Working,India MM BU,Healthkart,10000,Farming,2026-07-08
+10574000092439700,Paras Dairy HRMS integration & User claims,India MM BU,VRS Foods ( Paras Dairy ) - India,35000,Farming,2026-07-08
+10574000092738107,Keventer Asset Management,India MM BU,Keventer Agro Ltd,5000,Farming,2026-07-08
+10574000093065446,Promoter Module,SME BU,B.N. Agritech Limited (Nutrica),20000,Farming,2026-07-08
+10574000093522447,GCPL - Rural WOW - Microsite recurring,KAM BU,Godrej Consumer Products Ltd.,200000,Farming,2026-07-08
+10574000093863263,Joint Working,SME BU,Avanti Petcare,4000,Farming,2026-07-08
+10574000093866120,JKC - Tally Onboarding & deployment Support Services,India ENT BU,jk cement,100000,Farming,2026-07-08
+10574000094093101,Gamification,SME BU,kanin India (Kangaro),10000,Farming,2026-07-08
+10574000094110501,Hero - Loyalty,India ENT BU,Hero Cycles,10000,Farming,2026-07-08
+10574000094355031,Sturlite Electric | Go-live,India MM BU,Sturlite Electric Private Limited,100000,Farming,2026-07-08
+10574000094428001,GEF - SUMMARIZATION AGENT,India MM BU,Gemini Edibles (GEF India),25000,Farming,2026-07-08
+10574000094646141,DIY Analytics,SME BU,Maggemane foods LL,6500,Farming,2026-07-08
+10574000095098085,GRB || HRMS Integration,India MM BU,GRB Dairy Foods Private Ltd - Bangalore,10000,Farming,2026-07-08
+10574000095098121,Akshaykalpa || Asset Management Module,India MM BU,Akshayakalpa Farms & Foods Pvt Ltd,15000,Farming,2026-07-08
+10574000095423074,CMG <> DIY Analytics,India ENT BU,Capital Maharaja Group Sri Lanka,80000,Farming,2026-07-08
+10574000095470090,Annapurna Reverse Geo-coding,India MM BU,Annapurna Group,10000,Farming,2026-07-08
+10574000095470108,Paras-Outlet Color Coding,India MM BU,VRS Foods ( Paras Dairy ) - India,10000,Farming,2026-07-08
+10574000095825205,Hero Retailer Application - Initial Go Live,India ENT BU,Hero Cycles,90000,Farming,2026-07-08
+10574000095825226,Hero Retailer Application - Go Live Completion,India ENT BU,Hero Cycles,100000,Farming,2026-07-08
+10574000095832012,DFM Foods || Joint Working,India MM BU,DFM Foods Ltd,10000,Farming,2026-07-08
+10574000096259184,GCPL GT - Amazon Integretion,KAM BU,Godrej Consumer Products Ltd.,30000,Farming,2026-07-08
+10574000096537043,JKC: User transfer and degrowth,India ENT BU,jk cement,-903000,Farming,2026-07-08
+10574000096542001,SAP Integration,SME BU,GOA MEDICOS PRIVATE LIMITED,19000,Farming,2026-07-08
+10574000096546022,Tally Integration,SME BU,Everest Stabilizer,8000,Farming,2026-07-08
+10574000096685298,WOW || User degrowth,India MM BU,WOW Skin Science (ChrysCapital ),-47000,Farming,2026-07-08
+10574000096697379,GCPL Indo - PO Automation (MRR),SEA BU,PT Godrej Consumer Products Indonesia,100000,Farming,2026-07-08
+10574000096982089,Olam Price Revision,MEA BU,Olam Nigeria & Ghana - MEA,40000,Farming,2026-07-08
+10574000097029013,Adora Churn Deal,MEA BU,Adora Products - Kenya,-44000,Farming,2026-07-08
+10574000097391190,Delmonte || User Claims,India ENT BU,Del Monte Foods Private Limited (Fieldfresh),25000,Farming,2026-07-08
+10574000097415219,Emami Agrotech || Churn,India ENT BU,Emami Agrotech Limited,-493000,Farming,2026-07-08
+10574000097442062,E-Way BILLING,SME BU,Popular Marketing Company,1500,Farming,2026-07-08
+10574000097443002,mankind agritech - Google maps,India ENT BU,Mankind Pharma,20000,Farming,2026-07-08
+10574000097450092,EBCO - WhatsApp Invoicing,India ENT BU,Ebco India Pvt Ltd,12000,Farming,2026-07-08
+10574000097455238,J&J Go-live,KAM BU,Johnson & Johnson Vision Care India,337070,Farming,2026-07-08
+10574000097700017,ABG Cables and Wire - Go Live: Phase 2,India ENT BU,Aditya Birla Group,250000,Farming,2026-07-08
+10574000097896021,HRI RI Co-Pilot (GT),India MM BU,Hygienic Research Institute Private Limited (HRI),50000,Farming,2026-07-08
+10574000097918111,Osam Dairy II ChurnII,India MM BU,OSAM Dairy,-133000,Farming,2026-07-08
+10574000097920183,Paras Dairy Joint Working,India MM BU,VRS Foods ( Paras Dairy ) - India,20000,Farming,2026-07-08
+10574000097927056,Janani User Degrowth,India MM BU,Janani Pharma (part of DKT),-10000,Farming,2026-07-08
+10574000097927074,Inbrew User Degrowth,India MM BU,Inbrew Beverages Private Limited,-6000,Farming,2026-07-08
+10574000097927114,APIS HRMS Integration,India MM BU,Apis India,9000,Farming,2026-07-08
+10574000097927132,APIS Tour Program,India MM BU,Apis India,11000,Farming,2026-07-08
+10574000097927202,DS Spiceco Google Map,India MM BU,DS Spiceco Pvt Ltd,25000,Farming,2026-07-08
+10574000097927220,DS Dairy User Claims,India MM BU,Dharampal Satyapal Limited (DS MFD),8000,Farming,2026-07-08
+10574000098049078,JKC - Integration Bundle deal,India ENT BU,jk cement,30000,Farming,2026-07-08
+10574000098057001,SAP Integration,SME BU,The Whole Truth Foods,15000,Farming,2026-07-08
+10574000098089001,Bajaj RI Co-Pilot Drop,India ENT BU,Bajaj Electricals Limited,-150000,Farming,2026-07-08
+10574000098100039,Bauli user claims MRR,India MM BU,Bauli India Bakes & Sweets Private Limited,28000,Farming,2026-07-08
+10574000098208349,JKC - DIY Price Revision,India ENT BU,jk cement,-70000,Farming,2026-07-08
+10574000098218237,Indonissin <> Whatsapp Invoicing Module Churn,India ENT BU,Indo Nissin,-35000,Farming,2026-07-08
+10574000098236079,Levista <> DIY with API key,India MM BU,Levista Coffee (SLN Coffee),15000,Farming,2026-07-08
+10574000098386018,Platform & Maintenance Fee,KAM BU,Shell,604901.92,Farming,2026-07-08
+10574000098386097,"MRR Degrowth-Bizom custom charges for DMR Performance dashboard up to 4 months (65,000/93.64=694.15)",KAM BU,Shell,-16250,Farming,2026-07-08
+10574000098389197,New Go Live,SME BU,Bakers International,10640,Farming,2026-07-08
+10574000098389215,Geofencing,SME BU,Sunbeam Ventures,7000,Farming,2026-07-08
+10574000098397167,New Go live - House of AR,SME BU,Snacweet,10000,Farming,2026-07-08
+10574000098397335,Sell Pro - Geo fencing,SME BU,SellPro Commerce Pvt Ltd,5000,Farming,2026-07-08
+10574000098397353,Indiraa Foods- Geo Fencing,SME BU,Indiraa Foods,5000,Farming,2026-07-08
+10574000098405038,Okaya warranty module,India ENT BU,Okaya Power,71000,Farming,2026-07-08
+10574000098420007,New Golive - August Assortments,SME BU,August Assortments,37500,Farming,2026-07-08
+10574000098420036,Geofencing,SME BU,Atul Limited (Atulpolymers),9000,Farming,2026-07-08
+10574000098420078,new Go live,SME BU,Thangam Foods,10000,Farming,2026-07-08
+10574000098431028,MUG Decrease || Indira,SME BU,Indira Foods Pvt Ltd,-12000,Farming,2026-07-08
+10574000098431075,DIY Analytics || Goa Medicos,SME BU,GOA MEDICOS PRIVATE LIMITED,15250,Farming,2026-07-08
+10574000098431093,New Go-Live || Ghar soaps,SME BU,YMI Ghar Soaps Private Limited,5500,Farming,2026-07-08
+10574000098555041,TGI - Distributor Onboarding,MEA BU,TGI Nigeria - MEA,63000,Farming,2026-07-08
+10574000098587003,Dynamic Rerouting,SME BU,IncredibleIndriya Beauty Essentials Pvt Ltd,5000,Farming,2026-07-08
+10574000098591001,Outlet Deduplication - Module Churn - Pankajakasthuri,India MM BU,Pankajakasthuri,-30000,Farming,2026-07-08
+10574000074152162,Europa Locks Tally Connect,India MM BU,Europa Locks,40000,Hunting,2026-07-08
+10574000091952057,Bayer Consumer Health SFA,India ENT BU,Bayer - India,242000,Hunting,2026-07-08
+10574000096737443,BAT - Genesis Milestones 6,BAT BU,British American Tobacco,520000,Hunting,2026-07-08
+10574000098397239,Honest Farms (DeHaat),India MM BU,Honest Farms (DeHaat),79250,Hunting,2026-07-08
+10574000098573309,BAT - SriLanka Milestone 5&6,BAT BU,British American Tobacco,350000,Hunting,2026-07-08
+10574000098589011,Annai Dates,UNMAPPED,Annai Food Products Private Limited,29900,Hunting,2026-07-08
