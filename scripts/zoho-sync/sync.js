@@ -63,6 +63,7 @@ async function fetchUniverseDeals(accessToken) {
   let offset = 0;
   const pageSize = 200;
   for (;;) {
+    // Closing_Date is also persisted to deals.closing_date below, driving the dashboard's month tabs.
     const query = `select id, Deal_Name, Closing_Date, Probability, MRR_Amount, Currency, ` +
       `Deal_Type_New_or_Existing, Account_Name from Deals where ` +
       `(Closing_Date > '${closingDateGT}' and Closing_Date <= '${closingDateLTE}') ` +
@@ -121,6 +122,7 @@ async function main() {
       accountName: d.Account_Name.name,
       mrrInr: Math.round(d.MRR_Amount * rate * 100) / 100,
       probability: d.Probability,
+      closingDate: d.Closing_Date,
     });
   }
   console.log(`Universe after MRR!=0 filter: ${universe.length} deals`);
@@ -161,6 +163,7 @@ async function main() {
       name_history: renamed ? [...nameHistory, existing.current_name] : nameHistory,
       business_unit: businessUnit,
       account_name: d.accountName,
+      closing_date: d.closingDate,
       updated_at: new Date().toISOString(),
     };
   });
