@@ -64,7 +64,8 @@ async function fetchUniverseDeals(accessToken) {
   const pageSize = 200;
   for (;;) {
     // Closing_Date is also persisted to deals.closing_date below, driving the dashboard's month tabs.
-    const query = `select id, Deal_Name, Closing_Date, Probability, MRR_Amount, Currency, ` +
+    // Adjusted_NRR is NRR_Amount already weighted by Probability (same commit logic as MRR_Amount).
+    const query = `select id, Deal_Name, Closing_Date, Probability, MRR_Amount, Adjusted_NRR, Currency, ` +
       `Deal_Type_New_or_Existing, Account_Name from Deals where ` +
       `(Closing_Date > '${closingDateGT}' and Closing_Date <= '${closingDateLTE}') ` +
       `and Probability >= 70 limit ${offset},${pageSize}`;
@@ -108,9 +109,14 @@ async function main() {
   const dealsRaw = await fetchUniverseDeals(accessToken);
   console.log(`Zoho universe (before MRR!=0 filter): ${dealsRaw.length} deals`);
 
+  // Union universe: a deal is tracked if it has nonzero MRR commit OR nonzero (probability-adjusted)
+  // NRR commit. MRR-only and NRR-only deals both belong in `deals`; each metric's snapshot table
+  // only gets a row when that metric is actually nonzero for the deal.
   const universe = [];
   for (const d of dealsRaw) {
-    if (d.MRR_Amount === 0 || d.MRR_Amount === null) continue;
+    const mrr = d.MRR_Amount || 0;
+    const nrr = d.Adjusted_NRR || 0;
+    if (mrr === 0 && nrr === 0) continue;
     const rate = CURRENCY_RATES[d.Currency];
     if (rate === undefined) {
       throw new Error(`unknown currency "${d.Currency}" on deal ${d.id} (${d.Deal_Name}) -- add a fixed rate before proceeding`);
@@ -120,12 +126,13 @@ async function main() {
       name: d.Deal_Name,
       dealType: d.Deal_Type_New_or_Existing,
       accountName: d.Account_Name.name,
-      mrrInr: Math.round(d.MRR_Amount * rate * 100) / 100,
+      mrrInr: mrr === 0 ? 0 : Math.round(mrr * rate * 100) / 100,
+      nrrInr: nrr === 0 ? 0 : Math.round(nrr * rate * 100) / 100,
       probability: d.Probability,
       closingDate: d.Closing_Date,
     });
   }
-  console.log(`Universe after MRR!=0 filter: ${universe.length} deals`);
+  console.log(`Universe after MRR!=0 OR NRR!=0 filter: ${universe.length} deals`);
 
   const tagsByDeal = await fetchBUTags(accessToken, universe.map(d => d.id));
   const flagged = [];
@@ -172,20 +179,34 @@ async function main() {
   if (upsertDealsErr) throw upsertDealsErr;
   console.log(`Upserted ${dealRows.length} deals rows`);
 
-  const snapshotRows = universe.map(d => ({
+  // Each metric's snapshot table only gets a row when that metric is nonzero for the deal --
+  // a deal with MRR=0 this week (or NRR=0) gets a gap there, not a zero row.
+  const mrrSnapshotRows = universe.filter(d => d.mrrInr !== 0).map(d => ({
     deal_id: d.id,
     snapshot_date: snapshotDate,
     mrr_amount: d.mrrInr,
     probability: d.probability,
   }));
-  const { error: upsertSnapErr } = await supabase
+  const { error: upsertMrrErr } = await supabase
     .from('mrr_snapshots')
-    .upsert(snapshotRows, { onConflict: 'deal_id,snapshot_date' });
-  if (upsertSnapErr) throw upsertSnapErr;
-  console.log(`Upserted ${snapshotRows.length} mrr_snapshots rows for ${snapshotDate}`);
+    .upsert(mrrSnapshotRows, { onConflict: 'deal_id,snapshot_date' });
+  if (upsertMrrErr) throw upsertMrrErr;
+  console.log(`Upserted ${mrrSnapshotRows.length} mrr_snapshots rows for ${snapshotDate}`);
 
-  // Deals that dropped out of the universe this week intentionally get no new row --
-  // that's the "gap, not zero" rule. Nothing to do here.
+  const nrrSnapshotRows = universe.filter(d => d.nrrInr !== 0).map(d => ({
+    deal_id: d.id,
+    snapshot_date: snapshotDate,
+    nrr_amount: d.nrrInr,
+    probability: d.probability,
+  }));
+  const { error: upsertNrrErr } = await supabase
+    .from('nrr_snapshots')
+    .upsert(nrrSnapshotRows, { onConflict: 'deal_id,snapshot_date' });
+  if (upsertNrrErr) throw upsertNrrErr;
+  console.log(`Upserted ${nrrSnapshotRows.length} nrr_snapshots rows for ${snapshotDate}`);
+
+  // Deals that dropped out of a metric's universe this week intentionally get no new row in that
+  // metric's snapshot table -- that's the "gap, not zero" rule. Nothing to do here.
 
   console.log('Sync complete.');
 }

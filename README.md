@@ -7,9 +7,10 @@ Full business logic and schema rationale: [`docs/MRR_Dashboard_Handoff_Spec.md`]
 
 - **Supabase project**: `aop-projections-mrr-dashboard` (ref `qnulyenilttpalbkmpvm`, org Bizom Finance, `ap-south-1`)
 - **Schema**: applied, see `supabase/migrations/`
-- **Seed data**: loaded, 93 deals / 93 snapshot rows for `2026-07-08` (from `data/mrr_commit_seed.json`)
+- **Seed data**: loaded, 93 deals / 93 MRR snapshot rows for `2026-07-08` (from `data/mrr_commit_seed.json`)
 - **Sync logic**: validated end-to-end against live Zoho CRM data for the `2026-07-08` universe, the full pipeline (universe filter, currency conversion, BU resolution with override rules) reproduces the seed dataset exactly, including all multi-BU override cases and the one `UNMAPPED` deal (Annai Dates)
-- **Dashboard**: working, reads live from Supabase, with Combined/Farming/Hunting and July/August/September/JAS tabs, sort/filter/search, and Zoho deep links
+- **NRR tracking**: live, 76 `nrr_snapshots` rows for `2026-07-08` using the same universe definition as MRR (`Closing_Date` in the target month AND `Probability >= 70`), tracking Zoho's `Adjusted_NRR` field (= `NRR_Amount` x `Probability`/100). A deal can be MRR-only, NRR-only, or both; `deals` covers the union of both universes
+- **Dashboard**: working, reads live from Supabase, with a Metric (MRR/NRR) tab, Combined/Farming/Hunting and July/August/September/JAS tabs, a Business Unit tab row to filter the whole page to one BU, a Table/Chart toggle for the BU breakdown (table is the default), sort/filter/search, and Zoho deep links
 - **Settings page**: working, requires a Supabase Auth login (see setup below)
 
 ## Layout
@@ -22,12 +23,13 @@ Full business logic and schema rationale: [`docs/MRR_Dashboard_Handoff_Spec.md`]
 
 ## Database schema
 
-- `deals` - one row per tracked deal (deal_id, current_name, name_history, business_unit, account_name, deal_type, closing_date)
+- `deals` - one row per tracked deal, the union of the MRR and NRR universes (deal_id, current_name, name_history, business_unit, account_name, deal_type, closing_date)
 - `mrr_snapshots` - one row per deal per weekly pull (deal_id, snapshot_date, mrr_amount, probability). A deal that drops out of the universe for a week gets no row that week (a gap, not a zero) per the spec.
+- `nrr_snapshots` - same shape as `mrr_snapshots` but `nrr_amount`, populated only for deals with nonzero `Adjusted_NRR`. This is what the dashboard's NRR metric tab reads; it is the "new closures NRR" view, using the same Closing_Date + Probability >= 70 universe as MRR, not a Stage=Closed Won filter
 - `bu_targets` - the JAS 2026 quarter MRR target per business unit
-- `target_settings` - how each BU's JAS target splits across July/August/September: either a percent of the JAS target (default 30/30/40) or an absolute override. Edited from the settings page.
-- `nrr_targets` - non-recurring revenue targets per BU for JAS 2026 (reference only, not wired into the MRR attainment math)
-- `bu_baseline_mrr` - June 2026 exit MRR per BU (reference only, the existing book of business, separate from the commit deals tracked above)
+- `target_settings` - how each BU's JAS MRR target splits across July/August/September: either a percent of the JAS target (default 30/30/40) or an absolute override. Edited from the settings page. NRR has no monthly split; only a flat JAS `nrr_targets` value exists, so the dashboard's July/August/September tabs show no NRR target
+- `nrr_targets` - non-recurring revenue targets per BU for JAS 2026, surfaced as real targets on the dashboard's NRR metric tab (attainment %, chart ticks), separate from the MRR attainment math
+- `bu_baseline_mrr` - June 2026 exit MRR per BU (reference only, the existing book of business, separate from the commit deals tracked above), including ONDC even though ONDC has no commit-tracked deals yet
 
 All tables are publicly readable (the dashboard's anon key is read-only by RLS).
 `bu_targets` and `target_settings` also accept writes from authenticated Supabase
