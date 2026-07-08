@@ -137,6 +137,7 @@
   .name-chain { color: var(--text-muted); }
   .name-chain .arrow { margin: 0 4px; }
   .muted { color: var(--text-muted); }
+  .total-row td { font-weight: 700; background: var(--page); border-bottom: 2px solid var(--border); }
   .error { color: #d03b3b; font-size: 13px; }
   tr:hover td { background: rgba(11,11,11,0.03); }
   @media (prefers-color-scheme: dark) { tr:hover td { background: rgba(255,255,255,0.04); } }
@@ -440,13 +441,19 @@ function render() {
         <div>
           <table class="ref-table">
             <thead><tr><th>Business Unit</th><th class="num">Current MRR (June exit)</th></tr></thead>
-            <tbody>${BASELINE.slice().sort((a, b) => Number(b.mrr_amount) - Number(a.mrr_amount)).map(b => `<tr><td>${escapeHtml(b.business_unit)}</td><td class="num">${fmtINR(Number(b.mrr_amount))}</td></tr>`).join('')}</tbody>
+            <tbody>
+              <tr class="total-row"><td>Total</td><td class="num">${fmtINR(BASELINE.reduce((a, b) => a + Number(b.mrr_amount), 0))}</td></tr>
+              ${BASELINE.slice().sort((a, b) => Number(b.mrr_amount) - Number(a.mrr_amount)).map(b => `<tr><td>${escapeHtml(b.business_unit)}</td><td class="num">${fmtINR(Number(b.mrr_amount))}</td></tr>`).join('')}
+            </tbody>
           </table>
         </div>
         <div>
           <table class="ref-table">
             <thead><tr><th>Business Unit</th><th class="num">NRR Target (${NRR_TARGETS[0]?.period || ''})</th></tr></thead>
-            <tbody>${NRR_TARGETS.slice().sort((a, b) => Number(b.target_amount) - Number(a.target_amount)).map(b => `<tr><td>${escapeHtml(b.business_unit)}</td><td class="num">${fmtINR(Number(b.target_amount))}</td></tr>`).join('')}</tbody>
+            <tbody>
+              <tr class="total-row"><td>Total</td><td class="num">${fmtINR(NRR_TARGETS.reduce((a, b) => a + Number(b.target_amount), 0))}</td></tr>
+              ${NRR_TARGETS.slice().sort((a, b) => Number(b.target_amount) - Number(a.target_amount)).map(b => `<tr><td>${escapeHtml(b.business_unit)}</td><td class="num">${fmtINR(Number(b.target_amount))}</td></tr>`).join('')}
+            </tbody>
           </table>
         </div>
       </div>
@@ -545,9 +552,18 @@ function renderBUView(buRows, maxAbs, showTargets, periodTab) {
         <td class="num">${attain === null ? '<span class="muted">-</span>' : attain.toFixed(1) + '%'}</td>` : ''}
       </tr>`;
     }).join('');
+    const totalVal = buRows.reduce((a, [, v]) => a + v, 0);
+    const totalTarget = showTargets ? buRows.reduce((a, [bu]) => a + (targetFor(bu, periodTab) || 0), 0) : undefined;
+    const totalAttain = totalTarget ? (totalVal / totalTarget) * 100 : null;
+    const totalRow = `<tr class="total-row">
+      <td>Total</td>
+      <td class="num">${fmtINR(totalVal)}</td>
+      ${showTargets ? `<td class="num">${totalTarget === undefined ? '<span class="muted">-</span>' : fmtINR(totalTarget)}</td>
+      <td class="num">${totalAttain === null ? '<span class="muted">-</span>' : totalAttain.toFixed(1) + '%'}</td>` : ''}
+    </tr>`;
     el.innerHTML = `<div class="table-scroll"><table>
       <thead><tr><th>Business Unit</th><th class="num">Actual</th>${showTargets ? '<th class="num">Target</th><th class="num">Attainment</th>' : ''}</tr></thead>
-      <tbody>${rows}</tbody>
+      <tbody>${totalRow}${rows}</tbody>
     </table></div>`;
     return;
   }
@@ -664,6 +680,15 @@ function renderDealsTable() {
     dealsTable.innerHTML = `<p class="muted">No ${metric} snapshots recorded yet.</p>`;
     return;
   }
+  const totalCells = dates.map(date => {
+    let sum = 0, any = false;
+    tabDeals.forEach(d => {
+      const v = snapshotsByDeal.get(d.deal_id).get(date);
+      if (v !== undefined) { sum += v; any = true; }
+    });
+    return `<td class="num">${any ? fmtINR(sum) : '<span class="muted">-</span>'}</td>`;
+  }).join('');
+  const totalRow = tabDeals.length ? `<tr class="total-row"><td colspan="5">Total (${tabDeals.length} deal${tabDeals.length === 1 ? '' : 's'})</td>${totalCells}</tr>` : '';
   dealsTable.innerHTML = `<div class="table-scroll"><table>
     <thead><tr>
       <th data-sort="deal_id">Deal ID${arrow('deal_id')}</th>
@@ -673,7 +698,7 @@ function renderDealsTable() {
       <th data-sort="deal_type">Type${arrow('deal_type')}</th>
       ${dateHeaders}
     </tr></thead>
-    <tbody>${rows || `<tr><td colspan="${5 + dates.length}" class="muted">No matching deals.</td></tr>`}</tbody>
+    <tbody>${totalRow}${rows || `<tr><td colspan="${5 + dates.length}" class="muted">No matching deals.</td></tr>`}</tbody>
   </table></div>`;
 
   dealsTable.querySelectorAll('th[data-sort]').forEach(th => {
