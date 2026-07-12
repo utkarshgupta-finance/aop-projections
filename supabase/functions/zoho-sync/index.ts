@@ -489,8 +489,18 @@ Deno.serve(async (req: Request) => {
       .upsert(huntingRows, { onConflict: 'deal_id' });
     if (huntingErr) throw huntingErr;
 
-    // Backfill business_unit from deals table for any hunting deals already tracked there.
-    // This covers the case where BU_Deal_Map lookup returns nothing for hunting deals.
+    // PostgREST upsert may skip newly-added columns due to schema cache lag.
+    // Use a dedicated SQL function to reliably write business_unit after the upsert.
+    const buMapForSql: Record<string, string> = {};
+    for (const row of huntingRows) {
+      if (row.business_unit) buMapForSql[row.deal_id] = row.business_unit;
+    }
+    if (Object.keys(buMapForSql).length > 0) {
+      const { error: buUpdateErr } = await supabase.rpc('bulk_update_hunting_bu', { bu_map: buMapForSql });
+      if (buUpdateErr) console.warn('bulk_update_hunting_bu error:', JSON.stringify(buUpdateErr));
+    }
+
+    // Also backfill from deals table for any hunting deals tracked there (prob >= 70).
     await supabase.rpc('backfill_hunting_bu');
 
     // ---- Summary stats ----
