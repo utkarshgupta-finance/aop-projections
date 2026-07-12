@@ -339,8 +339,12 @@ async function main() {
     lastSyncEl.textContent = `Synced ${fmt} IST`;
   }
 
-  // Sync button: triggers GitHub Actions workflow_dispatch.
+  // Sync button: triggers GitHub Actions workflow_dispatch, then polls until
+  // deals.updated_at advances (meaning the sync script finished writing to Supabase),
+  // then reloads all data and re-renders the page automatically.
   // Requires a GitHub PAT with workflow scope, stored in localStorage via the Settings page.
+  let syncPollTimer = null;
+
   document.getElementById('sync-btn').addEventListener('click', async () => {
     const pat = localStorage.getItem('gh_pat');
     if (!pat) {
@@ -348,11 +352,14 @@ async function main() {
       return;
     }
     const btn = document.getElementById('sync-btn');
-    const origText = btn.textContent;
     btn.textContent = 'Starting...';
     btn.disabled = true;
+
+    // Capture the current latest updated_at so we can detect when new data lands.
+    const preSyncTs = DEALS.reduce((max, d) => (!max || (d.updated_at && d.updated_at > max)) ? d.updated_at : max, null);
+
     try {
-      const res = await fetch('https://api.github.com/repos/utkarshgupta-finance/aop-tracker/actions/workflows/sync.yml/dispatches', {
+      const res = await fetch('https://api.github.com/repos/utkarshgupta-finance/aop-projections/actions/workflows/sync.yml/dispatches', {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${pat}`,
@@ -361,19 +368,70 @@ async function main() {
         },
         body: JSON.stringify({ ref: 'claude/new-repo-w78uc5' }),
       });
-      if (res.status === 204) {
-        btn.textContent = 'Sync started';
-        lastSyncEl.textContent = 'Sync in progress -- data will update in 2-3 min';
-        setTimeout(() => { btn.textContent = origText; btn.disabled = false; }, 8000);
-      } else {
+      if (res.status !== 204) {
         const body = await res.json().catch(() => ({}));
         throw new Error(body.message || `HTTP ${res.status}`);
       }
     } catch (err) {
-      btn.textContent = 'Failed';
+      btn.textContent = 'Sync Zoho';
+      btn.disabled = false;
       lastSyncEl.textContent = `Sync error: ${err.message}`;
-      setTimeout(() => { btn.textContent = origText; btn.disabled = false; }, 6000);
+      return;
     }
+
+    // Workflow accepted -- start polling.
+    let attempts = 0;
+    const MAX_ATTEMPTS = 24; // 24 x 15s = 6 minutes
+    if (syncPollTimer) clearInterval(syncPollTimer);
+
+    const tick = async () => {
+      attempts++;
+      const elapsed = attempts * 15;
+      btn.textContent = `Syncing... ${elapsed}s`;
+      lastSyncEl.textContent = `Sync in progress -- checking for updates (${elapsed}s)`;
+
+      try {
+        const rows = await sb('deals?select=updated_at&order=updated_at.desc&limit=1');
+        const latestTs = rows[0]?.updated_at || null;
+        if (latestTs && latestTs !== preSyncTs) {
+          // New data landed -- reload everything and re-render.
+          clearInterval(syncPollTimer);
+          syncPollTimer = null;
+          btn.textContent = 'Refreshing...';
+          [DEALS, MRR_SNAPSHOTS, NRR_SNAPSHOTS, BU_TARGETS, TARGET_SETTINGS, NRR_TARGETS, BASELINE] = await Promise.all([
+            sb('deals?select=*'),
+            sb('mrr_snapshots?select=*&order=snapshot_date.asc'),
+            sb('nrr_snapshots?select=*&order=snapshot_date.asc'),
+            sb('bu_targets?select=*'),
+            sb('target_settings?select=*'),
+            sb('nrr_targets?select=*'),
+            sb('bu_baseline_mrr?select=*'),
+          ]);
+          MRR_DATES = [...new Set(MRR_SNAPSHOTS.map(s => s.snapshot_date))].sort();
+          NRR_DATES = [...new Set(NRR_SNAPSHOTS.map(s => s.snapshot_date))].sort();
+          const dt = new Date(latestTs);
+          const fmt = dt.toLocaleString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' });
+          lastSyncEl.textContent = `Synced ${fmt} IST`;
+          btn.textContent = 'Sync Zoho';
+          btn.disabled = false;
+          renderTabs();
+          render();
+          return;
+        }
+      } catch (_) { /* network hiccup -- keep polling */ }
+
+      if (attempts >= MAX_ATTEMPTS) {
+        clearInterval(syncPollTimer);
+        syncPollTimer = null;
+        btn.textContent = 'Sync Zoho';
+        btn.disabled = false;
+        lastSyncEl.textContent = 'Sync timed out -- refresh the page in a minute to see updated data';
+      }
+    };
+
+    syncPollTimer = setInterval(tick, 15000);
+    // Run first tick immediately after a short delay so the UI updates right away.
+    setTimeout(tick, 5000);
   });
 
   renderTabs();
