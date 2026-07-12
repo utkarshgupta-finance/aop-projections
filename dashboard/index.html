@@ -232,7 +232,7 @@ const METRIC_TABS = [
   { key: 'NRR', label: 'NRR' },
 ];
 
-let DEALS = [], MRR_SNAPSHOTS = [], NRR_SNAPSHOTS = [], BU_TARGETS = [], TARGET_SETTINGS = [], NRR_TARGETS = [], BASELINE = [], HUNTING_PIPELINE = [];
+let DEALS = [], MRR_SNAPSHOTS = [], NRR_SNAPSHOTS = [], BU_TARGETS = [], TARGET_SETTINGS = [], NRR_TARGETS = [], NRR_TARGET_SETTINGS = [], BASELINE = [], HUNTING_PIPELINE = [];
 let MRR_DATES = [], NRR_DATES = [], BU_TAB_LIST = [];
 let currentViewMode   = 'review';
 let currentQuarter    = '2026-Q3';
@@ -284,9 +284,13 @@ function isFullQuarterTab(pt) { return pt.months.length >= 3; }
 function targetFor(bu, periodTab, metric) {
   const m = metric ?? currentMetric;
   if (m === 'NRR') {
-    if (!isFullQuarterTab(periodTab)) return undefined;
-    const row = NRR_TARGETS.find(t => t.business_unit === bu && t.period === currentQuarter);
-    return row ? Number(row.target_amount) : undefined;
+    const jasRow = NRR_TARGETS.find(t => t.business_unit === bu && t.period === currentQuarter);
+    const jasVal = jasRow ? Number(jasRow.target_amount) : undefined;
+    if (isFullQuarterTab(periodTab)) return jasVal;
+    if (jasVal === undefined) return undefined;
+    const setting = NRR_TARGET_SETTINGS.find(s => s.business_unit === bu && s.period === periodTab.settingsPeriod);
+    if (!setting) return undefined;
+    return setting.mode === 'absolute' ? Number(setting.value) : jasVal * (Number(setting.value) / 100);
   }
   const jasTarget = BU_TARGETS.find(t => t.business_unit === bu && t.period === currentQuarter);
   const jasVal    = jasTarget ? Number(jasTarget.target_amount) : undefined;
@@ -353,13 +357,14 @@ function renderTabs() {
 async function main() {
   const content = document.getElementById('content');
   try {
-    [DEALS, MRR_SNAPSHOTS, NRR_SNAPSHOTS, BU_TARGETS, TARGET_SETTINGS, NRR_TARGETS, BASELINE, HUNTING_PIPELINE] = await Promise.all([
+    [DEALS, MRR_SNAPSHOTS, NRR_SNAPSHOTS, BU_TARGETS, TARGET_SETTINGS, NRR_TARGETS, NRR_TARGET_SETTINGS, BASELINE, HUNTING_PIPELINE] = await Promise.all([
       sb('deals?select=*'),
       sb('mrr_snapshots?select=*&order=snapshot_date.asc'),
       sb('nrr_snapshots?select=*&order=snapshot_date.asc'),
       sb('bu_targets?select=*'),
       sb('target_settings?select=*'),
       sb('nrr_targets?select=*'),
+      sb('nrr_target_settings?select=*'),
       sb('bu_baseline_mrr?select=*'),
       sb('hunting_pipeline?select=*&order=closing_date.asc').catch(() => []),
     ]);
@@ -1030,7 +1035,9 @@ function renderSummaryView() {
 // ============================================================
 function renderHuntingView() {
   const q = QUARTERS.find(x => x.key === currentQuarter) || QUARTERS[1];
-  const deals = (HUNTING_PIPELINE || []).filter(d => d.quarter === currentQuarter);
+  const dealsById = new Map(DEALS.map(d => [d.deal_id, d]));
+  const deals = (HUNTING_PIPELINE || [])
+    .filter(d => d.quarter === currentQuarter && d.stage !== 'Closed Lost');
 
   document.getElementById('subtitle').textContent = `Hunting Pipeline: all new-account deals closing in ${q.label} (any probability)`;
 
@@ -1068,22 +1075,27 @@ function renderHuntingView() {
     grandMRR += mMRR; grandAdjMRR += mAdjMRR; grandNRR += mNRR; grandAdjNRR += mAdjNRR;
 
     const probClass = p => p >= 70 ? 'prob-high' : p >= 40 ? 'prob-mid' : 'prob-low';
-    const rowsHtml = monthDeals.map(d => `<tr>
-      <td class="name-cell"><a class="zoho-link" href="${ZOHO_DEAL_URL(d.deal_id)}" target="_blank" rel="noopener">${escapeHtml(d.deal_name || d.deal_id)}</a></td>
-      <td>${escapeHtml(d.stage || '-')}</td>
-      <td>${d.closing_date || '-'}</td>
-      <td>${escapeHtml(d.deal_owner || '-')}</td>
-      <td class="num"><span class="${probClass(d.probability)}">${d.probability}%</span></td>
-      <td class="num">${d.mrr_inr ? fmtINR(d.mrr_inr) : '<span class="muted">-</span>'}</td>
-      <td class="num">${d.mrr_inr ? fmtINR(Math.round(d.mrr_inr * (d.probability || 0) / 100)) : '<span class="muted">-</span>'}</td>
-      <td class="num">${d.nrr_inr ? fmtINR(d.nrr_inr) : '<span class="muted">-</span>'}</td>
-      <td class="num">${d.nrr_inr ? fmtINR(Math.round(d.nrr_inr * (d.probability || 0) / 100)) : '<span class="muted">-</span>'}</td>
-    </tr>`).join('');
+    const rowsHtml = monthDeals.map(d => {
+      const bu = dealsById.get(d.deal_id)?.business_unit || '';
+      return `<tr>
+        <td class="name-cell"><a class="zoho-link" href="${ZOHO_DEAL_URL(d.deal_id)}" target="_blank" rel="noopener">${escapeHtml(d.deal_name || d.deal_id)}</a></td>
+        <td style="font-size:12px;color:var(--text-secondary)">${escapeHtml(d.account_name || '-')}</td>
+        <td>${bu ? `<span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:${colorVar(bu)};margin-right:5px;vertical-align:middle;"></span>${escapeHtml(bu)}` : '<span class="muted">-</span>'}</td>
+        <td>${escapeHtml(d.stage || '-')}</td>
+        <td>${d.closing_date || '-'}</td>
+        <td>${escapeHtml(d.deal_owner || '-')}</td>
+        <td class="num"><span class="${probClass(d.probability)}">${d.probability}%</span></td>
+        <td class="num">${d.mrr_inr ? fmtINR(d.mrr_inr) : '<span class="muted">-</span>'}</td>
+        <td class="num">${d.mrr_inr ? fmtINR(Math.round(d.mrr_inr * (d.probability || 0) / 100)) : '<span class="muted">-</span>'}</td>
+        <td class="num">${d.nrr_inr ? fmtINR(d.nrr_inr) : '<span class="muted">-</span>'}</td>
+        <td class="num">${d.nrr_inr ? fmtINR(Math.round(d.nrr_inr * (d.probability || 0) / 100)) : '<span class="muted">-</span>'}</td>
+      </tr>`;
+    }).join('');
 
-    return `<tr class="month-group-row"><td colspan="9">${monthName} (${monthDeals.length})</td></tr>
+    return `<tr class="month-group-row"><td colspan="11">${monthName} (${monthDeals.length})</td></tr>
 ${rowsHtml}
 <tr class="month-total-row">
-  <td colspan="4" class="muted">Subtotal</td>
+  <td colspan="6" class="muted">Subtotal</td>
   <td></td>
   <td class="num">${fmtINR(Math.round(mMRR))}</td>
   <td class="num">${fmtINR(Math.round(mAdjMRR))}</td>
@@ -1093,7 +1105,7 @@ ${rowsHtml}
   }).join('');
 
   const grandTotalRow = `<tr class="hunting-grand-total">
-    <td colspan="4">Grand Total (${deals.length} deals)</td>
+    <td colspan="6">Grand Total (${deals.length} deals)</td>
     <td></td>
     <td class="num">${fmtINR(Math.round(grandMRR))}</td>
     <td class="num">${fmtINR(Math.round(grandAdjMRR))}</td>
@@ -1107,6 +1119,8 @@ ${rowsHtml}
       <div class="table-scroll"><table>
         <thead><tr>
           <th>Deal Name</th>
+          <th>Account</th>
+          <th>Business Unit</th>
           <th>Stage</th>
           <th>Closing Date</th>
           <th>Deal Owner</th>
