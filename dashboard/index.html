@@ -61,6 +61,15 @@
   .subtitle { color: var(--text-secondary); font-size: 13px; margin: 0 0 20px; }
   .settings-link { font-size: 12px; color: var(--text-secondary); text-decoration: none; border: 1px solid var(--border); border-radius: 6px; padding: 5px 10px; }
   .settings-link:hover { color: var(--text-primary); }
+  .topbar-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .last-sync { font-size: 11px; color: var(--text-muted); white-space: nowrap; }
+  .sync-btn {
+    appearance: none; font: inherit; font-size: 12px; font-weight: 600;
+    padding: 5px 12px; border-radius: 6px; border: 1px solid var(--border);
+    background: none; color: var(--text-secondary); cursor: pointer;
+  }
+  .sync-btn:hover:not(:disabled) { color: var(--text-primary); border-color: var(--text-secondary); }
+  .sync-btn:disabled { opacity: 0.55; cursor: default; }
   .tab-group { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
   .tab-group-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.02em; color: var(--text-muted); width: 90px; flex-shrink: 0; }
   .tabs { display: flex; gap: 4px; flex-wrap: wrap; }
@@ -155,7 +164,11 @@
         <h1>MRR Commit Dashboard</h1>
         <p class="subtitle" id="subtitle">Loading latest snapshot...</p>
       </div>
-      <a class="settings-link" href="settings.html">Settings</a>
+      <div class="topbar-actions">
+        <span class="last-sync" id="last-sync"></span>
+        <button class="sync-btn" id="sync-btn">Sync Zoho</button>
+        <a class="settings-link" href="settings.html">Settings</a>
+      </div>
     </div>
     <div class="tab-group metric"><span class="tab-group-label">Metric</span><div class="tabs" id="metric-tabs"></div></div>
     <div class="tab-group period"><span class="tab-group-label">Period</span><div class="tabs" id="period-tabs"></div></div>
@@ -317,6 +330,52 @@ async function main() {
     ...[...seen].filter(bu => bu !== 'UNMAPPED' && !knownOrder.includes(bu)).sort(),
     ...(seen.has('UNMAPPED') ? ['UNMAPPED'] : []),
   ];
+  // Show last sync time from the most recent deals.updated_at (written by sync.js on every run).
+  const lastSyncTs = DEALS.reduce((max, d) => (!max || (d.updated_at && d.updated_at > max)) ? d.updated_at : max, null);
+  const lastSyncEl = document.getElementById('last-sync');
+  if (lastSyncTs && lastSyncEl) {
+    const dt = new Date(lastSyncTs);
+    const fmt = dt.toLocaleString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' });
+    lastSyncEl.textContent = `Synced ${fmt} IST`;
+  }
+
+  // Sync button: triggers GitHub Actions workflow_dispatch.
+  // Requires a GitHub PAT with workflow scope, stored in localStorage via the Settings page.
+  document.getElementById('sync-btn').addEventListener('click', async () => {
+    const pat = localStorage.getItem('gh_pat');
+    if (!pat) {
+      window.location.href = 'settings.html#sync';
+      return;
+    }
+    const btn = document.getElementById('sync-btn');
+    const origText = btn.textContent;
+    btn.textContent = 'Starting...';
+    btn.disabled = true;
+    try {
+      const res = await fetch('https://api.github.com/repos/utkarshgupta-finance/aop-tracker/actions/workflows/sync.yml/dispatches', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${pat}`,
+          Accept: 'application/vnd.github+json',
+          'X-GitHub-Api-Version': '2022-11-28',
+        },
+        body: JSON.stringify({ ref: 'claude/new-repo-w78uc5' }),
+      });
+      if (res.status === 204) {
+        btn.textContent = 'Sync started';
+        lastSyncEl.textContent = 'Sync in progress -- data will update in 2-3 min';
+        setTimeout(() => { btn.textContent = origText; btn.disabled = false; }, 8000);
+      } else {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.message || `HTTP ${res.status}`);
+      }
+    } catch (err) {
+      btn.textContent = 'Failed';
+      lastSyncEl.textContent = `Sync error: ${err.message}`;
+      setTimeout(() => { btn.textContent = origText; btn.disabled = false; }, 6000);
+    }
+  });
+
   renderTabs();
   render();
 }

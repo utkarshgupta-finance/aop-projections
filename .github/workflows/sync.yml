@@ -1,0 +1,42 @@
+name: Zoho CRM Sync
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_month:
+        description: 'Target month YYYY-MM (default: current month)'
+        required: false
+        type: string
+      snapshot_date:
+        description: 'Snapshot date YYYY-MM-DD (default: today)'
+        required: false
+        type: string
+  schedule:
+    # Every Tuesday at 04:00 UTC (~9:30 AM IST), after the Monday review cycle.
+    - cron: '0 4 * * 2'
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm install
+        working-directory: scripts/zoho-sync
+
+      - name: Run sync
+        working-directory: scripts/zoho-sync
+        env:
+          ZOHO_CLIENT_ID: ${{ secrets.ZOHO_CLIENT_ID }}
+          ZOHO_CLIENT_SECRET: ${{ secrets.ZOHO_CLIENT_SECRET }}
+          ZOHO_REFRESH_TOKEN: ${{ secrets.ZOHO_REFRESH_TOKEN }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          TARGET_MONTH: ${{ inputs.target_month }}
+          SNAPSHOT_DATE: ${{ inputs.snapshot_date }}
+        run: npm run sync
