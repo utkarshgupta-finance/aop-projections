@@ -124,7 +124,7 @@ async function fetchHuntingPipelineDeals(token: string, dayBefore: string, end: 
       `from Deals where ` +
       `(Closing_Date > '${dayBefore}' and Closing_Date <= '${end}') ` +
       `and Deal_Type_New_or_Existing = 'Hunting' ` +
-      `and Stage <> 'Closed Lost' ` +
+      `and Stage != 'Closed Lost' ` +
       `limit ${offset},${pageSize}`;
     const page = await coql(token, query);
     rows.push(...page);
