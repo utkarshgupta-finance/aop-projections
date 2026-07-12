@@ -141,7 +141,10 @@
   .name-chain .arrow { margin: 0 4px; }
   .muted { color: var(--text-muted); }
   .total-row td { font-weight: 700; background: var(--page); border-bottom: 2px solid var(--border); }
-  .month-group-row td { font-weight: 700; background: var(--page); color: var(--text-secondary); font-size: 12px; text-transform: uppercase; letter-spacing: 0.03em; padding: 10px 10px 6px; border-bottom: none; border-top: 2px solid var(--border); }
+  .month-group-row td { font-weight: 700; font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em; padding: 10px 12px 8px; border-bottom: none; border-top: 3px solid var(--border); color: #fff; }
+  .month-group-row.month-1 td { background: #1a5fa8; border-top-color: #1a5fa8; }
+  .month-group-row.month-2 td { background: #0e7e5c; border-top-color: #0e7e5c; }
+  .month-group-row.month-3 td { background: #7a3e9d; border-top-color: #7a3e9d; }
   .month-total-row td { font-weight: 600; background: rgba(11,11,11,0.03); font-size: 12px; }
   @media (prefers-color-scheme: dark) { .month-total-row td { background: rgba(255,255,255,0.04); } }
   .error { color: #d03b3b; font-size: 13px; }
@@ -997,9 +1000,10 @@ function renderHuntingTable(deals, dealsById, q) {
 
   let grandMRR = 0, grandAdjMRR = 0, grandNRR = 0, grandAdjNRR = 0;
 
-  const monthGroupsHtml = sortedMonths.map(m => {
+  const monthGroupsHtml = sortedMonths.map((m, idx) => {
     const monthDeals = byMonth.get(m).slice().sort((a, b) => (a.closing_date || '').localeCompare(b.closing_date || ''));
     const monthName  = m ? MONTH_FULL[m - 1] : 'No Date';
+    const monthClass = `month-${idx + 1}`;
     let mMRR = 0, mAdjMRR = 0, mNRR = 0, mAdjNRR = 0;
     for (const d of monthDeals) {
       mMRR    += d.mrr_inr || 0;
@@ -1024,8 +1028,8 @@ function renderHuntingTable(deals, dealsById, q) {
       </tr>`;
     }).join('');
 
-    return `<tr class="month-group-row">
-  <td colspan="4">${monthName} (${monthDeals.length})</td>
+    return `<tr class="month-group-row ${monthClass}">
+  <td colspan="4">${monthName} · ${monthDeals.length} deal${monthDeals.length === 1 ? '' : 's'}</td>
   <td class="num">${fmtINR(Math.round(mMRR))}</td>
   <td class="num">${fmtINR(Math.round(mAdjMRR))}</td>
   <td class="num">${fmtINR(Math.round(mNRR))}</td>
