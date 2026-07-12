@@ -362,9 +362,35 @@ Deno.serve(async (req: Request) => {
     }
     console.log(`Universe: ${universe.length}`);
 
-    // ---- BU tags ----
+    // ---- Hunting pipeline (all hunting deals, any probability) ----
+    // Fetched BEFORE BU tags so we can do a single combined BU lookup for all deals.
+    const huntingRawAll = await fetchHuntingPipelineDeals(token, dayBefore, end);
+    const huntingRaw = huntingRawAll.filter(d => {
+      const stage = typeof d.Stage === 'string' ? d.Stage : extractName(d.Stage);
+      return stage !== 'Closed Lost';
+    });
+    console.log(`Hunting pipeline raw: ${huntingRawAll.length}, after Closed Lost filter: ${huntingRaw.length}`);
+
+    // Collect any account IDs in hunting deals that need name resolution
+    const huntingAccountIds = new Set<string>();
+    for (const d of huntingRaw) {
+      if (!extractName(d.Account_Name) && d.Account_Name?.id) {
+        huntingAccountIds.add(String(d.Account_Name.id));
+      }
+    }
+    if (huntingAccountIds.size > 0) {
+      const extra = await fetchAccountNames(token, [...huntingAccountIds]);
+      extra.forEach((v, k) => accountNameMap.set(k, v));
+    }
+
+    // ---- BU tags — single call covering both universe and hunting deals ----
+    const allDealIdsForBU = [...new Set([
+      ...universe.map(d => d.id),
+      ...huntingRaw.map(d => String(d.id)),
+    ])];
     const { tagsByDeal, buNameMissing, debugBU } =
-      await fetchBUTags(token, universe.map(d => d.id));
+      await fetchBUTags(token, allDealIdsForBU);
+    console.log(`BU tags resolved for ${tagsByDeal.size} of ${allDealIdsForBU.length} deals`);
 
     const flagged: any[] = [];
     for (const d of universe) {
@@ -416,29 +442,14 @@ Deno.serve(async (req: Request) => {
       .upsert(nrrRows, { onConflict: 'deal_id,snapshot_date' });
     if (nrrErr) throw nrrErr;
 
-    // ---- Hunting pipeline (all hunting deals, any probability) ----
-    const huntingRawAll = await fetchHuntingPipelineDeals(token, dayBefore, end);
-    const huntingRaw = huntingRawAll.filter(d => {
-      const stage = typeof d.Stage === 'string' ? d.Stage : extractName(d.Stage);
-      return stage !== 'Closed Lost';
-    });
-    console.log(`Hunting pipeline raw: ${huntingRawAll.length}, after Closed Lost filter: ${huntingRaw.length}`);
-
-    // Collect any account IDs in hunting deals that need name resolution
-    const huntingAccountIds = new Set<string>();
-    for (const d of huntingRaw) {
-      if (!extractName(d.Account_Name) && d.Account_Name?.id) {
-        huntingAccountIds.add(String(d.Account_Name.id));
-      }
-    }
-    if (huntingAccountIds.size > 0) {
-      const extra = await fetchAccountNames(token, [...huntingAccountIds]);
-      extra.forEach((v, k) => accountNameMap.set(k, v));
-    }
-
-    // Resolve BU tags for hunting deals (same logic as main universe)
+    // Fetch existing BU values for hunting deals — used as fallback if BU lookup still fails
     const huntingIds = huntingRaw.map(d => String(d.id));
-    const { tagsByDeal: huntingTagsByDeal } = await fetchBUTags(token, huntingIds);
+    const { data: existingHuntingData } = huntingIds.length > 0
+      ? await supabase.from('hunting_pipeline').select('deal_id, business_unit').in('deal_id', huntingIds)
+      : { data: [] };
+    const existingHuntingBU = new Map(
+      (existingHuntingData ?? []).map((r: any) => [r.deal_id, r.business_unit as string | null])
+    );
 
     const huntingRows = huntingRaw.map(d => {
       const currency = d.Currency as string;
@@ -449,7 +460,12 @@ Deno.serve(async (req: Request) => {
       if (!accountName && d.Account_Name?.id) {
         accountName = accountNameMap.get(String(d.Account_Name.id)) ?? '';
       }
-      const { bu } = resolveBU(d.Deal_Name ?? '', huntingTagsByDeal.get(String(d.id)));
+      const { bu } = resolveBU(d.Deal_Name ?? '', tagsByDeal.get(String(d.id)));
+      // Preserve existing non-UNMAPPED BU as fallback when lookup still fails
+      const existingBU = existingHuntingBU.get(String(d.id));
+      const finalBU = (bu && bu !== 'UNMAPPED') ? bu
+        : (existingBU && existingBU !== 'UNMAPPED') ? existingBU
+        : 'UNMAPPED';
       return {
         deal_id:       String(d.id),
         deal_name:     d.Deal_Name ?? '',
@@ -464,7 +480,7 @@ Deno.serve(async (req: Request) => {
         nrr_inr:       nrr === 0 ? 0 : Math.round(nrr * rate * 100) / 100,
         currency:      currency || 'INR',
         quarter:       targetQuarter,
-        business_unit: bu ?? 'UNMAPPED',
+        business_unit: finalBU,
         updated_at:    now.toISOString(),
       };
     });
@@ -473,9 +489,15 @@ Deno.serve(async (req: Request) => {
       .upsert(huntingRows, { onConflict: 'deal_id' });
     if (huntingErr) throw huntingErr;
 
+    // Backfill business_unit from deals table for any hunting deals already tracked there.
+    // This covers the case where BU_Deal_Map lookup returns nothing for hunting deals.
+    await supabase.rpc('backfill_hunting_bu');
+
     // ---- Summary stats ----
     const dealsWithBU = dealRows.filter(r => r.business_unit && r.business_unit !== 'UNMAPPED').length;
-    console.log(`Done: ${dealRows.length} deals, ${dealsWithBU} with BU, hunting=${huntingRows.length}, bu_name_missing=${buNameMissing}`);
+    const huntingWithBU = huntingRows.filter(r => r.business_unit && r.business_unit !== 'UNMAPPED').length;
+    const huntingTagsResolved = huntingIds.filter(id => tagsByDeal.has(id)).length;
+    console.log(`Done: ${dealRows.length} deals, ${dealsWithBU} with BU, hunting=${huntingRows.length} (${huntingWithBU} with BU, ${huntingTagsResolved} tags resolved), bu_name_missing=${buNameMissing}`);
 
     return new Response(
       JSON.stringify({
@@ -485,6 +507,8 @@ Deno.serve(async (req: Request) => {
         bu_name_missing: buNameMissing,
         mrr_rows: mrrRows.length, nrr_rows: nrrRows.length,
         hunting_upserted: huntingRows.length,
+        hunting_with_bu: huntingWithBU,
+        hunting_tags_resolved: huntingTagsResolved,
         flagged: flagged.length, flagged_deals: flagged,
         _debug_bu: debugBU,
       }),
