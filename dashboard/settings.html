@@ -143,14 +143,20 @@ function logout() {
   render();
 }
 
+async function safeJson(res) {
+  const text = await res.text();
+  if (!text) return null;
+  try { return JSON.parse(text); } catch { return null; }
+}
+
 async function refreshToken() {
   const res = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=refresh_token`, {
     method: 'POST',
     headers: { apikey: SUPABASE_KEY, 'Content-Type': 'application/json' },
     body: JSON.stringify({ refresh_token: session.refresh_token }),
   });
-  const body = await res.json();
-  if (!res.ok) throw new Error(body.error_description || body.msg || 'Session expired — please log in again');
+  const body = await safeJson(res);
+  if (!res.ok) throw new Error((body && (body.error_description || body.msg)) || 'Session expired — please log in again');
   session.access_token = body.access_token;
   session.refresh_token = body.refresh_token;
   saveSession();
@@ -176,7 +182,7 @@ async function authedFetch(path, options = {}) {
     const text = await res.text();
     throw new Error(`Request failed: ${res.status} ${text}`);
   }
-  return res.status === 204 ? null : res.json();
+  return safeJson(res);
 }
 
 async function sbRead(path) {
