@@ -866,9 +866,15 @@ function renderSummaryView() {
       ? `<td class="num muted">-</td>`
       : `<td class="num ${v >= 0 ? 'var-pos' : 'var-neg'}">${v >= 0 ? '+' : ''}${fmtINR(v)}</td>`;
 
-    const prevMissCell = (v) => v === null
+    const prevCarryCell = (v) => v === null
       ? `<td class="num muted">-</td>`
-      : `<td class="num ${v >= 0 ? 'var-pos' : 'var-neg'}" title="Positive = over-achieved in prior months">${v >= 0 ? '+' : ''}${fmtINR(v)}</td>`;
+      : `<td class="num ${v >= 0 ? 'var-pos' : 'var-neg'}" title="${v >= 0 ? 'Excess from prior months reduces this month\'s obligation' : 'Miss from prior months adds to this month\'s obligation'}">${v >= 0 ? '+' : ''}${fmtINR(v)}</td>`;
+
+    // Adjusted variance: add prior-month carry to raw variance.
+    // prev carry > 0 (excess) → obligation reduced → adj variance is better.
+    // prev carry < 0 (miss)   → obligation added  → adj variance is worse.
+    const adjVar = (variance, prevMiss) =>
+      (variance !== null && prevMiss !== null) ? variance + prevMiss : variance;
 
     const bodyRows = rows.map(r => `<tr>
       <td><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${colorVar(r.bu)};margin-right:8px;vertical-align:middle;"></span>${escapeHtml(r.bu)}</td>
@@ -876,20 +882,23 @@ function renderSummaryView() {
       <td class="num">${r.hunting ? fmtINR(r.hunting) : '<span class="muted">-</span>'}</td>
       <td class="num">${r.total ? fmtINR(r.total) : '<span class="muted">-</span>'}</td>
       <td class="num">${r.target !== undefined ? fmtINR(r.target) : '<span class="muted">-</span>'}</td>
-      ${hasPrevMiss ? prevMissCell(r.prevMiss) : ''}
-      ${varCell(r.variance)}
+      ${hasPrevMiss ? prevCarryCell(r.prevMiss) : ''}
+      ${varCell(adjVar(r.variance, r.prevMiss))}
     </tr>`).join('');
 
+    const totAdjVariance = adjVar(totVariance, totPrevMiss);
     const totalRow = `<tr class="total-row">
       <td>Total</td>
       <td class="num">${fmtINR(totFarming)}</td>
       <td class="num">${fmtINR(totHunting)}</td>
       <td class="num">${fmtINR(totTotal)}</td>
       <td class="num">${totTarget ? fmtINR(totTarget) : '<span class="muted">-</span>'}</td>
-      ${hasPrevMiss ? prevMissCell(totPrevMiss) : ''}
-      ${varCell(totVariance)}
+      ${hasPrevMiss ? prevCarryCell(totPrevMiss) : ''}
+      ${varCell(totAdjVariance)}
     </tr>`;
 
+    const varColLabel = hasPrevMiss ? 'Adj. Variance' : 'Variance';
+    const prevCarryColLabel = 'Prev Month Carry';
     return `<div class="table-scroll"><table>
       <thead><tr>
         <th>Business Unit</th>
@@ -897,11 +906,11 @@ function renderSummaryView() {
         <th class="num">Hunting ${metric} Commit</th>
         <th class="num">Total Commit</th>
         <th class="num">Target</th>
-        ${hasPrevMiss ? '<th class="num">Prev Months Miss</th>' : ''}
-        <th class="num">Variance</th>
+        ${hasPrevMiss ? `<th class="num">${prevCarryColLabel}</th>` : ''}
+        <th class="num">${varColLabel}</th>
       </tr></thead>
       <tbody>${totalRow}${bodyRows}</tbody>
-    </table></div><p style="font-size:11px;color:var(--text-muted);margin:8px 0 0;">Based on snapshot: ${latestDate}</p>`;
+    </table></div><p style="font-size:11px;color:var(--text-muted);margin:8px 0 0;">Based on snapshot: ${latestDate}${hasPrevMiss ? ' · Adj. Variance = (Actual − Target) + Prev Month Carry' : ''}</p>`;
   }
 
   const mrrRows = buildSummaryRows('MRR', MRR_SNAPSHOTS, latestMRR);
