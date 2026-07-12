@@ -259,6 +259,7 @@ const DEFAULT_HUNTING_STAGES = new Set([
 ]);
 let huntingStageFilter = new Set(DEFAULT_HUNTING_STAGES);
 let huntingShowClosedLost = false;
+let huntingBUFilter = null; // null = lazy-init to all BUs on first render
 
 function fmtINR(n) {
   const sign = n < 0 ? '-' : '';
@@ -404,6 +405,7 @@ async function main() {
   document.getElementById('quarter-select').addEventListener('change', e => {
     currentQuarter   = e.target.value;
     currentPeriodTab = 'Q';
+    huntingBUFilter  = null;
     renderTabs(); render();
   });
 
@@ -940,28 +942,49 @@ function renderHuntingView() {
   // Exclude Closed Lost from the main stage list — it has its own toggle button
   const allStages = [...new Set(allPipelineDeals.map(d => d.stage || 'Unknown').filter(s => s !== 'Closed Lost'))].sort();
 
+  // BU list: sort known BUs by BU_ORDER, then others, UNMAPPED last
+  const buSet = new Set(allPipelineDeals.map(d => d.business_unit || 'UNMAPPED'));
+  const allBUs = [
+    ...BU_ORDER.filter(bu => buSet.has(bu)),
+    ...[...buSet].filter(bu => bu !== 'UNMAPPED' && !BU_ORDER.includes(bu)).sort(),
+    ...(buSet.has('UNMAPPED') ? ['UNMAPPED'] : []),
+  ];
+  if (huntingBUFilter === null) huntingBUFilter = new Set(allBUs);
+
   document.getElementById('subtitle').textContent = `Hunting Pipeline: all new-account deals closing in ${q.label} (any probability)`;
 
-  // Build stage filter capsules UI — active = included in filter
   const stageCapsulesHtml = allStages.map(stage => {
     const active = huntingStageFilter.has(stage);
-    return `<button class="stage-capsule${active ? ' active' : ' inactive'}" data-stage="${escapeHtml(stage)}">${escapeHtml(stage)}</button>`;
+    return `<button class="stage-capsule${active ? ' active' : ''}" data-stage="${escapeHtml(stage)}">${escapeHtml(stage)}</button>`;
   }).join('');
   const closedLostActive = huntingShowClosedLost;
 
+  const buCapsulesHtml = allBUs.map(bu => {
+    const active = huntingBUFilter.has(bu);
+    const dot = bu !== 'UNMAPPED'
+      ? `<span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:${colorVar(bu)};margin-right:5px;vertical-align:middle;"></span>`
+      : '';
+    return `<button class="stage-capsule${active ? ' active' : ''}" data-bu="${escapeHtml(bu)}">${dot}${escapeHtml(bu)}</button>`;
+  }).join('');
+
   const deals = allPipelineDeals.filter(d => {
-    if (d.stage === 'Closed Lost') return huntingShowClosedLost;
-    return huntingStageFilter.has(d.stage || 'Unknown');
+    if (d.stage === 'Closed Lost') { if (!huntingShowClosedLost) return false; }
+    else if (!huntingStageFilter.has(d.stage || 'Unknown')) return false;
+    return huntingBUFilter.has(d.business_unit || 'UNMAPPED');
   });
 
   const content = document.getElementById('content');
   content.innerHTML = `
     <div class="card">
       <p class="summary-section-title">Hunting Pipeline · ${q.label} · ${deals.length} deals</p>
-      <div style="margin-bottom:12px;display:flex;flex-wrap:wrap;gap:6px;align-items:center;">
+      <div style="margin-bottom:8px;display:flex;flex-wrap:wrap;gap:6px;align-items:center;">
         <span style="font-size:12px;color:var(--text-muted);margin-right:4px;">Stages:</span>
         ${stageCapsulesHtml}
         <button class="stage-capsule${closedLostActive ? ' active' : ''} stage-closed-lost" data-stage="Closed Lost">Closed Lost</button>
+      </div>
+      <div style="margin-bottom:12px;display:flex;flex-wrap:wrap;gap:6px;align-items:center;">
+        <span style="font-size:12px;color:var(--text-muted);margin-right:4px;">BU:</span>
+        ${buCapsulesHtml}
       </div>
       <div id="hunting-table-wrap"></div>
       <div class="legend" style="margin-top:12px;">
@@ -972,8 +995,7 @@ function renderHuntingView() {
       </div>
     </div>`;
 
-  // Capsule click handlers
-  content.querySelectorAll('.stage-capsule').forEach(btn => {
+  content.querySelectorAll('.stage-capsule[data-stage]').forEach(btn => {
     btn.addEventListener('click', () => {
       const stage = btn.dataset.stage;
       if (stage === 'Closed Lost') {
@@ -982,6 +1004,15 @@ function renderHuntingView() {
         if (huntingStageFilter.has(stage)) huntingStageFilter.delete(stage);
         else huntingStageFilter.add(stage);
       }
+      renderHuntingView();
+    });
+  });
+
+  content.querySelectorAll('.stage-capsule[data-bu]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const bu = btn.dataset.bu;
+      if (huntingBUFilter.has(bu)) huntingBUFilter.delete(bu);
+      else huntingBUFilter.add(bu);
       renderHuntingView();
     });
   });
