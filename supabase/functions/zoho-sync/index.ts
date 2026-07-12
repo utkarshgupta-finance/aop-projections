@@ -19,6 +19,12 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// Candidate API names for the Business Unit module (tried in order).
+const BU_MODULE_CANDIDATES = [
+  'Business_Units', 'Business_Unit', 'BUs', 'BusinessUnits', 'BU',
+  'Business_units', 'business_units',
+];
+
 function extractName(field: any): string {
   if (!field) return '';
   if (typeof field === 'string') return field;
@@ -44,18 +50,28 @@ async function getAccessToken(): Promise<string> {
   return body.access_token;
 }
 
+async function coqlRaw(token: string, query: string): Promise<{ data: any[]; error: any }> {
+  try {
+    const res = await fetch(`${ZOHO_API_DOMAIN}/crm/v6/coql`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Zoho-oauthtoken ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ select_query: query }),
+    });
+    const body = await res.json();
+    if (body.status === 'error') return { data: [], error: body };
+    return { data: body.data ?? [], error: null };
+  } catch (e: any) {
+    return { data: [], error: e.message };
+  }
+}
+
 async function coql(token: string, query: string): Promise<any[]> {
-  const res = await fetch(`${ZOHO_API_DOMAIN}/crm/v6/coql`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Zoho-oauthtoken ${token}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ select_query: query }),
-  });
-  const body = await res.json();
-  if (body.status === 'error') throw new Error(`COQL error: ${JSON.stringify(body)}`);
-  return body.data ?? [];
+  const { data, error } = await coqlRaw(token, query);
+  if (error) throw new Error(`COQL error: ${JSON.stringify(error)}`);
+  return data;
 }
 
 function monthBounds(yyyyMm: string) {
@@ -103,58 +119,71 @@ async function fetchAccountNames(token: string, accountIds: string[]): Promise<M
   return nameById;
 }
 
-// Discover which Zoho module the Business_Unit lookup field points to.
-async function discoverBUModule(token: string): Promise<{ moduleName: string | null; primaryField: string | null; debugFields: any[] }> {
-  try {
-    const res = await fetch(`${ZOHO_API_DOMAIN}/crm/v6/BU_Deal_Map/fields`, {
-      headers: { Authorization: `Zoho-oauthtoken ${token}` },
-    });
-    const data = await res.json();
-    const fields: any[] = data.fields ?? [];
-    const debugFields = fields.slice(0, 5).map((f: any) => ({
-      api_name: f.api_name,
-      data_type: f.data_type,
-      lookup: f.lookup,
-    }));
-    for (const f of fields) {
-      if (f.api_name === 'Business_Unit') {
-        const moduleName = f.lookup?.module?.api_name ?? null;
-        const primaryField = f.lookup?.field?.api_name ?? 'Name';
-        return { moduleName, primaryField, debugFields };
-      }
+// Probe candidate BU module names using a known BU ID to find the right one.
+async function discoverBUModule(token: string, sampleBUId: string): Promise<{
+  moduleName: string | null;
+  probeResults: { candidate: string; found: boolean; error: any }[];
+}> {
+  const probeResults: { candidate: string; found: boolean; error: any }[] = [];
+
+  for (const candidate of BU_MODULE_CANDIDATES) {
+    const { data, error } = await coqlRaw(token,
+      `select id, Name from ${candidate} where id = '${sampleBUId}'`);
+    const found = !error && data.length > 0 && !!data[0].Name;
+    probeResults.push({ candidate, found, error: error ?? null });
+    if (found) {
+      console.log(`BU module found via COQL: ${candidate}`);
+      return { moduleName: candidate, probeResults };
     }
-    return { moduleName: null, primaryField: null, debugFields };
-  } catch (e: any) {
-    return { moduleName: null, primaryField: null, debugFields: [{ error: e.message }] };
   }
+
+  // Fallback: try Zoho REST API for each candidate
+  for (const candidate of BU_MODULE_CANDIDATES) {
+    try {
+      const res = await fetch(
+        `${ZOHO_API_DOMAIN}/crm/v6/${candidate}/${sampleBUId}`,
+        { headers: { Authorization: `Zoho-oauthtoken ${token}` } },
+      );
+      const body = await res.json();
+      if (body?.data?.[0]?.Name) {
+        console.log(`BU module found via REST: ${candidate}`);
+        return { moduleName: `__rest__${candidate}`, probeResults };
+      }
+    } catch { /* skip */ }
+  }
+
+  return { moduleName: null, probeResults };
 }
 
-// Fetch BU names from the discovered module by ID list using COQL.
 async function fetchBUNamesByIds(
   token: string,
   moduleName: string,
-  primaryField: string,
   buIds: string[],
 ): Promise<Map<string, string>> {
   const nameById = new Map<string, string>();
+  const isRest = moduleName.startsWith('__rest__');
+  const mod = isRest ? moduleName.slice(8) : moduleName;
   const batchSize = 50;
+
   for (let i = 0; i < buIds.length; i += batchSize) {
-    const batch = buIds.slice(i, i + batchSize).map(id => `'${id}'`).join(',');
-    try {
-      const rows = await coql(token, `select id, ${primaryField} from ${moduleName} where id in (${batch})`);
-      for (const row of rows) {
-        const name = row[primaryField];
-        if (row.id && name) nameById.set(String(row.id), String(name));
-      }
-      continue;
-    } catch { /* fall through to Name */ }
-    if (primaryField !== 'Name') {
+    const batch = buIds.slice(i, i + batchSize);
+    if (isRest) {
       try {
-        const rows = await coql(token, `select id, Name from ${moduleName} where id in (${batch})`);
-        for (const row of rows) {
-          if (row.id && row.Name) nameById.set(String(row.id), String(row.Name));
+        const res = await fetch(
+          `${ZOHO_API_DOMAIN}/crm/v6/${mod}?ids=${batch.join(',')}&fields=id,Name`,
+          { headers: { Authorization: `Zoho-oauthtoken ${token}` } },
+        );
+        const body = await res.json();
+        for (const r of body?.data ?? []) {
+          if (r.id && r.Name) nameById.set(String(r.id), String(r.Name));
         }
-      } catch { /* ignore */ }
+      } catch { /* skip */ }
+    } else {
+      const ids = batch.map(id => `'${id}'`).join(',');
+      const { data } = await coqlRaw(token, `select id, Name from ${mod} where id in (${ids})`);
+      for (const r of data) {
+        if (r.id && r.Name) nameById.set(String(r.id), String(r.Name));
+      }
     }
   }
   return nameById;
@@ -163,17 +192,12 @@ async function fetchBUNamesByIds(
 async function fetchBUTags(token: string, dealIds: string[]): Promise<{
   tagsByDeal: Map<string, string[]>;
   buNameMissing: number;
-  debugBUSample: any[];
-  debugBUModule: string | null;
-  debugBUModuleFields: any[];
-  debugBUResolved: number;
-  debugBUIdCount: number;
+  debugBU: any;
 }> {
   const tagsByDeal = new Map<string, string[]>();
-  const debugBUSample: any[] = [];
   let buNameMissing = 0;
 
-  // Phase 1: fetch all BU_Deal_Map rows and collect raw data
+  // Phase 1: fetch all BU_Deal_Map rows for our deals
   type RawRow = { dealId: string; buId: string | null; buText: string | null };
   const rawRows: RawRow[] = [];
 
@@ -183,48 +207,32 @@ async function fetchBUTags(token: string, dealIds: string[]): Promise<{
     let offset = 0;
     const pageSize = 200;
     for (;;) {
-      const rows = await coql(token,
+      const { data: rows, error } = await coqlRaw(token,
         `select Deal, Business_Unit from BU_Deal_Map where Deal in (${batch}) limit ${offset},${pageSize}`);
-
-      if (debugBUSample.length < 5) {
-        for (const r of rows) {
-          if (debugBUSample.length >= 5) break;
-          debugBUSample.push({
-            dealId: String(r.Deal?.id ?? r.Deal),
-            Business_Unit: r.Business_Unit,
-            Business_Unit_typeof: typeof r.Business_Unit,
-            Business_Unit_keys: r.Business_Unit && typeof r.Business_Unit === 'object'
-              ? Object.keys(r.Business_Unit)
-              : null,
-          });
-        }
-      }
-
+      if (error) { console.warn('BU_Deal_Map error:', JSON.stringify(error)); break; }
       for (const row of rows) {
         const dealId = String(row.Deal?.id ?? row.Deal);
         const buText = extractName(row.Business_Unit);
         const buId = (!buText && row.Business_Unit?.id) ? String(row.Business_Unit.id) : null;
         rawRows.push({ dealId, buId, buText: buText || null });
       }
-
       if (rows.length < pageSize) break;
       offset += pageSize;
     }
   }
 
-  // Phase 2: resolve BU IDs -> names via the BU module
+  // Phase 2: discover BU module and resolve IDs -> names
   const buIdSet = new Set(rawRows.filter(r => r.buId).map(r => r.buId!));
   let buNameById = new Map<string, string>();
-  let debugBUModule: string | null = null;
-  let debugBUModuleFields: any[] = [];
+  let debugBUModule: any = null;
 
   if (buIdSet.size > 0) {
-    const { moduleName, primaryField, debugFields } = await discoverBUModule(token);
-    debugBUModule = moduleName;
-    debugBUModuleFields = debugFields;
-    console.log(`BU module discovered: ${moduleName}, primaryField: ${primaryField}, unique BU IDs: ${buIdSet.size}`);
-    if (moduleName && primaryField) {
-      buNameById = await fetchBUNamesByIds(token, moduleName, primaryField, [...buIdSet]);
+    const sampleId = [...buIdSet][0];
+    const { moduleName, probeResults } = await discoverBUModule(token, sampleId);
+    debugBUModule = { moduleName, probeResults };
+    console.log(`BU module: ${moduleName}, unique IDs: ${buIdSet.size}`);
+    if (moduleName) {
+      buNameById = await fetchBUNamesByIds(token, moduleName, [...buIdSet]);
       console.log(`BU names resolved: ${buNameById.size}/${buIdSet.size}`);
     }
   }
@@ -240,11 +248,13 @@ async function fetchBUTags(token: string, dealIds: string[]): Promise<{
   return {
     tagsByDeal,
     buNameMissing,
-    debugBUSample,
-    debugBUModule,
-    debugBUModuleFields,
-    debugBUResolved: buNameById.size,
-    debugBUIdCount:  buIdSet.size,
+    debugBU: {
+      totalBUMapRows: rawRows.length,
+      buIdCount: buIdSet.size,
+      buIds: [...buIdSet],
+      buResolved: buNameById.size,
+      buModule: debugBUModule,
+    },
   };
 }
 
@@ -295,7 +305,6 @@ Deno.serve(async (req: Request) => {
     }
     let accountNameMap = new Map<string, string>();
     if (accountIdsToLookup.size > 0) {
-      console.log(`Looking up ${accountIdsToLookup.size} account names from Accounts module`);
       accountNameMap = await fetchAccountNames(token, [...accountIdsToLookup]);
     }
 
@@ -313,23 +322,17 @@ Deno.serve(async (req: Request) => {
         accountName = accountNameMap.get(String(d.Account_Name.id)) ?? '';
       }
       universe.push({
-        id:          String(d.id),
-        name:        d.Deal_Name,
-        dealType:    d.Deal_Type_New_or_Existing,
+        id: String(d.id), name: d.Deal_Name, dealType: d.Deal_Type_New_or_Existing,
         accountName,
-        mrrInr:      mrr === 0 ? 0 : Math.round(mrr * rate * 100) / 100,
-        nrrInr:      nrr === 0 ? 0 : Math.round(nrr * rate * 100) / 100,
-        probability: d.Probability,
-        closingDate: d.Closing_Date,
+        mrrInr: mrr === 0 ? 0 : Math.round(mrr * rate * 100) / 100,
+        nrrInr: nrr === 0 ? 0 : Math.round(nrr * rate * 100) / 100,
+        probability: d.Probability, closingDate: d.Closing_Date,
       });
     }
     console.log(`Universe: ${universe.length}`);
 
-    const {
-      tagsByDeal, buNameMissing,
-      debugBUSample, debugBUModule, debugBUModuleFields,
-      debugBUResolved, debugBUIdCount,
-    } = await fetchBUTags(token, universe.map(d => d.id));
+    const { tagsByDeal, buNameMissing, debugBU } =
+      await fetchBUTags(token, universe.map(d => d.id));
 
     const flagged: any[] = [];
     for (const d of universe) {
@@ -341,25 +344,25 @@ Deno.serve(async (req: Request) => {
     const dealIds = universe.map(d => d.id);
     const { data: existingDeals, error: fetchErr } = await supabase
       .from('deals')
-      .select('deal_id, current_name, name_history, business_unit')
+      .select('deal_id, current_name, name_history, business_unit, bu_override')
       .in('deal_id', dealIds);
     if (fetchErr) throw fetchErr;
     const existingByDeal = new Map((existingDeals ?? []).map((r: any) => [r.deal_id, r]));
 
     const dealRows = universe.map(d => {
       const existing = existingByDeal.get(d.id);
-      const nameHistory  = existing?.name_history ?? [];
-      const renamed      = existing && existing.current_name !== d.name;
-      const businessUnit = d.businessUnit === null && existing ? existing.business_unit : d.businessUnit;
+      const nameHistory = existing?.name_history ?? [];
+      const renamed = existing && existing.current_name !== d.name;
+      const buOverride = existing?.bu_override ?? null;
+      // Priority: manual override > auto-resolved > keep existing (when flagged/conflicted)
+      const businessUnit = buOverride
+        ?? (d.businessUnit !== null ? d.businessUnit : (existing?.business_unit ?? 'UNMAPPED'));
       return {
-        deal_id:       d.id,
-        deal_type:     d.dealType,
-        current_name:  d.name,
-        name_history:  renamed ? [...nameHistory, existing.current_name] : nameHistory,
-        business_unit: businessUnit,
-        account_name:  d.accountName,
-        closing_date:  d.closingDate,
-        updated_at:    new Date().toISOString(),
+        deal_id: d.id, deal_type: d.dealType, current_name: d.name,
+        name_history: renamed ? [...nameHistory, existing.current_name] : nameHistory,
+        business_unit: businessUnit, bu_override: buOverride,
+        account_name: d.accountName,
+        closing_date: d.closingDate, updated_at: new Date().toISOString(),
       };
     });
 
@@ -367,20 +370,14 @@ Deno.serve(async (req: Request) => {
     if (dealsErr) throw dealsErr;
 
     const mrrRows = universe.filter(d => d.mrrInr !== 0).map(d => ({
-      deal_id:       d.id,
-      snapshot_date: snapshotDate,
-      mrr_amount:    d.mrrInr,
-      probability:   d.probability,
+      deal_id: d.id, snapshot_date: snapshotDate, mrr_amount: d.mrrInr, probability: d.probability,
     }));
     const { error: mrrErr } = await supabase.from('mrr_snapshots')
       .upsert(mrrRows, { onConflict: 'deal_id,snapshot_date' });
     if (mrrErr) throw mrrErr;
 
     const nrrRows = universe.filter(d => d.nrrInr !== 0).map(d => ({
-      deal_id:       d.id,
-      snapshot_date: snapshotDate,
-      nrr_amount:    d.nrrInr,
-      probability:   d.probability,
+      deal_id: d.id, snapshot_date: snapshotDate, nrr_amount: d.nrrInr, probability: d.probability,
     }));
     const { error: nrrErr } = await supabase.from('nrr_snapshots')
       .upsert(nrrRows, { onConflict: 'deal_id,snapshot_date' });
@@ -388,26 +385,16 @@ Deno.serve(async (req: Request) => {
 
     const dealsWithAccount = dealRows.filter(r => r.account_name).length;
     const dealsWithBU = dealRows.filter(r => r.business_unit && r.business_unit !== 'UNMAPPED').length;
-    console.log(`Done: ${dealRows.length} deals (${dealsWithAccount} with account, ${dealsWithBU} with BU), bu_name_missing=${buNameMissing}`);
+    console.log(`Done: ${dealRows.length} deals, ${dealsWithBU} with BU, bu_name_missing=${buNameMissing}`);
 
     return new Response(
       JSON.stringify({
-        ok: true,
-        snapshot_date:           snapshotDate,
-        target_month:            targetMonth,
-        deals_upserted:          dealRows.length,
-        deals_with_account:      dealsWithAccount,
-        deals_with_bu:           dealsWithBU,
-        bu_name_missing:         buNameMissing,
-        mrr_rows:                mrrRows.length,
-        nrr_rows:                nrrRows.length,
-        flagged:                 flagged.length,
-        flagged_deals:           flagged,
-        _debug_bu_sample:        debugBUSample,
-        _debug_bu_module:        debugBUModule,
-        _debug_bu_module_fields: debugBUModuleFields,
-        _debug_bu_id_count:      debugBUIdCount,
-        _debug_bu_resolved:      debugBUResolved,
+        ok: true, snapshot_date: snapshotDate, target_month: targetMonth,
+        deals_upserted: dealRows.length, deals_with_account: dealsWithAccount,
+        deals_with_bu: dealsWithBU, bu_name_missing: buNameMissing,
+        mrr_rows: mrrRows.length, nrr_rows: nrrRows.length,
+        flagged: flagged.length, flagged_deals: flagged,
+        _debug_bu: debugBU,
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
     );
