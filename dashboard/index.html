@@ -550,9 +550,34 @@ function renderBUView(buRows, maxAbs, showTargets, periodTab) {
 let tableCtx = {};
 
 function renderDealsTable() {
-  const { dealsById, periodTab, latestDate, snapshots, metric } = tableCtx;
-  const dates = activeDates();
+  const { dealsById, periodTab, snapshots, metric } = tableCtx;
+  const allDates = activeDates();
+
+  // On the full-quarter tab show one column per month (last snapshot of each month).
+  // On a monthly tab show every snapshot date within that month.
+  let dates, colLabel;
+  if (isFullQuarterTab(periodTab)) {
+    const byMonth = new Map();
+    for (const d of allDates) {
+      const m = Number(d.slice(5, 7)), y = Number(d.slice(0, 4));
+      if (y === periodTab.year && periodTab.months.includes(m)) byMonth.set(m, d);
+    }
+    dates = periodTab.months.map(m => byMonth.get(m)).filter(Boolean);
+    colLabel = d => MONTH_FULL[Number(d.slice(5, 7)) - 1];
+  } else {
+    dates = allDates.filter(d => {
+      const m = Number(d.slice(5, 7)), y = Number(d.slice(0, 4));
+      return periodTab.months.includes(m) && y === periodTab.year;
+    });
+    colLabel = d => d;
+  }
+
+  const latestDate = dates[dates.length - 1];
   const prevDate = dates.length >= 2 ? dates[dates.length - 2] : undefined;
+  if (sortKey !== '__latest' && sortKey !== '__variance' && !dates.includes(sortKey) &&
+      !['deal_id','deal_name','account_name','business_unit','deal_type'].includes(sortKey)) {
+    sortKey = '__latest';
+  }
   const snapshotsByDeal = new Map();
   for (const s of snapshots) {
     if (!snapshotsByDeal.has(s.deal_id)) snapshotsByDeal.set(s.deal_id, new Map());
@@ -607,7 +632,7 @@ function renderDealsTable() {
   document.getElementById('result-count').textContent = `${tabDeals.length} deal${tabDeals.length === 1 ? '' : 's'}`;
 
   const arrow = key => key === sortKey ? `<span class="sort-arrow">${sortDir === 'asc' ? '↑' : '↓'}</span>` : '';
-  const dateHeaders = dates.map(d => `<th class="num" data-sort="${d}">${d}${arrow(sortKey === '__latest' && d === latestDate ? '__latest' : d)}</th>`).join('');
+  const dateHeaders = dates.map(d => `<th class="num" data-sort="${d}">${colLabel(d)}${arrow(sortKey === '__latest' && d === latestDate ? '__latest' : d)}</th>`).join('');
   const varianceHeader = prevDate ? `<th class="num" data-sort="__variance">Change${arrow('__variance')}</th>` : '';
   const rows = tabDeals.map(d => {
     const bu = d.business_unit || 'UNMAPPED';
@@ -689,11 +714,56 @@ function renderSummaryView() {
   const latestMRR  = MRR_DATES[MRR_DATES.length - 1];
   const latestNRR  = NRR_DATES[NRR_DATES.length - 1];
 
+  // Compute previous months miss per BU: sum of (commit - target) for all month tabs before the current one.
+  // Only applies to monthly tabs (M2, M3). Returns a Map<bu, number|null>.
+  function computePrevMissMap(metric, snapshots) {
+    const allTabs = computePeriodTabs(currentQuarter);
+    const monthTabs = allTabs.filter(t => !isFullQuarterTab(t));
+    const curIdx = monthTabs.findIndex(t => t.key === periodTab.key);
+    // No previous months for Q tab or M1
+    if (curIdx <= 0) return new Map();
+
+    const prevTabs = monthTabs.slice(0, curIdx);
+    const allDates = metric === 'MRR' ? MRR_DATES : NRR_DATES;
+
+    const buList = [...new Set([
+      ...targetBUList(metric),
+      ...BU_ORDER.filter(bu => DEALS.some(d => d.business_unit === bu)),
+    ])].filter((v, i, a) => a.indexOf(v) === i);
+
+    const result = new Map();
+    for (const bu of buList) {
+      let totalMiss = 0;
+      let hasData = false;
+      for (const tab of prevTabs) {
+        // Find last snapshot date within this previous month+year
+        const tabDates = allDates.filter(d => {
+          const m = Number(d.slice(5, 7)), y = Number(d.slice(0, 4));
+          return tab.months.includes(m) && y === tab.year;
+        });
+        if (!tabDates.length) continue;
+        const lastDate = tabDates[tabDates.length - 1];
+        const commit = snapshots
+          .filter(s => s.snapshot_date === lastDate && dealsById.get(s.deal_id)?.business_unit === bu && dealInPeriod(dealsById.get(s.deal_id), tab))
+          .reduce((a, s) => a + Number(metric === 'MRR' ? s.mrr_amount : s.nrr_amount), 0);
+        const target = targetFor(bu, tab, metric);
+        if (target !== undefined) {
+          totalMiss += commit - target;
+          hasData = true;
+        }
+      }
+      result.set(bu, hasData ? totalMiss : null);
+    }
+    return result;
+  }
+
   function buildSummaryRows(metric, snapshots, latestDate) {
     const buList = [...new Set([
       ...targetBUList(metric),
       ...BU_ORDER.filter(bu => DEALS.some(d => d.business_unit === bu)),
     ])].filter((v, i, a) => a.indexOf(v) === i);
+
+    const prevMissMap = computePrevMissMap(metric, snapshots);
 
     return buList.map(bu => {
       const farming = snapshots
@@ -705,7 +775,8 @@ function renderSummaryView() {
       const total   = farming + hunting;
       const target  = targetFor(bu, periodTab, metric);
       const variance = target !== undefined ? total - target : null;
-      return { bu, farming, hunting, total, target, variance };
+      const prevMiss = prevMissMap.get(bu) ?? null;
+      return { bu, farming, hunting, total, target, variance, prevMiss };
     });
   }
 
@@ -716,10 +787,16 @@ function renderSummaryView() {
     const totTotal    = totFarming + totHunting;
     const totTarget   = rows.reduce((a, r) => a + (r.target ?? 0), 0);
     const totVariance = totTarget ? totTotal - totTarget : null;
+    const hasPrevMiss = rows.some(r => r.prevMiss !== null);
+    const totPrevMiss = hasPrevMiss ? rows.reduce((a, r) => a + (r.prevMiss ?? 0), 0) : null;
 
     const varCell = (v) => v === null
       ? `<td class="num muted">-</td>`
       : `<td class="num ${v >= 0 ? 'var-pos' : 'var-neg'}">${v >= 0 ? '+' : ''}${fmtINR(v)}</td>`;
+
+    const prevMissCell = (v) => v === null
+      ? `<td class="num muted">-</td>`
+      : `<td class="num ${v >= 0 ? 'var-pos' : 'var-neg'}" title="Positive = over-achieved in prior months">${v >= 0 ? '+' : ''}${fmtINR(v)}</td>`;
 
     const bodyRows = rows.map(r => `<tr>
       <td><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${colorVar(r.bu)};margin-right:8px;vertical-align:middle;"></span>${escapeHtml(r.bu)}</td>
@@ -727,6 +804,7 @@ function renderSummaryView() {
       <td class="num">${r.hunting ? fmtINR(r.hunting) : '<span class="muted">-</span>'}</td>
       <td class="num">${r.total ? fmtINR(r.total) : '<span class="muted">-</span>'}</td>
       <td class="num">${r.target !== undefined ? fmtINR(r.target) : '<span class="muted">-</span>'}</td>
+      ${hasPrevMiss ? prevMissCell(r.prevMiss) : ''}
       ${varCell(r.variance)}
     </tr>`).join('');
 
@@ -736,6 +814,7 @@ function renderSummaryView() {
       <td class="num">${fmtINR(totHunting)}</td>
       <td class="num">${fmtINR(totTotal)}</td>
       <td class="num">${totTarget ? fmtINR(totTarget) : '<span class="muted">-</span>'}</td>
+      ${hasPrevMiss ? prevMissCell(totPrevMiss) : ''}
       ${varCell(totVariance)}
     </tr>`;
 
@@ -746,6 +825,7 @@ function renderSummaryView() {
         <th class="num">Hunting ${metric} Commit</th>
         <th class="num">Total Commit</th>
         <th class="num">Target</th>
+        ${hasPrevMiss ? '<th class="num">Prev Months Miss</th>' : ''}
         <th class="num">Variance</th>
       </tr></thead>
       <tbody>${totalRow}${bodyRows}</tbody>
