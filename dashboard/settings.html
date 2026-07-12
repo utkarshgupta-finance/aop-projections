@@ -131,8 +131,8 @@ async function login(email, password) {
     headers: { apikey: SUPABASE_KEY, 'Content-Type': 'application/json' },
     body: JSON.stringify({ email, password }),
   });
-  const body = await res.json();
-  if (!res.ok) throw new Error(body.error_description || body.msg || 'Login failed');
+  const body = await safeJson(res);
+  if (!res.ok) throw new Error((body && (body.error_description || body.msg)) || 'Login failed');
   session = { access_token: body.access_token, refresh_token: body.refresh_token, user: body.user };
   saveSession();
 }
@@ -145,8 +145,8 @@ function logout() {
 
 async function safeJson(res) {
   const text = await res.text();
-  if (!text) return null;
-  try { return JSON.parse(text); } catch { return null; }
+  if (!text || !text.trim()) return null;
+  try { return JSON.parse(text); } catch (e) { return null; }
 }
 
 async function refreshToken() {
@@ -190,7 +190,7 @@ async function sbRead(path) {
     headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` },
   });
   if (!res.ok) throw new Error(`Failed to load ${path}`);
-  return res.json();
+  return safeJson(res);
 }
 
 function escapeHtml(s) {
