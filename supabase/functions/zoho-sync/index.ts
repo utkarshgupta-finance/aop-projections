@@ -124,7 +124,6 @@ async function fetchHuntingPipelineDeals(token: string, dayBefore: string, end: 
       `from Deals where ` +
       `(Closing_Date > '${dayBefore}' and Closing_Date <= '${end}') ` +
       `and Deal_Type_New_or_Existing = 'Hunting' ` +
-      `and Stage != 'Closed Lost' ` +
       `limit ${offset},${pageSize}`;
     const page = await coql(token, query);
     rows.push(...page);
@@ -418,8 +417,12 @@ Deno.serve(async (req: Request) => {
     if (nrrErr) throw nrrErr;
 
     // ---- Hunting pipeline (all hunting deals, any probability) ----
-    const huntingRaw = await fetchHuntingPipelineDeals(token, dayBefore, end);
-    console.log(`Hunting pipeline raw: ${huntingRaw.length}`);
+    const huntingRawAll = await fetchHuntingPipelineDeals(token, dayBefore, end);
+    const huntingRaw = huntingRawAll.filter(d => {
+      const stage = typeof d.Stage === 'string' ? d.Stage : extractName(d.Stage);
+      return stage !== 'Closed Lost';
+    });
+    console.log(`Hunting pipeline raw: ${huntingRawAll.length}, after Closed Lost filter: ${huntingRaw.length}`);
 
     // Collect any account IDs in hunting deals that need name resolution
     const huntingAccountIds = new Set<string>();
