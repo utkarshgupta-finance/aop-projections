@@ -16,14 +16,15 @@
     --border:         rgba(11,11,11,0.10);
     --good:           #0ca30c;
     --warning:        #fab219;
-    --series-1: #2a78d6; /* KAM BU */
-    --series-2: #1baf7a; /* MEA BU */
-    --series-3: #eda100; /* SEA BU */
-    --series-4: #008300; /* BAT BU */
-    --series-5: #4a3aa7; /* India MM BU */
-    --series-6: #e34948; /* India ENT BU */
-    --series-7: #e87ba4; /* SME BU */
-    --series-8: #eb6834; /* fallback / new BU */
+    --bad:            #d03b3b;
+    --series-1: #2a78d6;
+    --series-2: #1baf7a;
+    --series-3: #eda100;
+    --series-4: #008300;
+    --series-5: #4a3aa7;
+    --series-6: #e34948;
+    --series-7: #e87ba4;
+    --series-8: #eb6834;
   }
   @media (prefers-color-scheme: dark) {
     .viz-root {
@@ -37,6 +38,7 @@
       --border:         rgba(255,255,255,0.10);
       --good:           #0ca30c;
       --warning:        #fab219;
+      --bad:            #e05555;
       --series-1: #3987e5;
       --series-2: #199e70;
       --series-3: #c98500;
@@ -48,21 +50,23 @@
     }
   }
   * { box-sizing: border-box; }
-  body {
-    margin: 0;
-    background: var(--page);
-    color: var(--text-primary);
-    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
-  }
+  body { margin: 0; background: var(--page); color: var(--text-primary); font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
   a { color: inherit; }
   .wrap { max-width: 1280px; margin: 0 auto; padding: 32px 20px 64px; }
-  .topbar { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
-  h1 { font-size: 20px; margin: 0 0 4px; }
-  .subtitle { color: var(--text-secondary); font-size: 13px; margin: 0 0 20px; }
+  .topbar { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 4px; }
+  h1 { font-size: 20px; margin: 0 0 2px; }
+  .subtitle { color: var(--text-secondary); font-size: 13px; margin: 0 0 16px; }
   .settings-link { font-size: 12px; color: var(--text-secondary); text-decoration: none; border: 1px solid var(--border); border-radius: 6px; padding: 5px 10px; }
   .settings-link:hover { color: var(--text-primary); }
   .topbar-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
   .last-sync { font-size: 11px; color: var(--text-muted); white-space: nowrap; }
+  .quarter-select {
+    appearance: none; font: inherit; font-size: 12px; font-weight: 600;
+    padding: 5px 24px 5px 10px; border-radius: 6px; border: 1px solid var(--border);
+    background: var(--surface-1) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23898781'/%3E%3C/svg%3E") no-repeat right 8px center;
+    color: var(--text-secondary); cursor: pointer;
+  }
+  .quarter-select:hover { color: var(--text-primary); border-color: var(--text-secondary); }
   .sync-btn {
     appearance: none; font: inherit; font-size: 12px; font-weight: 600;
     padding: 5px 12px; border-radius: 6px; border: 1px solid var(--border);
@@ -70,7 +74,7 @@
   }
   .sync-btn:hover:not(:disabled) { color: var(--text-primary); border-color: var(--text-secondary); }
   .sync-btn:disabled { opacity: 0.55; cursor: default; }
-  .tab-group { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
+  .tab-group { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; flex-wrap: wrap; }
   .tab-group-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.02em; color: var(--text-muted); width: 90px; flex-shrink: 0; }
   .tabs { display: flex; gap: 4px; flex-wrap: wrap; }
   .tab-btn {
@@ -80,16 +84,12 @@
   }
   .tab-btn:hover { color: var(--text-primary); border-color: var(--border); }
   .tab-btn.active { color: #fff; background: var(--series-1); }
+  .tab-group.view .tab-btn.active  { background: #222; }
+  @media (prefers-color-scheme: dark) { .tab-group.view .tab-btn.active { background: #fff; color: #000; } }
   .tab-group.type .tab-btn.active { background: var(--series-5); }
-  .tab-group.bu .tab-btn.active { background: var(--series-7); }
-  .tab-divider { border-bottom: 1px solid var(--border); margin: 12px 0 20px; }
-  .card {
-    background: var(--surface-1);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 20px;
-    margin-bottom: 20px;
-  }
+  .tab-group.bu   .tab-btn.active { background: var(--series-7); }
+  .tab-divider { border-bottom: 1px solid var(--border); margin: 10px 0 20px; }
+  .card { background: var(--surface-1); border: 1px solid var(--border); border-radius: 10px; padding: 20px; margin-bottom: 20px; }
   .card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
   .card h2 { font-size: 14px; margin: 0; color: var(--text-secondary); font-weight: 600; text-transform: uppercase; letter-spacing: 0.02em; }
   .card h2 .hint { text-transform: none; font-weight: 400; letter-spacing: normal; color: var(--text-muted); }
@@ -116,10 +116,7 @@
   .bar-fill.neg { right: 0; border-radius: 3px 0 0 3px; }
   .bar-fill.pos { left: 0; border-radius: 0 3px 3px 0; }
   .target-tick { position: absolute; top: -5px; bottom: -5px; width: 2px; background: var(--text-primary); }
-  .target-tick::after {
-    content: attr(data-label); position: absolute; top: -18px; left: 50%; transform: translateX(-50%);
-    font-size: 10px; color: var(--text-muted); white-space: nowrap; font-variant-numeric: tabular-nums;
-  }
+  .target-tick::after { content: attr(data-label); position: absolute; top: -18px; left: 50%; transform: translateX(-50%); font-size: 10px; color: var(--text-muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
   .bar-value { font-size: 12px; color: var(--text-primary); font-variant-numeric: tabular-nums; margin-left: 8px; white-space: nowrap; width: 110px; }
   .split-row { display: flex; height: 28px; border-radius: 6px; overflow: hidden; }
   .split-seg { display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; color: #fff; }
@@ -128,10 +125,7 @@
   .legend-swatch { width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; }
   .legend-swatch.tick { width: 2px; height: 12px; border-radius: 0; background: var(--text-primary) !important; }
   .table-controls { display: flex; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; align-items: center; }
-  .search-input {
-    flex: 1; min-width: 220px; font: inherit; font-size: 13px; padding: 7px 10px;
-    border: 1px solid var(--border); border-radius: 6px; background: var(--surface-1); color: var(--text-primary);
-  }
+  .search-input { flex: 1; min-width: 220px; font: inherit; font-size: 13px; padding: 7px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface-1); color: var(--text-primary); }
   .filter-select { font: inherit; font-size: 13px; padding: 7px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface-1); color: var(--text-primary); }
   .result-count { font-size: 12px; color: var(--text-muted); white-space: nowrap; }
   .table-scroll { overflow-x: auto; }
@@ -142,20 +136,28 @@
   th[data-sort]:hover { color: var(--text-primary); }
   th .sort-arrow { color: var(--text-muted); margin-left: 3px; }
   td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
-  td.name-cell { white-space: normal; min-width: 220px; }
+  td.name-cell { white-space: normal; min-width: 200px; }
   .name-chain { color: var(--text-muted); }
   .name-chain .arrow { margin: 0 4px; }
   .muted { color: var(--text-muted); }
   .total-row td { font-weight: 700; background: var(--page); border-bottom: 2px solid var(--border); }
+  .month-group-row td { font-weight: 700; background: var(--page); color: var(--text-secondary); font-size: 12px; text-transform: uppercase; letter-spacing: 0.03em; padding: 10px 10px 6px; border-bottom: none; border-top: 2px solid var(--border); }
+  .month-total-row td { font-weight: 600; background: rgba(11,11,11,0.03); font-size: 12px; }
+  @media (prefers-color-scheme: dark) { .month-total-row td { background: rgba(255,255,255,0.04); } }
   .error { color: #d03b3b; font-size: 13px; }
   td.var-pos { color: var(--good); background: rgba(12,163,12,0.08) !important; font-weight: 600; }
-  td.var-neg { color: #d03b3b; background: rgba(208,59,59,0.08) !important; font-weight: 600; }
+  td.var-neg { color: var(--bad); background: rgba(208,59,59,0.08) !important; font-weight: 600; }
   tr:hover td { background: rgba(11,11,11,0.03); }
   @media (prefers-color-scheme: dark) { tr:hover td { background: rgba(255,255,255,0.04); } }
   .zoho-link { text-decoration: none; border-bottom: 1px dotted var(--text-muted); }
   .zoho-link:hover { border-bottom-style: solid; }
   .ref-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; }
   .ref-table td, .ref-table th { padding: 6px 10px; }
+  .summary-section-title { font-size: 13px; font-weight: 700; color: var(--text-secondary); margin: 0 0 12px; padding-bottom: 8px; border-bottom: 1px solid var(--border); text-transform: uppercase; letter-spacing: 0.04em; }
+  .hunting-grand-total td { font-weight: 700; background: var(--page); border-top: 2px solid var(--border); border-bottom: 2px solid var(--border); }
+  .prob-high { color: var(--good); font-weight: 600; }
+  .prob-mid  { color: var(--warning); font-weight: 600; }
+  .prob-low  { color: var(--text-muted); }
 </style>
 </head>
 <body>
@@ -168,14 +170,15 @@
       </div>
       <div class="topbar-actions">
         <span class="last-sync" id="last-sync"></span>
+        <select class="quarter-select" id="quarter-select"></select>
         <button class="sync-btn" id="sync-btn">Sync Zoho</button>
         <a class="settings-link" href="settings.html">Settings</a>
       </div>
     </div>
-    <div class="tab-group metric"><span class="tab-group-label">Metric</span><div class="tabs" id="metric-tabs"></div></div>
-    <div class="tab-group period"><span class="tab-group-label">Period</span><div class="tabs" id="period-tabs"></div></div>
-    <div class="tab-group type"><span class="tab-group-label">Type</span><div class="tabs" id="type-tabs"></div></div>
-    <div class="tab-group bu"><span class="tab-group-label">Business Unit</span><div class="tabs" id="bu-tabs"></div></div>
+    <div class="tab-group view"><span class="tab-group-label">View</span><div class="tabs" id="view-tabs"></div></div>
+    <div class="tab-group period" id="period-group"><span class="tab-group-label">Period</span><div class="tabs" id="period-tabs"></div></div>
+    <div class="tab-group type" id="type-group"><span class="tab-group-label">Type</span><div class="tabs" id="type-tabs"></div></div>
+    <div class="tab-group bu" id="bu-group"><span class="tab-group-label">Business Unit</span><div class="tabs" id="bu-tabs"></div></div>
     <div class="tab-divider"></div>
     <div id="content"></div>
   </div>
@@ -187,33 +190,60 @@ const SUPABASE_KEY = 'sb_publishable__ZX4BeZvlMqaYi8MWrP2Kg_itCCcMFZ';
 const ZOHO_DEAL_URL = id => `https://crm.zoho.com/crm/org60001177108/tab/Potentials/${id}`;
 
 const BU_COLOR_VAR = { 'KAM BU': '--series-1', 'MEA BU': '--series-2', 'SEA BU': '--series-3', 'BAT BU': '--series-4', 'India MM BU': '--series-5', 'India ENT BU': '--series-6', 'SME BU': '--series-7' };
+const BU_ORDER = ['KAM BU', 'MEA BU', 'SEA BU', 'BAT BU', 'India MM BU', 'India ENT BU', 'SME BU'];
+const MONTH_ABBR = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const MONTH_FULL = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+
+const QUARTERS = [
+  { key: '2026-Q2', label: 'Q2 2026', year: 2026, q: 2, months: [4,5,6] },
+  { key: '2026-Q3', label: 'Q3 2026', year: 2026, q: 3, months: [7,8,9] },
+  { key: '2026-Q4', label: 'Q4 2026', year: 2026, q: 4, months: [10,11,12] },
+  { key: '2027-Q1', label: 'Q1 2027', year: 2027, q: 1, months: [1,2,3] },
+  { key: '2027-Q2', label: 'Q2 2027', year: 2027, q: 2, months: [4,5,6] },
+];
+
+function computePeriodTabs(qKey) {
+  const q = QUARTERS.find(x => x.key === qKey) || QUARTERS[1];
+  const qLabel = q.months.map(m => MONTH_ABBR[m-1][0]).join('');
+  return [
+    ...q.months.map((m, i) => ({
+      key: `M${i+1}`,
+      label: MONTH_FULL[m-1],
+      months: [m],
+      settingsPeriod: `${MONTH_FULL[m-1]} ${q.year}`,
+    })),
+    { key: 'Q', label: qLabel, months: q.months, settingsPeriod: null },
+  ];
+}
+
+const VIEW_MODES = [
+  { key: 'review',  label: 'Review' },
+  { key: 'summary', label: 'Summary' },
+  { key: 'hunting', label: 'Hunting Pipeline' },
+];
+const TYPE_TABS = [
+  { key: 'combined', label: 'Combined' },
+  { key: 'Farming',  label: 'Farming' },
+  { key: 'Hunting',  label: 'Hunting' },
+];
 const METRIC_TABS = [
   { key: 'MRR', label: 'MRR' },
   { key: 'NRR', label: 'NRR' },
 ];
-const TYPE_TABS = [
-  { key: 'combined', label: 'Combined' },
-  { key: 'Farming', label: 'Farming' },
-  { key: 'Hunting', label: 'Hunting' },
-];
-const PERIOD_TABS = [
-  { key: 'July', label: 'July', months: [7], settingsPeriod: 'July 2026' },
-  { key: 'August', label: 'August', months: [8], settingsPeriod: 'August 2026' },
-  { key: 'September', label: 'September', months: [9], settingsPeriod: 'September 2026' },
-  { key: 'JAS', label: 'JAS', months: [7, 8, 9], settingsPeriod: null },
-];
 
-let DEALS = [], MRR_SNAPSHOTS = [], NRR_SNAPSHOTS = [], BU_TARGETS = [], TARGET_SETTINGS = [], NRR_TARGETS = [], BASELINE = [];
+let DEALS = [], MRR_SNAPSHOTS = [], NRR_SNAPSHOTS = [], BU_TARGETS = [], TARGET_SETTINGS = [], NRR_TARGETS = [], BASELINE = [], HUNTING_PIPELINE = [];
 let MRR_DATES = [], NRR_DATES = [], BU_TAB_LIST = [];
-let currentMetric = 'MRR';
-let currentTypeTab = 'combined';
-let currentPeriodTab = 'JAS';
-let currentBU = '';
-let buViewMode = 'table';
-let searchText = '';
-let tableBuFilter = '';
-let sortKey = '__latest';
-let sortDir = 'desc';
+let currentViewMode   = 'review';
+let currentQuarter    = '2026-Q3';
+let currentMetric     = 'MRR';
+let currentTypeTab    = 'combined';
+let currentPeriodTab  = 'Q';
+let currentBU         = '';
+let buViewMode        = 'table';
+let searchText        = '';
+let tableBuFilter     = '';
+let sortKey           = '__latest';
+let sortDir           = 'desc';
 
 function fmtINR(n) {
   const sign = n < 0 ? '-' : '';
@@ -224,13 +254,11 @@ async function sb(path) {
   const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
     headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` },
   });
-  if (!res.ok) throw new Error(`Supabase request failed: ${res.status} ${await res.text()}`);
+  if (!res.ok) throw new Error(`Supabase ${path}: ${res.status} ${await res.text()}`);
   return res.json();
 }
 
-function colorVar(bu) {
-  return `var(${BU_COLOR_VAR[bu] || '--series-8'})`;
-}
+function colorVar(bu) { return `var(${BU_COLOR_VAR[bu] || '--series-8'})`; }
 
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -247,70 +275,80 @@ function fullNameChainText(deal) {
 }
 
 function activeSnapshots() { return currentMetric === 'MRR' ? MRR_SNAPSHOTS : NRR_SNAPSHOTS; }
-function activeDates() { return currentMetric === 'MRR' ? MRR_DATES : NRR_DATES; }
-function amountOf(row) { return Number(currentMetric === 'MRR' ? row.mrr_amount : row.nrr_amount); }
+function activeDates()     { return currentMetric === 'MRR' ? MRR_DATES : NRR_DATES; }
+function amountOf(row)     { return Number(currentMetric === 'MRR' ? row.mrr_amount : row.nrr_amount); }
 
-// Target for a BU in the given period tab.
-// MRR: JAS uses the base bu_targets row directly; July/August/September derive from
-// target_settings (percent of the JAS target, or an absolute override).
-// NRR: only a flat JAS target exists (nrr_targets) -- no monthly split has been defined yet.
-function targetFor(bu, periodTab) {
-  if (currentMetric === 'NRR') {
-    if (periodTab.key !== 'JAS') return undefined;
+function isFullQuarterTab(pt) { return pt.months.length >= 3; }
+
+function targetFor(bu, periodTab, metric) {
+  const m = metric ?? currentMetric;
+  if (m === 'NRR') {
+    if (!isFullQuarterTab(periodTab)) return undefined;
     const row = NRR_TARGETS.find(t => t.business_unit === bu);
     return row ? Number(row.target_amount) : undefined;
   }
   const jasTarget = BU_TARGETS.find(t => t.business_unit === bu);
-  const jasVal = jasTarget ? Number(jasTarget.target_amount) : undefined;
-  if (periodTab.key === 'JAS') return jasVal;
+  const jasVal    = jasTarget ? Number(jasTarget.target_amount) : undefined;
+  if (isFullQuarterTab(periodTab)) return jasVal;
   if (jasVal === undefined) return undefined;
   const setting = TARGET_SETTINGS.find(s => s.business_unit === bu && s.period === periodTab.settingsPeriod);
   if (!setting) return undefined;
   return setting.mode === 'absolute' ? Number(setting.value) : jasVal * (Number(setting.value) / 100);
 }
 
-function targetBUList() {
-  return [...new Set((currentMetric === 'NRR' ? NRR_TARGETS : BU_TARGETS).map(t => t.business_unit))];
+function targetBUList(metric) {
+  const m = metric ?? currentMetric;
+  return [...new Set((m === 'NRR' ? NRR_TARGETS : BU_TARGETS).map(t => t.business_unit))];
 }
 
 function dealInPeriod(deal, periodTab) {
-  if (periodTab.key === 'JAS') return true;
+  if (isFullQuarterTab(periodTab)) return true;
   if (!deal.closing_date) return false;
-  const month = Number(deal.closing_date.slice(5, 7));
-  return periodTab.months.includes(month);
+  return periodTab.months.includes(Number(deal.closing_date.slice(5, 7)));
 }
 
+// ---- Tab rendering ----
 function renderTabs() {
-  const metricEl = document.getElementById('metric-tabs');
-  metricEl.innerHTML = METRIC_TABS.map(t => `<button class="tab-btn ${t.key === currentMetric ? 'active' : ''}" data-metric="${t.key}">${t.label}</button>`).join('');
-  metricEl.querySelectorAll('.tab-btn').forEach(btn => {
-    btn.addEventListener('click', () => { currentMetric = btn.dataset.metric; sortKey = '__latest'; sortDir = 'desc'; render(); });
-  });
+  const PERIOD_TABS = computePeriodTabs(currentQuarter);
+  const isHunting = currentViewMode === 'hunting';
+  const isReview  = currentViewMode === 'review';
 
+  // Quarter selector
+  const qSel = document.getElementById('quarter-select');
+  qSel.innerHTML = QUARTERS.map(q => `<option value="${q.key}" ${q.key === currentQuarter ? 'selected' : ''}>${q.label}</option>`).join('');
+
+  // View mode tabs
+  const viewEl = document.getElementById('view-tabs');
+  viewEl.innerHTML = VIEW_MODES.map(v => `<button class="tab-btn ${v.key === currentViewMode ? 'active' : ''}" data-view="${v.key}">${v.label}</button>`).join('');
+  viewEl.querySelectorAll('.tab-btn').forEach(btn => btn.addEventListener('click', () => {
+    currentViewMode = btn.dataset.view;
+    renderTabs(); render();
+  }));
+
+  // Period tabs (hidden in Hunting mode)
+  document.getElementById('period-group').style.display = isHunting ? 'none' : '';
   const periodEl = document.getElementById('period-tabs');
-  periodEl.innerHTML = PERIOD_TABS.map(t => `<button class="tab-btn ${t.key === currentPeriodTab ? 'active' : ''}" data-period="${t.key}">${t.label}</button>`).join('');
-  periodEl.querySelectorAll('.tab-btn').forEach(btn => {
-    btn.addEventListener('click', () => { currentPeriodTab = btn.dataset.period; render(); });
-  });
+  periodEl.innerHTML = PERIOD_TABS.map(t => `<button class="tab-btn ${t.key === currentPeriodTab ? 'active' : ''}" data-period="${t.key}">${escapeHtml(t.label)}</button>`).join('');
+  periodEl.querySelectorAll('.tab-btn').forEach(btn => btn.addEventListener('click', () => { currentPeriodTab = btn.dataset.period; render(); }));
 
+  // Type tabs (only in Review mode)
+  document.getElementById('type-group').style.display = isReview ? '' : 'none';
   const typeEl = document.getElementById('type-tabs');
   typeEl.innerHTML = TYPE_TABS.map(t => `<button class="tab-btn ${t.key === currentTypeTab ? 'active' : ''}" data-type="${t.key}">${t.label}</button>`).join('');
-  typeEl.querySelectorAll('.tab-btn').forEach(btn => {
-    btn.addEventListener('click', () => { currentTypeTab = btn.dataset.type; render(); });
-  });
+  typeEl.querySelectorAll('.tab-btn').forEach(btn => btn.addEventListener('click', () => { currentTypeTab = btn.dataset.type; render(); }));
 
+  // BU tabs (only in Review mode)
+  document.getElementById('bu-group').style.display = isReview ? '' : 'none';
   const buEl = document.getElementById('bu-tabs');
   const buTabs = [{ key: '', label: 'All' }, ...BU_TAB_LIST.map(bu => ({ key: bu, label: bu }))];
   buEl.innerHTML = buTabs.map(t => `<button class="tab-btn ${t.key === currentBU ? 'active' : ''}" data-bu="${escapeHtml(t.key)}">${escapeHtml(t.label)}</button>`).join('');
-  buEl.querySelectorAll('.tab-btn').forEach(btn => {
-    btn.addEventListener('click', () => { currentBU = btn.dataset.bu; render(); });
-  });
+  buEl.querySelectorAll('.tab-btn').forEach(btn => btn.addEventListener('click', () => { currentBU = btn.dataset.bu; render(); }));
 }
 
 async function main() {
   const content = document.getElementById('content');
   try {
-    [DEALS, MRR_SNAPSHOTS, NRR_SNAPSHOTS, BU_TARGETS, TARGET_SETTINGS, NRR_TARGETS, BASELINE] = await Promise.all([
+    [DEALS, MRR_SNAPSHOTS, NRR_SNAPSHOTS, BU_TARGETS, TARGET_SETTINGS, NRR_TARGETS, BASELINE, HUNTING_PIPELINE] = await Promise.all([
       sb('deals?select=*'),
       sb('mrr_snapshots?select=*&order=snapshot_date.asc'),
       sb('nrr_snapshots?select=*&order=snapshot_date.asc'),
@@ -318,21 +356,23 @@ async function main() {
       sb('target_settings?select=*'),
       sb('nrr_targets?select=*'),
       sb('bu_baseline_mrr?select=*'),
+      sb('hunting_pipeline?select=*&order=closing_date.asc').catch(() => []),
     ]);
   } catch (err) {
-    content.innerHTML = `<div class="card"><p class="error">Failed to load data: ${err.message}</p></div>`;
+    content.innerHTML = `<div class="card"><p class="error">Failed to load data: ${escapeHtml(err.message)}</p></div>`;
     return;
   }
+
   MRR_DATES = [...new Set(MRR_SNAPSHOTS.map(s => s.snapshot_date))].sort();
   NRR_DATES = [...new Set(NRR_SNAPSHOTS.map(s => s.snapshot_date))].sort();
-  const knownOrder = ['KAM BU', 'MEA BU', 'SEA BU', 'BAT BU', 'India MM BU', 'India ENT BU', 'SME BU'];
+  const knownOrder = BU_ORDER;
   const seen = new Set(DEALS.map(d => d.business_unit || 'UNMAPPED'));
   BU_TAB_LIST = [
     ...knownOrder.filter(bu => seen.has(bu)),
     ...[...seen].filter(bu => bu !== 'UNMAPPED' && !knownOrder.includes(bu)).sort(),
     ...(seen.has('UNMAPPED') ? ['UNMAPPED'] : []),
   ];
-  // Show last sync time from the most recent deals.updated_at (written by sync.js on every run).
+
   const lastSyncTs = DEALS.reduce((max, d) => (!max || (d.updated_at && d.updated_at > max)) ? d.updated_at : max, null);
   const lastSyncEl = document.getElementById('last-sync');
   if (lastSyncTs && lastSyncEl) {
@@ -341,37 +381,32 @@ async function main() {
     lastSyncEl.textContent = `Synced ${fmt} IST`;
   }
 
-  // Sync button: calls the zoho-sync Edge Function directly.
-  // The function fetches from Zoho CRM and writes to Supabase (~30-60s),
-  // then returns a summary. Dashboard reloads and re-renders on success.
+  // Quarter selector change
+  document.getElementById('quarter-select').addEventListener('change', e => {
+    currentQuarter   = e.target.value;
+    currentPeriodTab = 'Q';
+    renderTabs(); render();
+  });
+
+  // Sync button: syncs the full selected quarter (all 3 months + hunting pipeline).
   document.getElementById('sync-btn').addEventListener('click', async () => {
     const btn = document.getElementById('sync-btn');
     btn.disabled = true;
-
-    // Show elapsed seconds while waiting for the Edge Function to finish.
     let elapsed = 0;
-    const timer = setInterval(() => {
-      elapsed++;
-      btn.textContent = `Syncing... ${elapsed}s`;
-    }, 1000);
+    const timer = setInterval(() => { elapsed++; btn.textContent = `Syncing... ${elapsed}s`; }, 1000);
     btn.textContent = 'Syncing... 0s';
-    lastSyncEl.textContent = 'Fetching deals from Zoho CRM — takes 30-60 seconds...';
+    lastSyncEl.textContent = 'Fetching from Zoho CRM (all 3 months + hunting pipeline)...';
 
     try {
       const res = await fetch(`${SUPABASE_URL}/functions/v1/zoho-sync`, {
         method: 'POST',
-        headers: {
-          apikey: SUPABASE_KEY,
-          Authorization: `Bearer ${SUPABASE_KEY}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({}),
+        headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ target_quarter: currentQuarter }),
       });
       const data = await res.json();
       if (!res.ok || !data.ok) throw new Error(data.error || `HTTP ${res.status}`);
 
-      // Reload all tables and re-render.
-      [DEALS, MRR_SNAPSHOTS, NRR_SNAPSHOTS, BU_TARGETS, TARGET_SETTINGS, NRR_TARGETS, BASELINE] = await Promise.all([
+      [DEALS, MRR_SNAPSHOTS, NRR_SNAPSHOTS, BU_TARGETS, TARGET_SETTINGS, NRR_TARGETS, BASELINE, HUNTING_PIPELINE] = await Promise.all([
         sb('deals?select=*'),
         sb('mrr_snapshots?select=*&order=snapshot_date.asc'),
         sb('nrr_snapshots?select=*&order=snapshot_date.asc'),
@@ -379,16 +414,16 @@ async function main() {
         sb('target_settings?select=*'),
         sb('nrr_targets?select=*'),
         sb('bu_baseline_mrr?select=*'),
+        sb('hunting_pipeline?select=*&order=closing_date.asc').catch(() => []),
       ]);
       MRR_DATES = [...new Set(MRR_SNAPSHOTS.map(s => s.snapshot_date))].sort();
       NRR_DATES = [...new Set(NRR_SNAPSHOTS.map(s => s.snapshot_date))].sort();
 
       const now = new Date();
       const fmt = now.toLocaleString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' });
-      lastSyncEl.textContent = `Synced ${fmt} IST · ${data.deals_upserted} deals · ${data.mrr_rows} MRR · ${data.nrr_rows} NRR${data.flagged ? ` · ${data.flagged} flagged` : ''}`;
+      lastSyncEl.textContent = `Synced ${fmt} IST · ${data.deals_upserted} deals · ${data.mrr_rows} MRR · ${data.nrr_rows} NRR · ${data.hunting_upserted ?? 0} hunting${data.flagged ? ` · ${data.flagged} flagged` : ''}`;
 
-      renderTabs();
-      render();
+      renderTabs(); render();
     } catch (err) {
       lastSyncEl.textContent = `Sync failed: ${err.message}`;
     }
@@ -403,17 +438,30 @@ async function main() {
 }
 
 function render() {
-  const content = document.getElementById('content');
-  document.querySelectorAll('#metric-tabs .tab-btn').forEach(b => b.classList.toggle('active', b.dataset.metric === currentMetric));
+  // Sync tab active states
+  const PERIOD_TABS = computePeriodTabs(currentQuarter);
+  document.querySelectorAll('#view-tabs .tab-btn').forEach(b => b.classList.toggle('active', b.dataset.view === currentViewMode));
   document.querySelectorAll('#period-tabs .tab-btn').forEach(b => b.classList.toggle('active', b.dataset.period === currentPeriodTab));
   document.querySelectorAll('#type-tabs .tab-btn').forEach(b => b.classList.toggle('active', b.dataset.type === currentTypeTab));
   document.querySelectorAll('#bu-tabs .tab-btn').forEach(b => b.classList.toggle('active', b.dataset.bu === currentBU));
 
-  const metric = currentMetric;
+  if (currentViewMode === 'summary') { renderSummaryView(); return; }
+  if (currentViewMode === 'hunting') { renderHuntingView(); return; }
+  renderReviewView();
+}
+
+// ============================================================
+// REVIEW VIEW (original dashboard)
+// ============================================================
+function renderReviewView() {
+  const PERIOD_TABS = computePeriodTabs(currentQuarter);
+  const content  = document.getElementById('content');
+  const metric   = currentMetric;
   const snapshots = activeSnapshots();
-  const dates = activeDates();
-  const periodTab = PERIOD_TABS.find(p => p.key === currentPeriodTab);
+  const dates    = activeDates();
+  const periodTab = PERIOD_TABS.find(p => p.key === currentPeriodTab) || PERIOD_TABS[PERIOD_TABS.length - 1];
   const dealsById = new Map(DEALS.map(d => [d.deal_id, d]));
+
   const inScope = dealId => {
     const d = dealsById.get(dealId);
     if (!d) return false;
@@ -426,10 +474,9 @@ function render() {
   document.getElementById('subtitle').textContent = latestDate
     ? `Latest ${metric} snapshot: ${latestDate} . ${dates.length} snapshot${dates.length === 1 ? '' : 's'} tracked`
     : `No ${metric} snapshots recorded yet`;
-  const latest = snapshots.filter(s => s.snapshot_date === latestDate && inScope(s.deal_id));
 
-  // ---- Stat tiles ----
-  const total = latest.reduce((a, s) => a + amountOf(s), 0);
+  const latest = snapshots.filter(s => s.snapshot_date === latestDate && inScope(s.deal_id));
+  const total  = latest.reduce((a, s) => a + amountOf(s), 0);
   const farmingTotal = snapshots.filter(s => s.snapshot_date === latestDate && dealsById.get(s.deal_id)?.deal_type === 'Farming' && inScope(s.deal_id)).reduce((a, s) => a + amountOf(s), 0);
   const huntingTotal = snapshots.filter(s => s.snapshot_date === latestDate && dealsById.get(s.deal_id)?.deal_type === 'Hunting' && inScope(s.deal_id)).reduce((a, s) => a + amountOf(s), 0);
   const unmappedDeals = latest.filter(s => (dealsById.get(s.deal_id)?.business_unit || 'UNMAPPED') === 'UNMAPPED');
@@ -439,25 +486,15 @@ function render() {
     : allBUs.reduce((a, bu) => a + (targetFor(bu, periodTab) || 0), 0);
   const attainment = targetTotal ? (total / targetTotal) * 100 : null;
 
-  let statTiles = `
-    <div class="stat-tile"><div class="stat-label">Total ${metric}${latestDate ? ` (${latestDate})` : ''}</div><div class="stat-value">${fmtINR(total)}</div></div>`;
+  let statTiles = `<div class="stat-tile"><div class="stat-label">Total ${metric}${latestDate ? ` (${latestDate})` : ''}</div><div class="stat-value">${fmtINR(total)}</div></div>`;
   if (currentTypeTab === 'combined') {
     statTiles += `
-    <div class="stat-tile">
-      <div class="stat-label">Target (${periodTab.label})</div>
-      <div class="stat-value">${fmtINR(targetTotal)}</div>
-      <div class="stat-sub">${attainment === null ? '' : attainment.toFixed(1) + '% attained'}</div>
-    </div>
+    <div class="stat-tile"><div class="stat-label">Target (${periodTab.label})</div><div class="stat-value">${fmtINR(targetTotal)}</div><div class="stat-sub">${attainment === null ? '' : attainment.toFixed(1) + '% attained'}</div></div>
     <div class="stat-tile"><div class="stat-label">Farming ${metric}</div><div class="stat-value">${fmtINR(farmingTotal)}</div></div>
     <div class="stat-tile"><div class="stat-label">Hunting ${metric}</div><div class="stat-value">${fmtINR(huntingTotal)}</div></div>`;
   }
-  statTiles += `
-    <div class="stat-tile">
-      <div class="stat-label">Unmapped deals</div>
-      <div class="stat-value ${unmappedDeals.length ? 'warn' : ''}">${unmappedDeals.length}</div>
-    </div>`;
+  statTiles += `<div class="stat-tile"><div class="stat-label">Unmapped deals</div><div class="stat-value ${unmappedDeals.length ? 'warn' : ''}">${unmappedDeals.length}</div></div>`;
 
-  // ---- Metric by Business Unit ----
   const buTotals = new Map();
   for (const s of latest) {
     const bu = dealsById.get(s.deal_id)?.business_unit || 'UNMAPPED';
@@ -465,29 +502,17 @@ function render() {
   }
   const showTargets = currentTypeTab === 'combined' && !currentBU;
   const buScope = currentBU ? [currentBU] : allBUs;
-  if (currentTypeTab === 'combined') {
-    // A BU with a target but zero deals this week is a full miss, not a row to hide.
-    for (const bu of buScope) if (!buTotals.has(bu)) buTotals.set(bu, 0);
-  }
-  if (currentBU) {
-    for (const [bu] of [...buTotals]) if (bu !== currentBU) buTotals.delete(bu);
-  }
+  if (currentTypeTab === 'combined') for (const bu of buScope) if (!buTotals.has(bu)) buTotals.set(bu, 0);
+  if (currentBU) for (const [bu] of [...buTotals]) if (bu !== currentBU) buTotals.delete(bu);
   const buRows = [...buTotals.entries()].sort((a, b) => b[1] - a[1]);
-  const maxAbs = Math.max(
-    ...buRows.map(([, v]) => Math.abs(v)),
-    ...(showTargets ? allBUs.map(bu => targetFor(bu, periodTab) || 0) : []),
-    1
-  );
+  const maxAbs = Math.max(...buRows.map(([, v]) => Math.abs(v)), ...(showTargets ? allBUs.map(bu => targetFor(bu, periodTab) || 0) : []), 1);
 
-  // ---- Trend over time ----
   const trend = dates.map(date => ({
-    date,
-    total: snapshots.filter(s => s.snapshot_date === date && inScope(s.deal_id)).reduce((a, s) => a + amountOf(s), 0),
+    date, total: snapshots.filter(s => s.snapshot_date === date && inScope(s.deal_id)).reduce((a, s) => a + amountOf(s), 0),
   }));
 
   content.innerHTML = `
     <div class="stat-row">${statTiles}</div>
-
     <div class="card">
       <div class="card-head">
         <h2>${metric} by Business Unit ${showTargets ? `<span class="hint">vs ${periodTab.label} target</span>` : ''}</h2>
@@ -504,62 +529,42 @@ function render() {
         ${showTargets ? `<div class="legend-item"><span class="legend-swatch tick"></span>Target</div>` : ''}
       </div>` : ''}
     </div>
-
-    ${currentTypeTab === 'combined' ? `
-    <div class="card">
-      <h2>Farming vs Hunting</h2>
-      <div id="split-chart"></div>
-    </div>` : ''}
-
-    <div class="card">
-      <h2>${metric} trend over time</h2>
-      <div id="trend-chart"></div>
-    </div>
-
+    ${currentTypeTab === 'combined' ? `<div class="card"><h2>Farming vs Hunting</h2><div id="split-chart"></div></div>` : ''}
+    <div class="card"><h2>${metric} trend over time</h2><div id="trend-chart"></div></div>
     <div class="card">
       <h2>Reference: current book and NRR targets</h2>
       <div class="ref-grid">
-        <div>
-          <table class="ref-table">
-            <thead><tr><th>Business Unit</th><th class="num">Current MRR (June exit)</th></tr></thead>
-            <tbody>
-              <tr class="total-row"><td>Total</td><td class="num">${fmtINR(BASELINE.reduce((a, b) => a + Number(b.mrr_amount), 0))}</td></tr>
-              ${BASELINE.slice().sort((a, b) => Number(b.mrr_amount) - Number(a.mrr_amount)).map(b => `<tr><td>${escapeHtml(b.business_unit)}</td><td class="num">${fmtINR(Number(b.mrr_amount))}</td></tr>`).join('')}
-            </tbody>
-          </table>
-        </div>
-        <div>
-          <table class="ref-table">
-            <thead><tr><th>Business Unit</th><th class="num">NRR Target (${NRR_TARGETS[0]?.period || ''})</th></tr></thead>
-            <tbody>
-              <tr class="total-row"><td>Total</td><td class="num">${fmtINR(NRR_TARGETS.reduce((a, b) => a + Number(b.target_amount), 0))}</td></tr>
-              ${NRR_TARGETS.slice().sort((a, b) => Number(b.target_amount) - Number(a.target_amount)).map(b => `<tr><td>${escapeHtml(b.business_unit)}</td><td class="num">${fmtINR(Number(b.target_amount))}</td></tr>`).join('')}
-            </tbody>
-          </table>
-        </div>
+        <div><table class="ref-table">
+          <thead><tr><th>Business Unit</th><th class="num">Current MRR (June exit)</th></tr></thead>
+          <tbody>
+            <tr class="total-row"><td>Total</td><td class="num">${fmtINR(BASELINE.reduce((a, b) => a + Number(b.mrr_amount), 0))}</td></tr>
+            ${BASELINE.slice().sort((a, b) => Number(b.mrr_amount) - Number(a.mrr_amount)).map(b => `<tr><td>${escapeHtml(b.business_unit)}</td><td class="num">${fmtINR(Number(b.mrr_amount))}</td></tr>`).join('')}
+          </tbody>
+        </table></div>
+        <div><table class="ref-table">
+          <thead><tr><th>Business Unit</th><th class="num">NRR Target (${NRR_TARGETS[0]?.period || ''})</th></tr></thead>
+          <tbody>
+            <tr class="total-row"><td>Total</td><td class="num">${fmtINR(NRR_TARGETS.reduce((a, b) => a + Number(b.target_amount), 0))}</td></tr>
+            ${NRR_TARGETS.slice().sort((a, b) => Number(b.target_amount) - Number(a.target_amount)).map(b => `<tr><td>${escapeHtml(b.business_unit)}</td><td class="num">${fmtINR(Number(b.target_amount))}</td></tr>`).join('')}
+          </tbody>
+        </table></div>
       </div>
     </div>
-
     <div class="card">
       <h2>Deals - ${metric} by snapshot date</h2>
       <div class="table-controls">
-        <input class="search-input" id="deal-search" type="text" placeholder="Search deal id, deal name, account, BU, type..." value="${escapeHtml(searchText)}">
-        <select class="filter-select" id="bu-filter">
-          <option value="">All business units</option>
-        </select>
+        <input class="search-input" id="deal-search" type="text" placeholder="Search deal id, name, account, BU, type..." value="${escapeHtml(searchText)}">
+        <select class="filter-select" id="bu-filter"><option value="">All business units</option></select>
         <span class="result-count" id="result-count"></span>
       </div>
       <div id="deals-table"></div>
-    </div>
-  `;
+    </div>`;
 
   renderBUView(buRows, maxAbs, showTargets, periodTab);
-
   document.getElementById('bu-view-toggle').querySelectorAll('button').forEach(btn => {
     btn.addEventListener('click', () => { buViewMode = btn.dataset.mode; render(); });
   });
 
-  // Farming vs Hunting split (combined type tab only)
   if (currentTypeTab === 'combined') {
     const splitChart = document.getElementById('split-chart');
     const splitTotal = Math.abs(farmingTotal) + Math.abs(huntingTotal) || 1;
@@ -567,22 +572,20 @@ function render() {
     const huntPct = 100 - farmPct;
     splitChart.innerHTML = `
       <div class="split-row">
-        <div class="split-seg" style="width:${farmPct}%; background:var(--series-1);" title="Farming: ${fmtINR(farmingTotal)}">${farmPct > 12 ? 'Farming' : ''}</div>
-        <div class="split-seg" style="width:${huntPct}%; background:var(--series-6);" title="Hunting: ${fmtINR(huntingTotal)}">${huntPct > 12 ? 'Hunting' : ''}</div>
+        <div class="split-seg" style="width:${farmPct}%;background:var(--series-1);" title="Farming: ${fmtINR(farmingTotal)}">${farmPct > 12 ? 'Farming' : ''}</div>
+        <div class="split-seg" style="width:${huntPct}%;background:var(--series-6);" title="Hunting: ${fmtINR(huntingTotal)}">${huntPct > 12 ? 'Hunting' : ''}</div>
       </div>
       <div class="legend">
         <div class="legend-item"><span class="legend-swatch" style="background:var(--series-1);"></span>Farming . ${fmtINR(farmingTotal)}</div>
         <div class="legend-item"><span class="legend-swatch" style="background:var(--series-6);"></span>Hunting . ${fmtINR(huntingTotal)}</div>
-      </div>
-    `;
+      </div>`;
   }
 
-  // Trend line (SVG)
   const trendChart = document.getElementById('trend-chart');
   if (trend.length === 0) {
     trendChart.innerHTML = `<p class="muted">No ${metric} snapshots recorded yet for this view.</p>`;
   } else if (trend.length === 1) {
-    trendChart.innerHTML = `<p class="muted">Only one snapshot recorded so far (${trend[0].date}: ${fmtINR(trend[0].total)}). Trend line will appear once weekly syncs accumulate more dates.</p>`;
+    trendChart.innerHTML = `<p class="muted">Only one snapshot recorded so far (${trend[0].date}: ${fmtINR(trend[0].total)}). More snapshots needed for a trend line.</p>`;
   } else {
     const w = 1000, h = 220, padL = 70, padB = 30, padT = 20, padR = 20;
     const vals = trend.map(t => t.total);
@@ -598,25 +601,15 @@ function render() {
     }).join('');
     const dots = trend.map((t, i) => `<circle cx="${x(i)}" cy="${y(t.total)}" r="4" fill="var(--series-1)" stroke="var(--surface-1)" stroke-width="2"><title>${t.date}: ${fmtINR(t.total)}</title></circle>`).join('');
     const labels = trend.map((t, i) => `<text x="${x(i)}" y="${h - 8}" font-size="11" fill="var(--text-muted)" text-anchor="middle">${t.date}</text>`).join('');
-    trendChart.innerHTML = `<svg viewBox="0 0 ${w} ${h}" width="100%" height="${h}">
-      ${gridLines}
-      <polyline points="${points}" fill="none" stroke="var(--series-1)" stroke-width="2"/>
-      ${dots}
-      ${labels}
-    </svg>`;
+    trendChart.innerHTML = `<svg viewBox="0 0 ${w} ${h}" width="100%" height="${h}">${gridLines}<polyline points="${points}" fill="none" stroke="var(--series-1)" stroke-width="2"/>${dots}${labels}</svg>`;
   }
 
   tableCtx = { dealsById, periodTab, latestDate, snapshots, metric };
   renderDealsTable();
-
-  // Search/filter listeners are attached once per full page rebuild (tab switch), on the
-  // freshly-created input/select nodes. Typing calls renderDealsTable() directly, which only
-  // touches the table body/options -- never the input itself -- so focus and cursor position survive.
   document.getElementById('deal-search').addEventListener('input', e => { searchText = e.target.value; renderDealsTable(); });
   document.getElementById('bu-filter').addEventListener('change', e => { tableBuFilter = e.target.value; renderDealsTable(); });
 }
 
-// Metric-by-BU section: table view (default) or diverging bar chart.
 function renderBUView(buRows, maxAbs, showTargets, periodTab) {
   const el = document.getElementById('bu-view');
   if (buRows.length === 0) { el.innerHTML = '<p class="muted">No deals in this view for the latest snapshot.</p>'; return; }
@@ -636,27 +629,18 @@ function renderBUView(buRows, maxAbs, showTargets, periodTab) {
     const totalVal = buRows.reduce((a, [, v]) => a + v, 0);
     const totalTarget = showTargets ? buRows.reduce((a, [bu]) => a + (targetFor(bu, periodTab) || 0), 0) : undefined;
     const totalAttain = totalTarget ? (totalVal / totalTarget) * 100 : null;
-    const totalRow = `<tr class="total-row">
-      <td>Total</td>
-      <td class="num">${fmtINR(totalVal)}</td>
-      ${showTargets ? `<td class="num">${totalTarget === undefined ? '<span class="muted">-</span>' : fmtINR(totalTarget)}</td>
-      <td class="num">${totalAttain === null ? '<span class="muted">-</span>' : totalAttain.toFixed(1) + '%'}</td>` : ''}
-    </tr>`;
     el.innerHTML = `<div class="table-scroll"><table>
       <thead><tr><th>Business Unit</th><th class="num">Actual</th>${showTargets ? '<th class="num">Target</th><th class="num">Attainment</th>' : ''}</tr></thead>
-      <tbody>${totalRow}${rows}</tbody>
+      <tbody><tr class="total-row"><td>Total</td><td class="num">${fmtINR(totalVal)}</td>${showTargets ? `<td class="num">${totalTarget === undefined ? '<span class="muted">-</span>' : fmtINR(totalTarget)}</td><td class="num">${totalAttain === null ? '<span class="muted">-</span>' : totalAttain.toFixed(1) + '%'}</td>` : ''}</tr>${rows}</tbody>
     </table></div>`;
     return;
   }
 
-  // Diverging bar chart: net add (positive) vs net churn (negative) share a zero baseline,
-  // since a same-length fill on a one-sided bar would make a churning BU visually
-  // indistinguishable from a growing one. Target shown as a tick mark.
   el.innerHTML = '';
   buRows.forEach(([bu, val]) => {
     const pct = (Math.abs(val) / maxAbs) * 100;
     const isUnmapped = bu === 'UNMAPPED';
-    const fillColor = isUnmapped ? 'var(--warning)' : (val < 0 ? 'var(--series-6)' : 'var(--series-1)');
+    const fillColor  = isUnmapped ? 'var(--warning)' : (val < 0 ? 'var(--series-6)' : 'var(--series-1)');
     const target = showTargets ? targetFor(bu, periodTab) : undefined;
     const targetPct = target !== undefined ? (target / maxAbs) * 100 : null;
     const row = document.createElement('div');
@@ -665,14 +649,13 @@ function renderBUView(buRows, maxAbs, showTargets, periodTab) {
     row.innerHTML = `
       <div class="bar-label">${isUnmapped ? 'UNMAPPED' : escapeHtml(bu)}</div>
       <div class="bar-track">
-        <div class="bar-half">${val < 0 ? `<div class="bar-fill neg" style="width:${pct}%; background:${fillColor};"></div>` : ''}</div>
+        <div class="bar-half">${val < 0 ? `<div class="bar-fill neg" style="width:${pct}%;background:${fillColor};"></div>` : ''}</div>
         <div class="bar-half">
-          ${val >= 0 ? `<div class="bar-fill pos" style="width:${pct}%; background:${fillColor};"></div>` : ''}
+          ${val >= 0 ? `<div class="bar-fill pos" style="width:${pct}%;background:${fillColor};"></div>` : ''}
           ${targetPct !== null ? `<div class="target-tick" style="left:${targetPct}%;" data-label="${fmtINR(target)}"></div>` : ''}
         </div>
       </div>
-      <div class="bar-value">${fmtINR(val)}</div>
-    `;
+      <div class="bar-value">${fmtINR(val)}</div>`;
     el.appendChild(row);
   });
 }
@@ -694,7 +677,6 @@ function renderDealsTable() {
     .filter(d => dealInPeriod(d, periodTab))
     .filter(d => snapshotsByDeal.has(d.deal_id));
 
-  // BU filter dropdown -- populate options once per render from the full (pre-search) tab scope.
   const buOptions = [...new Set(tabDeals.map(d => d.business_unit || 'UNMAPPED'))].sort();
   const buFilterEl = document.getElementById('bu-filter');
   buFilterEl.innerHTML = `<option value="">All business units</option>` +
@@ -716,10 +698,10 @@ function renderDealsTable() {
   const comparator = (a, b) => {
     const byDateA = snapshotsByDeal.get(a.deal_id), byDateB = snapshotsByDeal.get(b.deal_id);
     let va, vb;
-    if (sortKey === '__latest') { va = byDateA.get(latestDate); vb = byDateB.get(latestDate); }
-    else if (dates.includes(sortKey)) { va = byDateA.get(sortKey); vb = byDateB.get(sortKey); }
-    else if (sortKey === 'deal_id') { va = a.deal_id; vb = b.deal_id; }
-    else if (sortKey === 'deal_name') { va = a.current_name; vb = b.current_name; }
+    if (sortKey === '__latest')      { va = byDateA.get(latestDate); vb = byDateB.get(latestDate); }
+    else if (dates.includes(sortKey)){ va = byDateA.get(sortKey); vb = byDateB.get(sortKey); }
+    else if (sortKey === 'deal_id')  { va = a.deal_id; vb = b.deal_id; }
+    else if (sortKey === 'deal_name'){ va = a.current_name; vb = b.current_name; }
     else if (sortKey === 'account_name') { va = a.account_name || ''; vb = b.account_name || ''; }
     else if (sortKey === 'business_unit') { va = a.business_unit || 'UNMAPPED'; vb = b.business_unit || 'UNMAPPED'; }
     else if (sortKey === 'deal_type') { va = a.deal_type || ''; vb = b.deal_type || ''; }
@@ -727,18 +709,14 @@ function renderDealsTable() {
       va = (byDateA?.get(latestDate) ?? 0) - (byDateA?.get(prevDate) ?? 0);
       vb = (byDateB?.get(latestDate) ?? 0) - (byDateB?.get(prevDate) ?? 0);
     }
-    const aMissing = va === undefined || va === null;
-    const bMissing = vb === undefined || vb === null;
+    const aMissing = va === undefined || va === null, bMissing = vb === undefined || vb === null;
     if (aMissing && bMissing) return 0;
     if (aMissing) return 1;
     if (bMissing) return -1;
-    let cmp;
-    if (typeof va === 'number' && typeof vb === 'number') cmp = va - vb;
-    else cmp = String(va).localeCompare(String(vb));
+    let cmp = (typeof va === 'number' && typeof vb === 'number') ? va - vb : String(va).localeCompare(String(vb));
     return sortDir === 'asc' ? cmp : -cmp;
   };
   tabDeals = tabDeals.sort(comparator);
-
   document.getElementById('result-count').textContent = `${tabDeals.length} deal${tabDeals.length === 1 ? '' : 's'}`;
 
   const arrow = key => key === sortKey ? `<span class="sort-arrow">${sortDir === 'asc' ? '↑' : '↓'}</span>` : '';
@@ -761,8 +739,7 @@ function renderDealsTable() {
       } else {
         const v = latV - prevV;
         const cls = v > 0 ? 'var-pos' : v < 0 ? 'var-neg' : '';
-        const str = v > 0 ? `+${fmtINR(v)}` : fmtINR(v);
-        varianceCell = `<td class="num ${cls}">${str}</td>`;
+        varianceCell = `<td class="num ${cls}">${v > 0 ? '+' : ''}${fmtINR(v)}</td>`;
       }
     }
     const link = ZOHO_DEAL_URL(d.deal_id);
@@ -775,17 +752,13 @@ function renderDealsTable() {
       ${dateCells}${varianceCell}
     </tr>`;
   }).join('');
+
   const dealsTable = document.getElementById('deals-table');
-  if (dates.length === 0) {
-    dealsTable.innerHTML = `<p class="muted">No ${metric} snapshots recorded yet.</p>`;
-    return;
-  }
+  if (dates.length === 0) { dealsTable.innerHTML = `<p class="muted">No ${metric} snapshots recorded yet.</p>`; return; }
+
   const totalCells = dates.map(date => {
     let sum = 0, any = false;
-    tabDeals.forEach(d => {
-      const v = snapshotsByDeal.get(d.deal_id).get(date);
-      if (v !== undefined) { sum += v; any = true; }
-    });
+    tabDeals.forEach(d => { const v = snapshotsByDeal.get(d.deal_id).get(date); if (v !== undefined) { sum += v; any = true; } });
     return `<td class="num">${any ? fmtINR(sum) : '<span class="muted">-</span>'}</td>`;
   }).join('');
   let totalVarianceCell = '';
@@ -794,8 +767,7 @@ function renderDealsTable() {
     const sumPrev   = tabDeals.reduce((a, d) => a + (snapshotsByDeal.get(d.deal_id)?.get(prevDate)   ?? 0), 0);
     const tv = sumLatest - sumPrev;
     const cls = tv > 0 ? 'var-pos' : tv < 0 ? 'var-neg' : '';
-    const str = tv > 0 ? `+${fmtINR(tv)}` : fmtINR(tv);
-    totalVarianceCell = `<td class="num ${cls}">${str}</td>`;
+    totalVarianceCell = `<td class="num ${cls}">${tv > 0 ? '+' : ''}${fmtINR(tv)}</td>`;
   }
   const totalRow = tabDeals.length ? `<tr class="total-row"><td colspan="5">Total (${tabDeals.length} deal${tabDeals.length === 1 ? '' : 's'})</td>${totalCells}${totalVarianceCell}</tr>` : '';
   dealsTable.innerHTML = `<div class="table-scroll"><table>
@@ -814,10 +786,201 @@ function renderDealsTable() {
     th.addEventListener('click', () => {
       const key = th.dataset.sort;
       if (sortKey === key) sortDir = sortDir === 'asc' ? 'desc' : 'asc';
-      else { sortKey = key; sortDir = key === '__latest' || key === '__variance' || dates.includes(key) ? 'desc' : 'asc'; }
+      else { sortKey = key; sortDir = (key === '__latest' || key === '__variance' || dates.includes(key)) ? 'desc' : 'asc'; }
       renderDealsTable();
     });
   });
+}
+
+// ============================================================
+// SUMMARY VIEW (BU x Farming/Hunting matrix)
+// ============================================================
+function renderSummaryView() {
+  const PERIOD_TABS = computePeriodTabs(currentQuarter);
+  const periodTab  = PERIOD_TABS.find(p => p.key === currentPeriodTab) || PERIOD_TABS[PERIOD_TABS.length - 1];
+  const dealsById  = new Map(DEALS.map(d => [d.deal_id, d]));
+  const latestMRR  = MRR_DATES[MRR_DATES.length - 1];
+  const latestNRR  = NRR_DATES[NRR_DATES.length - 1];
+
+  function buildSummaryRows(metric, snapshots, latestDate) {
+    const buList = [...new Set([
+      ...targetBUList(metric),
+      ...BU_ORDER.filter(bu => DEALS.some(d => d.business_unit === bu)),
+    ])].filter((v, i, a) => a.indexOf(v) === i);
+
+    return buList.map(bu => {
+      const farming = snapshots
+        .filter(s => s.snapshot_date === latestDate && dealsById.get(s.deal_id)?.business_unit === bu && dealsById.get(s.deal_id)?.deal_type === 'Farming' && dealInPeriod(dealsById.get(s.deal_id), periodTab))
+        .reduce((a, s) => a + Number(metric === 'MRR' ? s.mrr_amount : s.nrr_amount), 0);
+      const hunting = snapshots
+        .filter(s => s.snapshot_date === latestDate && dealsById.get(s.deal_id)?.business_unit === bu && dealsById.get(s.deal_id)?.deal_type === 'Hunting' && dealInPeriod(dealsById.get(s.deal_id), periodTab))
+        .reduce((a, s) => a + Number(metric === 'MRR' ? s.mrr_amount : s.nrr_amount), 0);
+      const total   = farming + hunting;
+      const target  = targetFor(bu, periodTab, metric);
+      const variance = target !== undefined ? total - target : null;
+      return { bu, farming, hunting, total, target, variance };
+    });
+  }
+
+  function summaryTableHtml(metric, rows, latestDate) {
+    if (!latestDate) return '<p class="muted">No snapshot data yet.</p>';
+    const totFarming  = rows.reduce((a, r) => a + r.farming, 0);
+    const totHunting  = rows.reduce((a, r) => a + r.hunting, 0);
+    const totTotal    = totFarming + totHunting;
+    const totTarget   = rows.reduce((a, r) => a + (r.target ?? 0), 0);
+    const totVariance = totTarget ? totTotal - totTarget : null;
+
+    const varCell = (v) => v === null
+      ? `<td class="num muted">-</td>`
+      : `<td class="num ${v >= 0 ? 'var-pos' : 'var-neg'}">${v >= 0 ? '+' : ''}${fmtINR(v)}</td>`;
+
+    const bodyRows = rows.map(r => `<tr>
+      <td><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${colorVar(r.bu)};margin-right:8px;vertical-align:middle;"></span>${escapeHtml(r.bu)}</td>
+      <td class="num">${r.farming ? fmtINR(r.farming) : '<span class="muted">-</span>'}</td>
+      <td class="num">${r.hunting ? fmtINR(r.hunting) : '<span class="muted">-</span>'}</td>
+      <td class="num">${r.total ? fmtINR(r.total) : '<span class="muted">-</span>'}</td>
+      <td class="num">${r.target !== undefined ? fmtINR(r.target) : '<span class="muted">-</span>'}</td>
+      ${varCell(r.variance)}
+    </tr>`).join('');
+
+    const totalRow = `<tr class="total-row">
+      <td>Total</td>
+      <td class="num">${fmtINR(totFarming)}</td>
+      <td class="num">${fmtINR(totHunting)}</td>
+      <td class="num">${fmtINR(totTotal)}</td>
+      <td class="num">${totTarget ? fmtINR(totTarget) : '<span class="muted">-</span>'}</td>
+      ${varCell(totVariance)}
+    </tr>`;
+
+    return `<div class="table-scroll"><table>
+      <thead><tr>
+        <th>Business Unit</th>
+        <th class="num">Farming ${metric} Commit</th>
+        <th class="num">Hunting ${metric} Commit</th>
+        <th class="num">Total Commit</th>
+        <th class="num">Target</th>
+        <th class="num">Variance</th>
+      </tr></thead>
+      <tbody>${totalRow}${bodyRows}</tbody>
+    </table></div><p style="font-size:11px;color:var(--text-muted);margin:8px 0 0;">Based on snapshot: ${latestDate}</p>`;
+  }
+
+  const mrrRows = buildSummaryRows('MRR', MRR_SNAPSHOTS, latestMRR);
+  const nrrRows = buildSummaryRows('NRR', NRR_SNAPSHOTS, latestNRR);
+
+  document.getElementById('subtitle').textContent = `Summary view: ${periodTab.label} . ${computePeriodTabs(currentQuarter).find(p=>p.key===currentQuarter)?.label || QUARTERS.find(q=>q.key===currentQuarter)?.label || ''}`;
+
+  document.getElementById('content').innerHTML = `
+    <div class="card">
+      <p class="summary-section-title">MRR Summary · ${escapeHtml(periodTab.label)}</p>
+      ${summaryTableHtml('MRR', mrrRows, latestMRR)}
+    </div>
+    <div class="card">
+      <p class="summary-section-title">NRR Summary · ${escapeHtml(periodTab.label)}</p>
+      ${summaryTableHtml('NRR', nrrRows, latestNRR)}
+    </div>`;
+}
+
+// ============================================================
+// HUNTING PIPELINE VIEW
+// ============================================================
+function renderHuntingView() {
+  const q = QUARTERS.find(x => x.key === currentQuarter) || QUARTERS[1];
+  const deals = (HUNTING_PIPELINE || []).filter(d => d.quarter === currentQuarter);
+
+  document.getElementById('subtitle').textContent = `Hunting Pipeline: all new-account deals closing in ${q.label} (any probability)`;
+
+  if (deals.length === 0) {
+    document.getElementById('content').innerHTML = `
+      <div class="card">
+        <p class="summary-section-title">Hunting Pipeline · ${q.label}</p>
+        <p class="muted">No hunting deals found for ${q.label}. Click "Sync Zoho" to fetch from Zoho CRM.</p>
+      </div>`;
+    return;
+  }
+
+  // Group by closing month
+  const byMonth = new Map();
+  for (const d of deals) {
+    const m = d.closing_date ? Number(d.closing_date.slice(5, 7)) : 0;
+    if (!byMonth.has(m)) byMonth.set(m, []);
+    byMonth.get(m).push(d);
+  }
+  const sortedMonths = [...byMonth.keys()].sort((a, b) => a - b);
+
+  // Grand totals
+  let grandMRR = 0, grandAdjMRR = 0, grandNRR = 0, grandAdjNRR = 0;
+
+  const monthGroupsHtml = sortedMonths.map(m => {
+    const monthDeals = byMonth.get(m).slice().sort((a, b) => (a.closing_date || '').localeCompare(b.closing_date || ''));
+    const monthName  = m ? MONTH_FULL[m - 1] : 'No Date';
+    let mMRR = 0, mAdjMRR = 0, mNRR = 0, mAdjNRR = 0;
+    for (const d of monthDeals) {
+      mMRR    += d.mrr_inr || 0;
+      mAdjMRR += (d.mrr_inr || 0) * (d.probability || 0) / 100;
+      mNRR    += d.nrr_inr || 0;
+      mAdjNRR += (d.nrr_inr || 0) * (d.probability || 0) / 100;
+    }
+    grandMRR += mMRR; grandAdjMRR += mAdjMRR; grandNRR += mNRR; grandAdjNRR += mAdjNRR;
+
+    const probClass = p => p >= 70 ? 'prob-high' : p >= 40 ? 'prob-mid' : 'prob-low';
+    const rowsHtml = monthDeals.map(d => `<tr>
+      <td class="name-cell"><a class="zoho-link" href="${ZOHO_DEAL_URL(d.deal_id)}" target="_blank" rel="noopener">${escapeHtml(d.deal_name || d.deal_id)}</a></td>
+      <td>${escapeHtml(d.stage || '-')}</td>
+      <td>${d.closing_date || '-'}</td>
+      <td>${escapeHtml(d.deal_owner || '-')}</td>
+      <td class="num"><span class="${probClass(d.probability)}">${d.probability}%</span></td>
+      <td class="num">${d.mrr_inr ? fmtINR(d.mrr_inr) : '<span class="muted">-</span>'}</td>
+      <td class="num">${d.mrr_inr ? fmtINR(Math.round(d.mrr_inr * (d.probability || 0) / 100)) : '<span class="muted">-</span>'}</td>
+      <td class="num">${d.nrr_inr ? fmtINR(d.nrr_inr) : '<span class="muted">-</span>'}</td>
+      <td class="num">${d.nrr_inr ? fmtINR(Math.round(d.nrr_inr * (d.probability || 0) / 100)) : '<span class="muted">-</span>'}</td>
+    </tr>`).join('');
+
+    return `<tr class="month-group-row"><td colspan="9">${monthName} (${monthDeals.length})</td></tr>
+${rowsHtml}
+<tr class="month-total-row">
+  <td colspan="4" class="muted">Subtotal</td>
+  <td></td>
+  <td class="num">${fmtINR(Math.round(mMRR))}</td>
+  <td class="num">${fmtINR(Math.round(mAdjMRR))}</td>
+  <td class="num">${fmtINR(Math.round(mNRR))}</td>
+  <td class="num">${fmtINR(Math.round(mAdjNRR))}</td>
+</tr>`;
+  }).join('');
+
+  const grandTotalRow = `<tr class="hunting-grand-total">
+    <td colspan="4">Grand Total (${deals.length} deals)</td>
+    <td></td>
+    <td class="num">${fmtINR(Math.round(grandMRR))}</td>
+    <td class="num">${fmtINR(Math.round(grandAdjMRR))}</td>
+    <td class="num">${fmtINR(Math.round(grandNRR))}</td>
+    <td class="num">${fmtINR(Math.round(grandAdjNRR))}</td>
+  </tr>`;
+
+  document.getElementById('content').innerHTML = `
+    <div class="card">
+      <p class="summary-section-title">Hunting Pipeline · ${q.label} · ${deals.length} deals</p>
+      <div class="table-scroll"><table>
+        <thead><tr>
+          <th>Deal Name</th>
+          <th>Stage</th>
+          <th>Closing Date</th>
+          <th>Deal Owner</th>
+          <th class="num">Probability</th>
+          <th class="num">Exp. MRR</th>
+          <th class="num">Adj. MRR</th>
+          <th class="num">Exp. NRR</th>
+          <th class="num">Adj. NRR</th>
+        </tr></thead>
+        <tbody>${monthGroupsHtml}${grandTotalRow}</tbody>
+      </table></div>
+      <div class="legend" style="margin-top:12px;">
+        <div class="legend-item"><span class="prob-high">70%+</span> committed</div>
+        <div class="legend-item"><span class="prob-mid">40-69%</span> likely</div>
+        <div class="legend-item"><span class="prob-low">below 40%</span> early stage</div>
+        <div class="legend-item" style="margin-left:16px;">Adj. = Expected × Probability</div>
+      </div>
+    </div>`;
 }
 
 main();

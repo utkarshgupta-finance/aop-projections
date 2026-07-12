@@ -19,7 +19,6 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Candidate API names for the Business Unit module (tried in order).
 const BU_MODULE_CANDIDATES = [
   'Business_Units', 'Business_Unit', 'BUs', 'BusinessUnits', 'BU',
   'Business_units', 'business_units',
@@ -36,6 +35,27 @@ function extractName(field: any): string {
     if (typeof val === 'string' && val.length > 0 && !/^\d+$/.test(val)) return val;
   }
   return '';
+}
+
+// Returns the current quarter key, e.g. "2026-Q3"
+function currentQuarterKey(date: Date): string {
+  const m = date.getUTCMonth() + 1;
+  const q = Math.ceil(m / 3);
+  return `${date.getUTCFullYear()}-Q${q}`;
+}
+
+// Returns {dayBefore, end} for use in COQL: Closing_Date > dayBefore AND Closing_Date <= end
+function quarterRange(quarter: string): { dayBefore: string; end: string } {
+  const [yearStr, qStr] = quarter.split('-Q');
+  const year = parseInt(yearStr), q = parseInt(qStr);
+  const startMonth = (q - 1) * 3 + 1;
+  const endMonth   = startMonth + 2;
+  const startDate  = new Date(Date.UTC(year, startMonth - 1, 1));
+  const endDate    = new Date(Date.UTC(year, endMonth, 0)); // last day of endMonth
+  const dayBefore  = new Date(startDate);
+  dayBefore.setUTCDate(dayBefore.getUTCDate() - 1);
+  const fmt = (d: Date) => d.toISOString().slice(0, 10);
+  return { dayBefore: fmt(dayBefore), end: fmt(endDate) };
 }
 
 async function getAccessToken(): Promise<string> {
@@ -74,18 +94,8 @@ async function coql(token: string, query: string): Promise<any[]> {
   return data;
 }
 
-function monthBounds(yyyyMm: string) {
-  const [y, m] = yyyyMm.split('-').map(Number);
-  const start = new Date(Date.UTC(y, m - 1, 1));
-  const end   = new Date(Date.UTC(y, m, 0));
-  const fmt = (d: Date) => d.toISOString().slice(0, 10);
-  const dayBefore = new Date(start);
-  dayBefore.setUTCDate(dayBefore.getUTCDate() - 1);
-  return { closingDateGT: fmt(dayBefore), closingDateLTE: fmt(end) };
-}
-
-async function fetchUniverseDeals(token: string, targetMonth: string) {
-  const { closingDateGT, closingDateLTE } = monthBounds(targetMonth);
+// Fetch main universe deals (probability >= 70) for the full quarter date range.
+async function fetchUniverseDeals(token: string, dayBefore: string, end: string) {
   const rows: any[] = [];
   let offset = 0;
   const pageSize = 200;
@@ -93,8 +103,28 @@ async function fetchUniverseDeals(token: string, targetMonth: string) {
     const query =
       `select id, Deal_Name, Closing_Date, Probability, MRR_Amount, NRR_Amount, Currency, ` +
       `Deal_Type_New_or_Existing, Account_Name from Deals where ` +
-      `(Closing_Date > '${closingDateGT}' and Closing_Date <= '${closingDateLTE}') ` +
+      `(Closing_Date > '${dayBefore}' and Closing_Date <= '${end}') ` +
       `and Probability >= 70 limit ${offset},${pageSize}`;
+    const page = await coql(token, query);
+    rows.push(...page);
+    if (page.length < pageSize) break;
+    offset += pageSize;
+  }
+  return rows;
+}
+
+// Fetch ALL hunting/new-account deals for the quarter (any probability).
+async function fetchHuntingPipelineDeals(token: string, dayBefore: string, end: string) {
+  const rows: any[] = [];
+  let offset = 0;
+  const pageSize = 200;
+  for (;;) {
+    const query =
+      `select id, Deal_Name, Stage, Closing_Date, Probability, MRR_Amount, NRR_Amount, Currency, Account_Name, Owner ` +
+      `from Deals where ` +
+      `(Closing_Date > '${dayBefore}' and Closing_Date <= '${end}') ` +
+      `and Deal_Type_New_or_Existing = 'Hunting' ` +
+      `limit ${offset},${pageSize}`;
     const page = await coql(token, query);
     rows.push(...page);
     if (page.length < pageSize) break;
@@ -119,7 +149,6 @@ async function fetchAccountNames(token: string, accountIds: string[]): Promise<M
   return nameById;
 }
 
-// Probe candidate BU module names using a known BU ID to find the right one.
 async function discoverBUModule(token: string, sampleBUId: string): Promise<{
   moduleName: string | null;
   probeResults: { candidate: string; found: boolean; error: any }[];
@@ -137,7 +166,6 @@ async function discoverBUModule(token: string, sampleBUId: string): Promise<{
     }
   }
 
-  // Fallback: try Zoho REST API for each candidate
   for (const candidate of BU_MODULE_CANDIDATES) {
     try {
       const res = await fetch(
@@ -197,7 +225,6 @@ async function fetchBUTags(token: string, dealIds: string[]): Promise<{
   const tagsByDeal = new Map<string, string[]>();
   let buNameMissing = 0;
 
-  // Phase 1: fetch all BU_Deal_Map rows for our deals
   type RawRow = { dealId: string; buId: string | null; buText: string | null };
   const rawRows: RawRow[] = [];
 
@@ -221,7 +248,6 @@ async function fetchBUTags(token: string, dealIds: string[]): Promise<{
     }
   }
 
-  // Phase 2: discover BU module and resolve IDs -> names
   const buIdSet = new Set(rawRows.filter(r => r.buId).map(r => r.buId!));
   let buNameById = new Map<string, string>();
   let debugBUModule: any = null;
@@ -237,7 +263,6 @@ async function fetchBUTags(token: string, dealIds: string[]): Promise<{
     }
   }
 
-  // Phase 3: build tagsByDeal
   for (const { dealId, buId, buText } of rawRows) {
     const buName = buText ?? (buId ? buNameById.get(buId) ?? '' : '');
     if (!buName) { buNameMissing++; continue; }
@@ -282,11 +307,14 @@ Deno.serve(async (req: Request) => {
   try {
     const reqBody = await req.json().catch(() => ({}));
     const now = new Date();
-    const targetMonth: string = reqBody.target_month ??
-      `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}`;
-    const snapshotDate: string = reqBody.snapshot_date ?? now.toISOString().slice(0, 10);
 
-    console.log(`Syncing month=${targetMonth} snapshot=${snapshotDate}`);
+    // Quarter-based sync (replaces single target_month).
+    // Falls back to current quarter if not specified.
+    const targetQuarter: string = reqBody.target_quarter ?? currentQuarterKey(now);
+    const snapshotDate: string  = reqBody.snapshot_date  ?? now.toISOString().slice(0, 10);
+    const { dayBefore, end }    = quarterRange(targetQuarter);
+
+    console.log(`Syncing quarter=${targetQuarter} (${dayBefore} to ${end}) snapshot=${snapshotDate}`);
 
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL')!,
@@ -294,9 +322,12 @@ Deno.serve(async (req: Request) => {
     );
 
     const token = await getAccessToken();
-    const dealsRaw = await fetchUniverseDeals(token, targetMonth);
-    console.log(`Zoho raw deals: ${dealsRaw.length}`);
 
+    // ---- Universe deals (prob >= 70, for MRR/NRR commit tracking) ----
+    const dealsRaw = await fetchUniverseDeals(token, dayBefore, end);
+    console.log(`Zoho raw deals (>=70%): ${dealsRaw.length}`);
+
+    // ---- Account name lookup for deals with object-style Account_Name ----
     const accountIdsToLookup = new Set<string>();
     for (const d of dealsRaw) {
       if (!extractName(d.Account_Name) && d.Account_Name?.id) {
@@ -331,6 +362,7 @@ Deno.serve(async (req: Request) => {
     }
     console.log(`Universe: ${universe.length}`);
 
+    // ---- BU tags ----
     const { tagsByDeal, buNameMissing, debugBU } =
       await fetchBUTags(token, universe.map(d => d.id));
 
@@ -341,6 +373,7 @@ Deno.serve(async (req: Request) => {
       if (isFlagged) flagged.push({ id: d.id, name: d.name, tags: tagsByDeal.get(d.id) });
     }
 
+    // ---- Fetch existing deals (for bu_override and name history) ----
     const dealIds = universe.map(d => d.id);
     const { data: existingDeals, error: fetchErr } = await supabase
       .from('deals')
@@ -350,11 +383,10 @@ Deno.serve(async (req: Request) => {
     const existingByDeal = new Map((existingDeals ?? []).map((r: any) => [r.deal_id, r]));
 
     const dealRows = universe.map(d => {
-      const existing = existingByDeal.get(d.id);
+      const existing    = existingByDeal.get(d.id);
       const nameHistory = existing?.name_history ?? [];
-      const renamed = existing && existing.current_name !== d.name;
-      const buOverride = existing?.bu_override ?? null;
-      // Priority: manual override > auto-resolved > keep existing (when flagged/conflicted)
+      const renamed     = existing && existing.current_name !== d.name;
+      const buOverride  = existing?.bu_override ?? null;
       const businessUnit = buOverride
         ?? (d.businessUnit !== null ? d.businessUnit : (existing?.business_unit ?? 'UNMAPPED'));
       return {
@@ -362,13 +394,14 @@ Deno.serve(async (req: Request) => {
         name_history: renamed ? [...nameHistory, existing.current_name] : nameHistory,
         business_unit: businessUnit, bu_override: buOverride,
         account_name: d.accountName,
-        closing_date: d.closingDate, updated_at: new Date().toISOString(),
+        closing_date: d.closingDate, updated_at: now.toISOString(),
       };
     });
 
     const { error: dealsErr } = await supabase.from('deals').upsert(dealRows, { onConflict: 'deal_id' });
     if (dealsErr) throw dealsErr;
 
+    // ---- MRR / NRR snapshots ----
     const mrrRows = universe.filter(d => d.mrrInr !== 0).map(d => ({
       deal_id: d.id, snapshot_date: snapshotDate, mrr_amount: d.mrrInr, probability: d.probability,
     }));
@@ -383,16 +416,65 @@ Deno.serve(async (req: Request) => {
       .upsert(nrrRows, { onConflict: 'deal_id,snapshot_date' });
     if (nrrErr) throw nrrErr;
 
-    const dealsWithAccount = dealRows.filter(r => r.account_name).length;
+    // ---- Hunting pipeline (all hunting deals, any probability) ----
+    const huntingRaw = await fetchHuntingPipelineDeals(token, dayBefore, end);
+    console.log(`Hunting pipeline raw: ${huntingRaw.length}`);
+
+    // Collect any account IDs in hunting deals that need name resolution
+    const huntingAccountIds = new Set<string>();
+    for (const d of huntingRaw) {
+      if (!extractName(d.Account_Name) && d.Account_Name?.id) {
+        huntingAccountIds.add(String(d.Account_Name.id));
+      }
+    }
+    if (huntingAccountIds.size > 0) {
+      const extra = await fetchAccountNames(token, [...huntingAccountIds]);
+      extra.forEach((v, k) => accountNameMap.set(k, v));
+    }
+
+    const huntingRows = huntingRaw.map(d => {
+      const currency = d.Currency as string;
+      const rate     = CURRENCY_RATES[currency] ?? 1;
+      const mrr      = d.MRR_Amount ?? 0;
+      const nrr      = d.NRR_Amount ?? 0;
+      let accountName = extractName(d.Account_Name);
+      if (!accountName && d.Account_Name?.id) {
+        accountName = accountNameMap.get(String(d.Account_Name.id)) ?? '';
+      }
+      return {
+        deal_id:     String(d.id),
+        deal_name:   d.Deal_Name ?? '',
+        stage:       typeof d.Stage === 'string' ? d.Stage : extractName(d.Stage),
+        closing_date: d.Closing_Date ?? null,
+        deal_owner:  extractName(d.Owner),
+        account_name: accountName,
+        probability: d.Probability ?? 0,
+        mrr_amount:  mrr,
+        nrr_amount:  nrr,
+        mrr_inr:     mrr === 0 ? 0 : Math.round(mrr * rate * 100) / 100,
+        nrr_inr:     nrr === 0 ? 0 : Math.round(nrr * rate * 100) / 100,
+        currency:    currency || 'INR',
+        quarter:     targetQuarter,
+        updated_at:  now.toISOString(),
+      };
+    });
+
+    const { error: huntingErr } = await supabase.from('hunting_pipeline')
+      .upsert(huntingRows, { onConflict: 'deal_id' });
+    if (huntingErr) throw huntingErr;
+
+    // ---- Summary stats ----
     const dealsWithBU = dealRows.filter(r => r.business_unit && r.business_unit !== 'UNMAPPED').length;
-    console.log(`Done: ${dealRows.length} deals, ${dealsWithBU} with BU, bu_name_missing=${buNameMissing}`);
+    console.log(`Done: ${dealRows.length} deals, ${dealsWithBU} with BU, hunting=${huntingRows.length}, bu_name_missing=${buNameMissing}`);
 
     return new Response(
       JSON.stringify({
-        ok: true, snapshot_date: snapshotDate, target_month: targetMonth,
-        deals_upserted: dealRows.length, deals_with_account: dealsWithAccount,
-        deals_with_bu: dealsWithBU, bu_name_missing: buNameMissing,
+        ok: true, snapshot_date: snapshotDate, target_quarter: targetQuarter,
+        deals_upserted: dealRows.length,
+        deals_with_bu: dealsWithBU,
+        bu_name_missing: buNameMissing,
         mrr_rows: mrrRows.length, nrr_rows: nrrRows.length,
+        hunting_upserted: huntingRows.length,
         flagged: flagged.length, flagged_deals: flagged,
         _debug_bu: debugBU,
       }),
