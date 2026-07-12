@@ -310,40 +310,8 @@ async function renderSettings() {
 }
 
 function renderSyncConfig() {
-  const pat = localStorage.getItem('gh_pat') || '';
-  document.getElementById('sync-config').innerHTML = `
-    <div class="card" id="sync-config-card" style="max-width:520px;">
-      <h2>Zoho Sync</h2>
-      <p class="desc">Add a GitHub personal access token (PAT) with <strong>workflow</strong> scope to enable the Sync button on the dashboard. The token is saved only in your browser and never sent to Supabase.</p>
-      <div class="field">
-        <label for="gh-pat">GitHub Personal Access Token</label>
-        <input type="password" id="gh-pat" placeholder="ghp_..." autocomplete="new-password" value="${escapeHtml(pat)}">
-      </div>
-      <div style="display:flex;gap:8px;">
-        <button id="save-pat-btn">Save token</button>
-        ${pat ? `<button class="secondary" id="clear-pat-btn">Remove</button>` : ''}
-      </div>
-      <div class="msg" id="pat-msg">${pat ? '<span style="color:var(--good)">Token saved in this browser.</span>' : ''}</div>
-    </div>
-  `;
-  document.getElementById('save-pat-btn').addEventListener('click', () => {
-    const val = document.getElementById('gh-pat').value.trim();
-    if (!val) {
-      document.getElementById('pat-msg').textContent = 'Enter a token first.';
-      document.getElementById('pat-msg').className = 'msg error';
-      return;
-    }
-    localStorage.setItem('gh_pat', val);
-    document.getElementById('pat-msg').innerHTML = '<span style="color:var(--good)">Saved.</span>';
-    renderSyncConfig();
-  });
-  const clearBtn = document.getElementById('clear-pat-btn');
-  if (clearBtn) {
-    clearBtn.addEventListener('click', () => {
-      localStorage.removeItem('gh_pat');
-      renderSyncConfig();
-    });
-  }
+  // Sync now runs via Supabase Edge Function -- no PAT needed.
+  document.getElementById('sync-config').innerHTML = '';
 }
 
 function render() {
