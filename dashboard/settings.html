@@ -143,8 +143,21 @@ function logout() {
   render();
 }
 
+async function refreshToken() {
+  const res = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=refresh_token`, {
+    method: 'POST',
+    headers: { apikey: SUPABASE_KEY, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ refresh_token: session.refresh_token }),
+  });
+  const body = await res.json();
+  if (!res.ok) throw new Error(body.error_description || body.msg || 'Session expired — please log in again');
+  session.access_token = body.access_token;
+  session.refresh_token = body.refresh_token;
+  saveSession();
+}
+
 async function authedFetch(path, options = {}) {
-  const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
+  const doFetch = () => fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
     ...options,
     headers: {
       apikey: SUPABASE_KEY,
@@ -153,6 +166,12 @@ async function authedFetch(path, options = {}) {
       ...options.headers,
     },
   });
+
+  let res = await doFetch();
+  if (res.status === 401) {
+    await refreshToken();
+    res = await doFetch();
+  }
   if (!res.ok) {
     const text = await res.text();
     throw new Error(`Request failed: ${res.status} ${text}`);
