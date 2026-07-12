@@ -219,6 +219,7 @@ function computePeriodTabs(qKey) {
 const VIEW_MODES = [
   { key: 'review',  label: 'Review' },
   { key: 'summary', label: 'Summary' },
+  { key: 'history', label: 'AOP vs Commit History' },
   { key: 'hunting', label: 'Hunting Pipeline' },
 ];
 const TYPE_TABS = [
@@ -333,6 +334,8 @@ function renderTabs() {
   periodEl.innerHTML = PERIOD_TABS.map(t => `<button class="tab-btn ${t.key === currentPeriodTab ? 'active' : ''}" data-period="${t.key}">${escapeHtml(t.label)}</button>`).join('');
   periodEl.querySelectorAll('.tab-btn').forEach(btn => btn.addEventListener('click', () => { currentPeriodTab = btn.dataset.period; render(); }));
 
+  const isHistory = currentViewMode === 'history';
+
   // Type tabs (only in Review mode)
   document.getElementById('type-group').style.display = isReview ? '' : 'none';
   const typeEl = document.getElementById('type-tabs');
@@ -340,7 +343,7 @@ function renderTabs() {
   typeEl.querySelectorAll('.tab-btn').forEach(btn => btn.addEventListener('click', () => { currentTypeTab = btn.dataset.type; render(); }));
 
   // BU tabs (only in Review mode)
-  document.getElementById('bu-group').style.display = isReview ? '' : 'none';
+  document.getElementById('bu-group').style.display = (isReview && !isHistory) ? '' : 'none';
   const buEl = document.getElementById('bu-tabs');
   const buTabs = [{ key: '', label: 'All' }, ...BU_TAB_LIST.map(bu => ({ key: bu, label: bu }))];
   buEl.innerHTML = buTabs.map(t => `<button class="tab-btn ${t.key === currentBU ? 'active' : ''}" data-bu="${escapeHtml(t.key)}">${escapeHtml(t.label)}</button>`).join('');
@@ -448,6 +451,7 @@ function render() {
   document.querySelectorAll('#bu-tabs .tab-btn').forEach(b => b.classList.toggle('active', b.dataset.bu === currentBU));
 
   if (currentViewMode === 'summary') { renderSummaryView(); return; }
+  if (currentViewMode === 'history') { renderHistoryView(); return; }
   if (currentViewMode === 'hunting') { renderHuntingView(); return; }
   renderReviewView();
 }
@@ -792,6 +796,144 @@ function renderDealsTable() {
       renderDealsTable();
     });
   });
+}
+
+// ============================================================
+// HISTORY VIEW (AOP vs Commit week-over-week)
+// ============================================================
+function renderHistoryView() {
+  const PERIOD_TABS = computePeriodTabs(currentQuarter);
+  const content = document.getElementById('content');
+  const metric = currentMetric;
+  const snapshots = activeSnapshots();
+  const dates = activeDates();
+  const periodTab = PERIOD_TABS.find(p => p.key === currentPeriodTab) || PERIOD_TABS[PERIOD_TABS.length - 1];
+  const dealsById = new Map(DEALS.map(d => [d.deal_id, d]));
+
+  const inScope = dealId => {
+    const d = dealsById.get(dealId);
+    if (!d) return false;
+    return dealInPeriod(d, periodTab);
+  };
+
+  // Compute commit total per snapshot date (all deal types combined)
+  const trend = dates.map(date => ({
+    date,
+    total: snapshots.filter(s => s.snapshot_date === date && inScope(s.deal_id)).reduce((a, s) => a + amountOf(s), 0),
+    farming: snapshots.filter(s => s.snapshot_date === date && inScope(s.deal_id) && dealsById.get(s.deal_id)?.deal_type === 'Farming').reduce((a, s) => a + amountOf(s), 0),
+    hunting: snapshots.filter(s => s.snapshot_date === date && inScope(s.deal_id) && dealsById.get(s.deal_id)?.deal_type === 'Hunting').reduce((a, s) => a + amountOf(s), 0),
+  }));
+
+  const allBUs = targetBUList(metric);
+  const targetTotal = allBUs.reduce((a, bu) => a + (targetFor(bu, periodTab, metric) || 0), 0);
+
+  document.getElementById('subtitle').textContent = `AOP target: ${fmtINR(targetTotal)} . ${dates.length} snapshot${dates.length === 1 ? '' : 's'} tracked`;
+
+  if (trend.length === 0) {
+    content.innerHTML = `<div class="card"><p class="muted">No ${metric} snapshots recorded yet for this period.</p></div>`;
+    return;
+  }
+
+  // SVG chart: commit line + AOP target dashed line
+  const w = 1000, h = 260, padL = 80, padB = 40, padT = 24, padR = 20;
+  const vals = trend.map(t => t.total);
+  const maxV = Math.max(targetTotal, ...vals, 1);
+  const minV = 0;
+  const scaleX = trend.length === 1
+    ? i => padL + (w - padL - padR) / 2
+    : i => padL + (i / (trend.length - 1)) * (w - padL - padR);
+  const scaleY = v => h - padB - ((v - minV) / (maxV - minV)) * (h - padT - padB);
+
+  const gridCount = 5;
+  const gridLines = Array.from({ length: gridCount + 1 }, (_, i) => {
+    const f = i / gridCount;
+    const yy = padT + f * (h - padT - padB);
+    const val = maxV * (1 - f);
+    return `<line x1="${padL}" y1="${yy}" x2="${w - padR}" y2="${yy}" stroke="var(--gridline)" stroke-width="1"/>
+            <text x="${padL - 8}" y="${yy + 4}" font-size="11" fill="var(--text-muted)" text-anchor="end">${fmtINR(Math.round(val))}</text>`;
+  }).join('');
+
+  const commitPoints = trend.map((t, i) => `${scaleX(i)},${scaleY(t.total)}`).join(' ');
+  const farmingPoints = trend.map((t, i) => `${scaleX(i)},${scaleY(t.farming)}`).join(' ');
+
+  const targetY = scaleY(targetTotal);
+  const targetLine = targetTotal
+    ? `<line x1="${padL}" y1="${targetY}" x2="${w - padR}" y2="${targetY}" stroke="var(--warning)" stroke-width="2" stroke-dasharray="6,4"/>
+       <text x="${w - padR + 4}" y="${targetY + 4}" font-size="11" fill="var(--warning)" text-anchor="start">Target</text>`
+    : '';
+
+  const dots = trend.map((t, i) => {
+    const attain = targetTotal ? ((t.total / targetTotal) * 100).toFixed(1) + '%' : 'n/a';
+    return `<circle cx="${scaleX(i)}" cy="${scaleY(t.total)}" r="4" fill="var(--series-1)" stroke="var(--surface-1)" stroke-width="2">
+      <title>${t.date}\nCommit: ${fmtINR(t.total)}\nTarget: ${fmtINR(targetTotal)}\nAttainment: ${attain}</title>
+    </circle>`;
+  }).join('');
+
+  const xLabels = trend.map((t, i) => {
+    const rotate = trend.length > 6 ? `transform="rotate(-35,${scaleX(i)},${h - padB + 14})"` : '';
+    return `<text x="${scaleX(i)}" y="${h - padB + 14}" font-size="11" fill="var(--text-muted)" text-anchor="${trend.length > 6 ? 'end' : 'middle'}" ${rotate}>${t.date}</text>`;
+  }).join('');
+
+  // Latest attainment
+  const latest = trend[trend.length - 1];
+  const attainPct = targetTotal ? (latest.total / targetTotal) * 100 : null;
+  const attainColor = attainPct === null ? '' : attainPct >= 100 ? 'var(--good)' : attainPct >= 70 ? 'var(--warning)' : 'var(--bad)';
+  const variance = latest.total - targetTotal;
+
+  // History table
+  const tableRows = [...trend].reverse().map(t => {
+    const a = targetTotal ? (t.total / targetTotal * 100) : null;
+    const v = t.total - targetTotal;
+    const aColor = a === null ? '' : a >= 100 ? 'var(--good)' : a >= 70 ? 'var(--warning)' : 'var(--bad)';
+    return `<tr>
+      <td>${escapeHtml(t.date)}</td>
+      <td class="num">${fmtINR(t.total)}</td>
+      <td class="num">${fmtINR(t.farming)}</td>
+      <td class="num">${fmtINR(t.hunting)}</td>
+      <td class="num">${targetTotal ? fmtINR(targetTotal) : '<span class="muted">-</span>'}</td>
+      <td class="num" style="color:${aColor}">${a === null ? '<span class="muted">-</span>' : a.toFixed(1) + '%'}</td>
+      <td class="num" style="color:${v >= 0 ? 'var(--good)' : 'var(--bad)'}">${v >= 0 ? '+' : ''}${fmtINR(v)}</td>
+    </tr>`;
+  }).join('');
+
+  content.innerHTML = `
+    <div class="stat-row">
+      <div class="stat-tile"><div class="stat-label">Latest Commit (${latest.date})</div><div class="stat-value">${fmtINR(latest.total)}</div></div>
+      <div class="stat-tile"><div class="stat-label">AOP Target (${periodTab.label})</div><div class="stat-value">${fmtINR(targetTotal)}</div></div>
+      ${attainPct !== null ? `<div class="stat-tile"><div class="stat-label">Attainment</div><div class="stat-value" style="color:${attainColor}">${attainPct.toFixed(1)}%</div></div>` : ''}
+      <div class="stat-tile"><div class="stat-label">Variance</div><div class="stat-value" style="color:${variance >= 0 ? 'var(--good)' : 'var(--bad)'}">${variance >= 0 ? '+' : ''}${fmtINR(variance)}</div></div>
+    </div>
+    <div class="card">
+      <h2>${metric} Commit vs AOP Target — ${periodTab.label}</h2>
+      <svg viewBox="0 0 ${w} ${h}" width="100%" height="${h}">
+        ${gridLines}
+        ${targetLine}
+        <polyline points="${farmingPoints}" fill="none" stroke="var(--series-2)" stroke-width="1.5" stroke-dasharray="4,3" opacity="0.7"/>
+        <polyline points="${commitPoints}" fill="none" stroke="var(--series-1)" stroke-width="2.5"/>
+        ${dots}
+        ${xLabels}
+      </svg>
+      <div class="legend">
+        <div class="legend-item"><span class="legend-swatch" style="background:var(--series-1);"></span>Total Commit</div>
+        <div class="legend-item"><span class="legend-swatch" style="background:var(--series-2);opacity:0.7;"></span>Farming</div>
+        <div class="legend-item"><span class="legend-swatch" style="background:var(--warning);"></span>AOP Target</div>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Snapshot history</h2>
+      <div class="table-scroll"><table>
+        <thead><tr>
+          <th>Snapshot Date</th>
+          <th class="num">Total Commit</th>
+          <th class="num">Farming</th>
+          <th class="num">Hunting</th>
+          <th class="num">AOP Target</th>
+          <th class="num">Attainment</th>
+          <th class="num">Variance</th>
+        </tr></thead>
+        <tbody>${tableRows}</tbody>
+      </table></div>
+    </div>`;
 }
 
 // ============================================================
