@@ -158,11 +158,10 @@
   .prob-high { color: var(--good); font-weight: 600; }
   .prob-mid  { color: var(--warning); font-weight: 600; }
   .prob-low  { color: var(--text-muted); }
-  .stage-capsule { padding: 4px 12px; border-radius: 20px; border: 1.5px solid var(--border); background: transparent; color: var(--text-muted); font-size: 12px; cursor: pointer; transition: all 0.15s; }
-  .stage-capsule.inactive { opacity: 0.45; }
-  .stage-capsule:hover { border-color: var(--accent); color: var(--accent); opacity: 1; }
-  .stage-capsule.active { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; opacity: 1; }
-  .stage-capsule.stage-closed-lost.active { background: var(--bad); border-color: var(--bad); }
+  .stage-capsule { padding: 4px 12px; border-radius: 20px; border: 1.5px solid var(--border); background: var(--surface-1); color: var(--text-muted); font-size: 12px; cursor: pointer; transition: all 0.15s; opacity: 0.5; }
+  .stage-capsule:hover { border-color: var(--series-1); color: var(--series-1); opacity: 1; }
+  .stage-capsule.active { background: var(--series-1); border-color: var(--series-1); color: #fff; font-weight: 600; opacity: 1; box-shadow: 0 1px 4px rgba(42,120,214,0.35); }
+  .stage-capsule.stage-closed-lost.active { background: var(--bad); border-color: var(--bad); box-shadow: 0 1px 4px rgba(208,59,59,0.35); }
 </style>
 </head>
 <body>
@@ -653,11 +652,9 @@ function renderDealsTableWith({ dealsById, periodTab, snapshots, metric, tableId
     snapshotsByDeal.get(s.deal_id).set(s.snapshot_date, amountOfRow(s));
   }
 
-  // Always filter by the full quarter so all quarter deals appear on every monthly tab.
-  const quarterTab = computePeriodTabs(currentQuarter).find(t => isFullQuarterTab(t)) || periodTab;
   let tabDeals = DEALS.filter(d => currentTypeTab === 'combined' || d.deal_type === currentTypeTab)
     .filter(d => !currentBU || (d.business_unit || 'UNMAPPED') === currentBU)
-    .filter(d => dealInPeriod(d, quarterTab))
+    .filter(d => dealInPeriod(d, periodTab))
     .filter(d => snapshotsByDeal.has(d.deal_id));
 
   const buOptions = [...new Set(tabDeals.map(d => d.business_unit || 'UNMAPPED'))].sort();
