@@ -284,10 +284,10 @@ function targetFor(bu, periodTab, metric) {
   const m = metric ?? currentMetric;
   if (m === 'NRR') {
     if (!isFullQuarterTab(periodTab)) return undefined;
-    const row = NRR_TARGETS.find(t => t.business_unit === bu);
+    const row = NRR_TARGETS.find(t => t.business_unit === bu && t.period === currentQuarter);
     return row ? Number(row.target_amount) : undefined;
   }
-  const jasTarget = BU_TARGETS.find(t => t.business_unit === bu);
+  const jasTarget = BU_TARGETS.find(t => t.business_unit === bu && t.period === currentQuarter);
   const jasVal    = jasTarget ? Number(jasTarget.target_amount) : undefined;
   if (isFullQuarterTab(periodTab)) return jasVal;
   if (jasVal === undefined) return undefined;
@@ -298,7 +298,9 @@ function targetFor(bu, periodTab, metric) {
 
 function targetBUList(metric) {
   const m = metric ?? currentMetric;
-  return [...new Set((m === 'NRR' ? NRR_TARGETS : BU_TARGETS).map(t => t.business_unit))];
+  return [...new Set((m === 'NRR' ? NRR_TARGETS : BU_TARGETS)
+    .filter(t => t.period === currentQuarter)
+    .map(t => t.business_unit))];
 }
 
 function dealInPeriod(deal, periodTab) {
