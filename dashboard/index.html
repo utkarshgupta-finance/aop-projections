@@ -158,6 +158,10 @@
   .prob-high { color: var(--good); font-weight: 600; }
   .prob-mid  { color: var(--warning); font-weight: 600; }
   .prob-low  { color: var(--text-muted); }
+  .stage-capsule { padding: 3px 10px; border-radius: 20px; border: 1px solid var(--border); background: transparent; color: var(--text-secondary); font-size: 12px; cursor: pointer; transition: all 0.15s; }
+  .stage-capsule:hover { border-color: var(--accent); color: var(--accent); }
+  .stage-capsule.active { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  .stage-capsule.stage-closed-lost.active { background: var(--bad); border-color: var(--bad); }
 </style>
 </head>
 <body>
@@ -243,8 +247,15 @@ let currentBU         = '';
 let buViewMode        = 'table';
 let searchText        = '';
 let tableBuFilter     = '';
+let nrrBuFilter       = '';
 let sortKey           = '__latest';
 let sortDir           = 'desc';
+const DEFAULT_HUNTING_STAGES = new Set([
+  'Initial discussion','Demo','Decision maker bought in','Decision Maker Bought-In',
+  'Proposal Out','Revised Pricing','Negotiation','PO pending','Closed Won',
+]);
+let huntingStageFilter = new Set(DEFAULT_HUNTING_STAGES);
+let huntingShowClosedLost = false;
 
 function fmtINR(n) {
   const sign = n < 0 ? '-' : '';
@@ -461,40 +472,42 @@ function render() {
 function renderReviewView() {
   const PERIOD_TABS = computePeriodTabs(currentQuarter);
   const content   = document.getElementById('content');
-  const metric    = currentMetric;
-  const snapshots = activeSnapshots();
-  const dates     = activeDates();
   const periodTab = PERIOD_TABS.find(p => p.key === currentPeriodTab) || PERIOD_TABS[PERIOD_TABS.length - 1];
   const dealsById = new Map(DEALS.map(d => [d.deal_id, d]));
 
-  const inScope = dealId => {
-    const d = dealsById.get(dealId);
-    if (!d) return false;
-    if (currentTypeTab !== 'combined' && d.deal_type !== currentTypeTab) return false;
-    if (currentBU && (d.business_unit || 'UNMAPPED') !== currentBU) return false;
-    return dealInPeriod(d, periodTab);
-  };
-
-  const latestDate = dates[dates.length - 1];
-  document.getElementById('subtitle').textContent = latestDate
-    ? `Latest ${metric} snapshot: ${latestDate} · ${dates.length} snapshot${dates.length === 1 ? '' : 's'} tracked`
-    : `No ${metric} snapshots recorded yet`;
+  const mrrLatest = MRR_DATES[MRR_DATES.length - 1];
+  const nrrLatest = NRR_DATES[NRR_DATES.length - 1];
+  document.getElementById('subtitle').textContent =
+    `MRR snapshot: ${mrrLatest || 'none'} · NRR snapshot: ${nrrLatest || 'none'}`;
 
   content.innerHTML = `
     <div class="card">
-      <h2>Deals — ${metric} by snapshot date</h2>
+      <h2>MRR Commits by snapshot date</h2>
       <div class="table-controls">
-        <input class="search-input" id="deal-search" type="text" placeholder="Search deal id, name, account, BU, type..." value="${escapeHtml(searchText)}">
+        <input class="search-input" id="deal-search" type="text" placeholder="Search deal id, name, BU, type..." value="${escapeHtml(searchText)}">
         <select class="filter-select" id="bu-filter"><option value="">All business units</option></select>
         <span class="result-count" id="result-count"></span>
       </div>
       <div id="deals-table"></div>
+    </div>
+    <div class="card" style="margin-top:16px;">
+      <h2>NRR Commits by snapshot date</h2>
+      <div class="table-controls">
+        <input class="search-input" id="nrr-deal-search" type="text" placeholder="Search deal id, name, BU, type..." value="${escapeHtml(searchText)}">
+        <select class="filter-select" id="nrr-bu-filter"><option value="">All business units</option></select>
+        <span class="result-count" id="nrr-result-count"></span>
+      </div>
+      <div id="nrr-deals-table"></div>
     </div>`;
 
-  tableCtx = { dealsById, periodTab, latestDate, snapshots, metric };
+  tableCtx = { dealsById, periodTab, latestDate: mrrLatest, snapshots: MRR_SNAPSHOTS, metric: 'MRR' };
   renderDealsTable();
-  document.getElementById('deal-search').addEventListener('input', e => { searchText = e.target.value; renderDealsTable(); });
+  document.getElementById('deal-search').addEventListener('input', e => { searchText = e.target.value; renderDealsTable(); renderNRRDealsTable(); });
   document.getElementById('bu-filter').addEventListener('change', e => { tableBuFilter = e.target.value; renderDealsTable(); });
+
+  renderNRRDealsTable();
+  document.getElementById('nrr-deal-search').addEventListener('input', e => { searchText = e.target.value; renderDealsTable(); renderNRRDealsTable(); });
+  document.getElementById('nrr-bu-filter').addEventListener('change', e => { nrrBuFilter = e.target.value; renderNRRDealsTable(); });
 }
 
 function renderBUView(buRows, maxAbs, showTargets, periodTab) {
@@ -549,9 +562,27 @@ function renderBUView(buRows, maxAbs, showTargets, periodTab) {
 
 let tableCtx = {};
 
+function renderNRRDealsTable() {
+  const { dealsById, periodTab } = tableCtx;
+  if (!dealsById) return;
+  renderDealsTableWith({
+    dealsById, periodTab, snapshots: NRR_SNAPSHOTS, metric: 'NRR',
+    tableId: 'nrr-deals-table', buFilterId: 'nrr-bu-filter',
+    resultCountId: 'nrr-result-count', buFilter: nrrBuFilter,
+  });
+}
+
 function renderDealsTable() {
   const { dealsById, periodTab, snapshots, metric } = tableCtx;
-  const allDates = activeDates();
+  renderDealsTableWith({ dealsById, periodTab, snapshots, metric,
+    tableId: 'deals-table', buFilterId: 'bu-filter',
+    resultCountId: 'result-count', buFilter: tableBuFilter,
+  });
+}
+
+function renderDealsTableWith({ dealsById, periodTab, snapshots, metric, tableId, buFilterId, resultCountId, buFilter }) {
+  const allDates = metric === 'MRR' ? MRR_DATES : NRR_DATES;
+  const amountOfRow = s => Number(metric === 'MRR' ? s.mrr_amount : s.nrr_amount);
 
   // On the full-quarter tab show one column per month (last snapshot of each month).
   // On a monthly tab show every snapshot date within that month.
@@ -575,13 +606,13 @@ function renderDealsTable() {
   const latestDate = dates[dates.length - 1];
   const prevDate = dates.length >= 2 ? dates[dates.length - 2] : undefined;
   if (sortKey !== '__latest' && sortKey !== '__variance' && !dates.includes(sortKey) &&
-      !['deal_id','deal_name','account_name','business_unit','deal_type'].includes(sortKey)) {
+      !['deal_id','deal_name','business_unit','deal_type'].includes(sortKey)) {
     sortKey = '__latest';
   }
   const snapshotsByDeal = new Map();
   for (const s of snapshots) {
     if (!snapshotsByDeal.has(s.deal_id)) snapshotsByDeal.set(s.deal_id, new Map());
-    snapshotsByDeal.get(s.deal_id).set(s.snapshot_date, amountOf(s));
+    snapshotsByDeal.get(s.deal_id).set(s.snapshot_date, amountOfRow(s));
   }
 
   let tabDeals = DEALS.filter(d => currentTypeTab === 'combined' || d.deal_type === currentTypeTab)
@@ -590,18 +621,19 @@ function renderDealsTable() {
     .filter(d => snapshotsByDeal.has(d.deal_id));
 
   const buOptions = [...new Set(tabDeals.map(d => d.business_unit || 'UNMAPPED'))].sort();
-  const buFilterEl = document.getElementById('bu-filter');
-  buFilterEl.innerHTML = `<option value="">All business units</option>` +
-    buOptions.map(bu => `<option value="${escapeHtml(bu)}" ${bu === tableBuFilter ? 'selected' : ''}>${escapeHtml(bu)}</option>`).join('');
+  const buFilterEl = document.getElementById(buFilterId);
+  if (buFilterEl) {
+    buFilterEl.innerHTML = `<option value="">All business units</option>` +
+      buOptions.map(bu => `<option value="${escapeHtml(bu)}" ${bu === buFilter ? 'selected' : ''}>${escapeHtml(bu)}</option>`).join('');
+  }
 
-  if (tableBuFilter) tabDeals = tabDeals.filter(d => (d.business_unit || 'UNMAPPED') === tableBuFilter);
+  if (buFilter) tabDeals = tabDeals.filter(d => (d.business_unit || 'UNMAPPED') === buFilter);
   if (searchText.trim()) {
     const q = searchText.trim().toLowerCase();
     tabDeals = tabDeals.filter(d => {
       const bu = d.business_unit || 'UNMAPPED';
       return d.deal_id.toLowerCase().includes(q) ||
         fullNameChainText(d).toLowerCase().includes(q) ||
-        (d.account_name || '').toLowerCase().includes(q) ||
         bu.toLowerCase().includes(q) ||
         (d.deal_type || '').toLowerCase().includes(q);
     });
@@ -614,7 +646,6 @@ function renderDealsTable() {
     else if (dates.includes(sortKey)){ va = byDateA.get(sortKey); vb = byDateB.get(sortKey); }
     else if (sortKey === 'deal_id')  { va = a.deal_id; vb = b.deal_id; }
     else if (sortKey === 'deal_name'){ va = a.current_name; vb = b.current_name; }
-    else if (sortKey === 'account_name') { va = a.account_name || ''; vb = b.account_name || ''; }
     else if (sortKey === 'business_unit') { va = a.business_unit || 'UNMAPPED'; vb = b.business_unit || 'UNMAPPED'; }
     else if (sortKey === 'deal_type') { va = a.deal_type || ''; vb = b.deal_type || ''; }
     else if (sortKey === '__variance' && prevDate) {
@@ -629,7 +660,8 @@ function renderDealsTable() {
     return sortDir === 'asc' ? cmp : -cmp;
   };
   tabDeals = tabDeals.sort(comparator);
-  document.getElementById('result-count').textContent = `${tabDeals.length} deal${tabDeals.length === 1 ? '' : 's'}`;
+  const rcEl = document.getElementById(resultCountId);
+  if (rcEl) rcEl.textContent = `${tabDeals.length} deal${tabDeals.length === 1 ? '' : 's'}`;
 
   const arrow = key => key === sortKey ? `<span class="sort-arrow">${sortDir === 'asc' ? '↑' : '↓'}</span>` : '';
   const dateHeaders = dates.map(d => `<th class="num" data-sort="${d}">${colLabel(d)}${arrow(sortKey === '__latest' && d === latestDate ? '__latest' : d)}</th>`).join('');
@@ -658,14 +690,14 @@ function renderDealsTable() {
     return `<tr>
       <td><a class="zoho-link" href="${link}" target="_blank" rel="noopener">${escapeHtml(d.deal_id)}</a></td>
       <td class="name-cell"><a class="zoho-link" href="${link}" target="_blank" rel="noopener">${nameChainHtml(d)}</a></td>
-      <td>${escapeHtml(d.account_name || '')}</td>
       <td>${buCell}</td>
       <td>${escapeHtml(d.deal_type || '')}</td>
       ${dateCells}${varianceCell}
     </tr>`;
   }).join('');
 
-  const dealsTable = document.getElementById('deals-table');
+  const dealsTable = document.getElementById(tableId);
+  if (!dealsTable) return;
   if (dates.length === 0) { dealsTable.innerHTML = `<p class="muted">No ${metric} snapshots recorded yet.</p>`; return; }
 
   const totalCells = dates.map(date => {
@@ -681,17 +713,16 @@ function renderDealsTable() {
     const cls = tv > 0 ? 'var-pos' : tv < 0 ? 'var-neg' : '';
     totalVarianceCell = `<td class="num ${cls}">${tv > 0 ? '+' : ''}${fmtINR(tv)}</td>`;
   }
-  const totalRow = tabDeals.length ? `<tr class="total-row"><td colspan="5">Total (${tabDeals.length} deal${tabDeals.length === 1 ? '' : 's'})</td>${totalCells}${totalVarianceCell}</tr>` : '';
+  const totalRow = tabDeals.length ? `<tr class="total-row"><td colspan="4">Total (${tabDeals.length} deal${tabDeals.length === 1 ? '' : 's'})</td>${totalCells}${totalVarianceCell}</tr>` : '';
   dealsTable.innerHTML = `<div class="table-scroll"><table>
     <thead><tr>
       <th data-sort="deal_id">Deal ID${arrow('deal_id')}</th>
       <th data-sort="deal_name">Deal Name${arrow('deal_name')}</th>
-      <th data-sort="account_name">Account Name${arrow('account_name')}</th>
       <th data-sort="business_unit">Business Unit${arrow('business_unit')}</th>
       <th data-sort="deal_type">Type${arrow('deal_type')}</th>
       ${dateHeaders}${varianceHeader}
     </tr></thead>
-    <tbody>${totalRow}${rows || `<tr><td colspan="${5 + dates.length + (prevDate ? 1 : 0)}" class="muted">No matching deals.</td></tr>`}</tbody>
+    <tbody>${totalRow}${rows || `<tr><td colspan="${4 + dates.length + (prevDate ? 1 : 0)}" class="muted">No matching deals.</td></tr>`}</tbody>
   </table></div>`;
 
   dealsTable.querySelectorAll('th[data-sort]').forEach(th => {
@@ -700,6 +731,7 @@ function renderDealsTable() {
       if (sortKey === key) sortDir = sortDir === 'asc' ? 'desc' : 'asc';
       else { sortKey = key; sortDir = (key === '__latest' || key === '__variance' || dates.includes(key)) ? 'desc' : 'asc'; }
       renderDealsTable();
+      renderNRRDealsTable();
     });
   });
 }
@@ -854,17 +886,65 @@ function renderSummaryView() {
 function renderHuntingView() {
   const q = QUARTERS.find(x => x.key === currentQuarter) || QUARTERS[1];
   const dealsById = new Map(DEALS.map(d => [d.deal_id, d]));
-  const deals = (HUNTING_PIPELINE || [])
-    .filter(d => d.quarter === currentQuarter && d.stage !== 'Closed Lost');
+
+  const allPipelineDeals = (HUNTING_PIPELINE || []).filter(d => d.quarter === currentQuarter);
+  const allStages = [...new Set(allPipelineDeals.map(d => d.stage || 'Unknown'))].sort();
 
   document.getElementById('subtitle').textContent = `Hunting Pipeline: all new-account deals closing in ${q.label} (any probability)`;
 
+  // Build stage filter capsules UI
+  const stageCapsulesHtml = allStages.map(stage => {
+    const active = huntingStageFilter.has(stage);
+    return `<button class="stage-capsule${active ? ' active' : ''}" data-stage="${escapeHtml(stage)}">${escapeHtml(stage)}</button>`;
+  }).join('');
+  const closedLostActive = huntingShowClosedLost;
+
+  const deals = allPipelineDeals.filter(d => {
+    if (d.stage === 'Closed Lost') return huntingShowClosedLost;
+    return huntingStageFilter.has(d.stage || 'Unknown');
+  });
+
+  const content = document.getElementById('content');
+  content.innerHTML = `
+    <div class="card">
+      <p class="summary-section-title">Hunting Pipeline · ${q.label} · ${deals.length} deals</p>
+      <div style="margin-bottom:12px;display:flex;flex-wrap:wrap;gap:6px;align-items:center;">
+        <span style="font-size:12px;color:var(--text-muted);margin-right:4px;">Stages:</span>
+        ${stageCapsulesHtml}
+        <button class="stage-capsule${closedLostActive ? ' active' : ''} stage-closed-lost" data-stage="Closed Lost">Closed Lost</button>
+      </div>
+      <div id="hunting-table-wrap"></div>
+      <div class="legend" style="margin-top:12px;">
+        <div class="legend-item"><span class="prob-high">70%+</span> committed</div>
+        <div class="legend-item"><span class="prob-mid">40-69%</span> likely</div>
+        <div class="legend-item"><span class="prob-low">below 40%</span> early stage</div>
+        <div class="legend-item" style="margin-left:16px;">Adj. = Expected × Probability</div>
+      </div>
+    </div>`;
+
+  // Capsule click handlers
+  content.querySelectorAll('.stage-capsule').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const stage = btn.dataset.stage;
+      if (stage === 'Closed Lost') {
+        huntingShowClosedLost = !huntingShowClosedLost;
+      } else {
+        if (huntingStageFilter.has(stage)) huntingStageFilter.delete(stage);
+        else huntingStageFilter.add(stage);
+      }
+      renderHuntingView();
+    });
+  });
+
+  renderHuntingTable(deals, dealsById, q);
+}
+
+function renderHuntingTable(deals, dealsById, q) {
+  const wrap = document.getElementById('hunting-table-wrap');
+  if (!wrap) return;
+
   if (deals.length === 0) {
-    document.getElementById('content').innerHTML = `
-      <div class="card">
-        <p class="summary-section-title">Hunting Pipeline · ${q.label}</p>
-        <p class="muted">No hunting deals found for ${q.label}. Click "Sync Zoho" to fetch from Zoho CRM.</p>
-      </div>`;
+    wrap.innerHTML = `<p class="muted">No deals match the selected stages. Adjust filters above.</p>`;
     return;
   }
 
@@ -877,7 +957,6 @@ function renderHuntingView() {
   }
   const sortedMonths = [...byMonth.keys()].sort((a, b) => a - b);
 
-  // Grand totals
   let grandMRR = 0, grandAdjMRR = 0, grandNRR = 0, grandAdjNRR = 0;
 
   const monthGroupsHtml = sortedMonths.map(m => {
@@ -897,11 +976,8 @@ function renderHuntingView() {
       const bu = dealsById.get(d.deal_id)?.business_unit || '';
       return `<tr>
         <td class="name-cell"><a class="zoho-link" href="${ZOHO_DEAL_URL(d.deal_id)}" target="_blank" rel="noopener">${escapeHtml(d.deal_name || d.deal_id)}</a></td>
-        <td style="font-size:12px;color:var(--text-secondary)">${escapeHtml(d.account_name || '-')}</td>
         <td>${bu ? `<span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:${colorVar(bu)};margin-right:5px;vertical-align:middle;"></span>${escapeHtml(bu)}` : '<span class="muted">-</span>'}</td>
         <td>${escapeHtml(d.stage || '-')}</td>
-        <td>${d.closing_date || '-'}</td>
-        <td>${escapeHtml(d.deal_owner || '-')}</td>
         <td class="num"><span class="${probClass(d.probability)}">${d.probability}%</span></td>
         <td class="num">${d.mrr_inr ? fmtINR(d.mrr_inr) : '<span class="muted">-</span>'}</td>
         <td class="num">${d.mrr_inr ? fmtINR(Math.round(d.mrr_inr * (d.probability || 0) / 100)) : '<span class="muted">-</span>'}</td>
@@ -910,53 +986,37 @@ function renderHuntingView() {
       </tr>`;
     }).join('');
 
-    return `<tr class="month-group-row"><td colspan="11">${monthName} (${monthDeals.length})</td></tr>
-${rowsHtml}
-<tr class="month-total-row">
-  <td colspan="6" class="muted">Subtotal</td>
-  <td></td>
+    return `<tr class="month-group-row">
+  <td colspan="4">${monthName} (${monthDeals.length})</td>
   <td class="num">${fmtINR(Math.round(mMRR))}</td>
   <td class="num">${fmtINR(Math.round(mAdjMRR))}</td>
   <td class="num">${fmtINR(Math.round(mNRR))}</td>
   <td class="num">${fmtINR(Math.round(mAdjNRR))}</td>
-</tr>`;
+</tr>
+${rowsHtml}`;
   }).join('');
 
   const grandTotalRow = `<tr class="hunting-grand-total">
-    <td colspan="6">Grand Total (${deals.length} deals)</td>
-    <td></td>
+    <td colspan="4">Grand Total (${deals.length} deals)</td>
     <td class="num">${fmtINR(Math.round(grandMRR))}</td>
     <td class="num">${fmtINR(Math.round(grandAdjMRR))}</td>
     <td class="num">${fmtINR(Math.round(grandNRR))}</td>
     <td class="num">${fmtINR(Math.round(grandAdjNRR))}</td>
   </tr>`;
 
-  document.getElementById('content').innerHTML = `
-    <div class="card">
-      <p class="summary-section-title">Hunting Pipeline · ${q.label} · ${deals.length} deals</p>
-      <div class="table-scroll"><table>
-        <thead><tr>
-          <th>Deal Name</th>
-          <th>Account</th>
-          <th>Business Unit</th>
-          <th>Stage</th>
-          <th>Closing Date</th>
-          <th>Deal Owner</th>
-          <th class="num">Probability</th>
-          <th class="num">Exp. MRR</th>
-          <th class="num">Adj. MRR</th>
-          <th class="num">Exp. NRR</th>
-          <th class="num">Adj. NRR</th>
-        </tr></thead>
-        <tbody>${monthGroupsHtml}${grandTotalRow}</tbody>
-      </table></div>
-      <div class="legend" style="margin-top:12px;">
-        <div class="legend-item"><span class="prob-high">70%+</span> committed</div>
-        <div class="legend-item"><span class="prob-mid">40-69%</span> likely</div>
-        <div class="legend-item"><span class="prob-low">below 40%</span> early stage</div>
-        <div class="legend-item" style="margin-left:16px;">Adj. = Expected × Probability</div>
-      </div>
-    </div>`;
+  wrap.innerHTML = `<div class="table-scroll"><table>
+    <thead><tr>
+      <th>Deal Name</th>
+      <th>Business Unit</th>
+      <th>Stage</th>
+      <th class="num">Probability</th>
+      <th class="num">Exp. MRR</th>
+      <th class="num">Adj. MRR</th>
+      <th class="num">Exp. NRR</th>
+      <th class="num">Adj. NRR</th>
+    </tr></thead>
+    <tbody>${grandTotalRow}${monthGroupsHtml}</tbody>
+  </table></div>`;
 }
 
 main();
