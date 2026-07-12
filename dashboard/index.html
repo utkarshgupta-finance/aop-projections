@@ -158,9 +158,10 @@
   .prob-high { color: var(--good); font-weight: 600; }
   .prob-mid  { color: var(--warning); font-weight: 600; }
   .prob-low  { color: var(--text-muted); }
-  .stage-capsule { padding: 3px 10px; border-radius: 20px; border: 1px solid var(--border); background: transparent; color: var(--text-secondary); font-size: 12px; cursor: pointer; transition: all 0.15s; }
-  .stage-capsule:hover { border-color: var(--accent); color: var(--accent); }
-  .stage-capsule.active { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  .stage-capsule { padding: 4px 12px; border-radius: 20px; border: 1.5px solid var(--border); background: transparent; color: var(--text-muted); font-size: 12px; cursor: pointer; transition: all 0.15s; }
+  .stage-capsule.inactive { opacity: 0.45; }
+  .stage-capsule:hover { border-color: var(--accent); color: var(--accent); opacity: 1; }
+  .stage-capsule.active { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; opacity: 1; }
   .stage-capsule.stage-closed-lost.active { background: var(--bad); border-color: var(--bad); }
 </style>
 </head>
@@ -502,12 +503,35 @@ function renderReviewView() {
 
   tableCtx = { dealsById, periodTab, latestDate: mrrLatest, snapshots: MRR_SNAPSHOTS, metric: 'MRR' };
   renderDealsTable();
-  document.getElementById('deal-search').addEventListener('input', e => { searchText = e.target.value; renderDealsTable(); renderNRRDealsTable(); });
-  document.getElementById('bu-filter').addEventListener('change', e => { tableBuFilter = e.target.value; renderDealsTable(); });
-
   renderNRRDealsTable();
-  document.getElementById('nrr-deal-search').addEventListener('input', e => { searchText = e.target.value; renderDealsTable(); renderNRRDealsTable(); });
-  document.getElementById('nrr-bu-filter').addEventListener('change', e => { nrrBuFilter = e.target.value; renderNRRDealsTable(); });
+
+  // Search: any input syncs the other field and refreshes both tables
+  document.getElementById('deal-search').addEventListener('input', e => {
+    searchText = e.target.value;
+    const nrrInput = document.getElementById('nrr-deal-search');
+    if (nrrInput && nrrInput.value !== searchText) nrrInput.value = searchText;
+    renderDealsTable(); renderNRRDealsTable();
+  });
+  document.getElementById('nrr-deal-search').addEventListener('input', e => {
+    searchText = e.target.value;
+    const mrrInput = document.getElementById('deal-search');
+    if (mrrInput && mrrInput.value !== searchText) mrrInput.value = searchText;
+    renderDealsTable(); renderNRRDealsTable();
+  });
+
+  // BU filter: selecting a BU in either dropdown syncs the other to the same value
+  document.getElementById('bu-filter').addEventListener('change', e => {
+    tableBuFilter = e.target.value; nrrBuFilter = e.target.value;
+    const nrrSel = document.getElementById('nrr-bu-filter');
+    if (nrrSel) nrrSel.value = nrrBuFilter;
+    renderDealsTable(); renderNRRDealsTable();
+  });
+  document.getElementById('nrr-bu-filter').addEventListener('change', e => {
+    nrrBuFilter = e.target.value; tableBuFilter = e.target.value;
+    const mrrSel = document.getElementById('bu-filter');
+    if (mrrSel) mrrSel.value = tableBuFilter;
+    renderDealsTable(); renderNRRDealsTable();
+  });
 }
 
 function renderBUView(buRows, maxAbs, showTargets, periodTab) {
@@ -904,14 +928,15 @@ function renderHuntingView() {
   const dealsById = new Map(DEALS.map(d => [d.deal_id, d]));
 
   const allPipelineDeals = (HUNTING_PIPELINE || []).filter(d => d.quarter === currentQuarter);
-  const allStages = [...new Set(allPipelineDeals.map(d => d.stage || 'Unknown'))].sort();
+  // Exclude Closed Lost from the main stage list — it has its own toggle button
+  const allStages = [...new Set(allPipelineDeals.map(d => d.stage || 'Unknown').filter(s => s !== 'Closed Lost'))].sort();
 
   document.getElementById('subtitle').textContent = `Hunting Pipeline: all new-account deals closing in ${q.label} (any probability)`;
 
-  // Build stage filter capsules UI
+  // Build stage filter capsules UI — active = included in filter
   const stageCapsulesHtml = allStages.map(stage => {
     const active = huntingStageFilter.has(stage);
-    return `<button class="stage-capsule${active ? ' active' : ''}" data-stage="${escapeHtml(stage)}">${escapeHtml(stage)}</button>`;
+    return `<button class="stage-capsule${active ? ' active' : ' inactive'}" data-stage="${escapeHtml(stage)}">${escapeHtml(stage)}</button>`;
   }).join('');
   const closedLostActive = huntingShowClosedLost;
 
