@@ -211,12 +211,13 @@ async function renderSettings() {
 
   const months = getQuarterMonths(settingsQuarter);
 
-  let mrrTargets, nrrTargets, targetSettings, allDeals;
+  let mrrTargets, nrrTargets, targetSettings, nrrTargetSettings, allDeals;
   try {
-    [mrrTargets, nrrTargets, targetSettings, allDeals] = await Promise.all([
+    [mrrTargets, nrrTargets, targetSettings, nrrTargetSettings, allDeals] = await Promise.all([
       sbRead(`bu_targets?select=*&period=eq.${encodeURIComponent(settingsQuarter)}`),
       sbRead(`nrr_targets?select=*&period=eq.${encodeURIComponent(settingsQuarter)}`),
       sbRead('target_settings?select=*'),
+      sbRead('nrr_target_settings?select=*'),
       sbRead('deals?select=deal_id,current_name,account_name,business_unit,bu_override&order=current_name.asc'),
     ]);
   } catch (err) {
@@ -227,6 +228,7 @@ async function renderSettings() {
   const mrrByBU = new Map(mrrTargets.map(t => [t.business_unit, t]));
   const nrrByBU = new Map(nrrTargets.map(t => [t.business_unit, t]));
   const settingByKey = new Map(targetSettings.map(s => [`${s.business_unit}::${s.period}`, s]));
+  const nrrSettingByKey = new Map(nrrTargetSettings.map(s => [`${s.business_unit}::${s.period}`, s]));
 
   const overrideDeals = allDeals.filter(d =>
     d.bu_override || d.business_unit === 'UNMAPPED' || !d.business_unit
@@ -337,6 +339,35 @@ async function renderSettings() {
       <button id="save-split-btn">Save Monthly Split</button>
       <div class="msg" id="split-msg"></div>
     </div>
+
+    <div class="card">
+      <h2>Monthly NRR Split - ${escapeHtml(qLabel)}</h2>
+      <p class="desc">How the quarterly NRR target is split across months. Default is equal (33.33% each). Switch to "Rs" to enter an exact absolute value.</p>
+      <table>
+        <thead><tr><th>Business Unit</th>${months.map(m => `<th>${escapeHtml(m.split(' ')[0])}</th>`).join('')}</tr></thead>
+        <tbody>
+          ${BU_LIST.map(bu => `<tr>
+            <td>${escapeHtml(bu)}</td>
+            ${months.map(period => {
+              const s = nrrSettingByKey.get(`${bu}::${period}`);
+              const mode  = s ? s.mode  : 'percent';
+              const value = s ? Number(s.value) : (100 / 3).toFixed(2);
+              return `<td>
+                <div class="split-cell">
+                  <select data-nrr-split-mode="${escapeHtml(bu)}::${escapeHtml(period)}">
+                    <option value="percent" ${mode === 'percent' ? 'selected' : ''}>%</option>
+                    <option value="absolute" ${mode === 'absolute' ? 'selected' : ''}>Rs</option>
+                  </select>
+                  <input type="number" step="0.01" data-nrr-split-value="${escapeHtml(bu)}::${escapeHtml(period)}" value="${value}">
+                </div>
+              </td>`;
+            }).join('')}
+          </tr>`).join('')}
+        </tbody>
+      </table>
+      <button id="save-nrr-split-btn">Save NRR Monthly Split</button>
+      <div class="msg" id="nrr-split-msg"></div>
+    </div>
   `;
 
   // Quarter selector
@@ -419,7 +450,7 @@ async function renderSettings() {
     }
   });
 
-  // Monthly split save
+  // Monthly MRR split save
   document.getElementById('save-split-btn').addEventListener('click', async () => {
     const msg = document.getElementById('split-msg');
     msg.textContent = '';
@@ -438,6 +469,37 @@ async function renderSettings() {
     }
     try {
       await authedFetch('target_settings?on_conflict=business_unit,period', {
+        method: 'POST',
+        headers: { Prefer: 'resolution=merge-duplicates' },
+        body: JSON.stringify(rows),
+      });
+      msg.textContent = 'Saved.';
+      msg.className = 'msg success';
+    } catch (err) {
+      msg.textContent = err.message;
+      msg.className = 'msg error';
+    }
+  });
+
+  // Monthly NRR split save
+  document.getElementById('save-nrr-split-btn').addEventListener('click', async () => {
+    const msg = document.getElementById('nrr-split-msg');
+    msg.textContent = '';
+    msg.className = 'msg';
+    const currentMonths = getQuarterMonths(settingsQuarter);
+    const rows = [];
+    for (const bu of BU_LIST) {
+      for (const period of currentMonths) {
+        rows.push({
+          business_unit: bu,
+          period,
+          mode:  document.querySelector(`[data-nrr-split-mode="${bu}::${period}"]`).value,
+          value: Number(document.querySelector(`[data-nrr-split-value="${bu}::${period}"]`).value),
+        });
+      }
+    }
+    try {
+      await authedFetch('nrr_target_settings?on_conflict=business_unit,period', {
         method: 'POST',
         headers: { Prefer: 'resolution=merge-duplicates' },
         body: JSON.stringify(rows),
