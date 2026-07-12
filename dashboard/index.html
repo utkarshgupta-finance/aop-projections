@@ -148,6 +148,8 @@
   .muted { color: var(--text-muted); }
   .total-row td { font-weight: 700; background: var(--page); border-bottom: 2px solid var(--border); }
   .error { color: #d03b3b; font-size: 13px; }
+  td.var-pos { color: var(--good); background: rgba(12,163,12,0.08) !important; font-weight: 600; }
+  td.var-neg { color: #d03b3b; background: rgba(208,59,59,0.08) !important; font-weight: 600; }
   tr:hover td { background: rgba(11,11,11,0.03); }
   @media (prefers-color-scheme: dark) { tr:hover td { background: rgba(255,255,255,0.04); } }
   .zoho-link { text-decoration: none; border-bottom: 1px dotted var(--text-muted); }
@@ -680,6 +682,7 @@ let tableCtx = {};
 function renderDealsTable() {
   const { dealsById, periodTab, latestDate, snapshots, metric } = tableCtx;
   const dates = activeDates();
+  const prevDate = dates.length >= 2 ? dates[dates.length - 2] : undefined;
   const snapshotsByDeal = new Map();
   for (const s of snapshots) {
     if (!snapshotsByDeal.has(s.deal_id)) snapshotsByDeal.set(s.deal_id, new Map());
@@ -720,6 +723,10 @@ function renderDealsTable() {
     else if (sortKey === 'account_name') { va = a.account_name || ''; vb = b.account_name || ''; }
     else if (sortKey === 'business_unit') { va = a.business_unit || 'UNMAPPED'; vb = b.business_unit || 'UNMAPPED'; }
     else if (sortKey === 'deal_type') { va = a.deal_type || ''; vb = b.deal_type || ''; }
+    else if (sortKey === '__variance' && prevDate) {
+      va = (byDateA?.get(latestDate) ?? 0) - (byDateA?.get(prevDate) ?? 0);
+      vb = (byDateB?.get(latestDate) ?? 0) - (byDateB?.get(prevDate) ?? 0);
+    }
     const aMissing = va === undefined || va === null;
     const bMissing = vb === undefined || vb === null;
     if (aMissing && bMissing) return 0;
@@ -736,6 +743,7 @@ function renderDealsTable() {
 
   const arrow = key => key === sortKey ? `<span class="sort-arrow">${sortDir === 'asc' ? '↑' : '↓'}</span>` : '';
   const dateHeaders = dates.map(d => `<th class="num" data-sort="${d}">${d}${arrow(sortKey === '__latest' && d === latestDate ? '__latest' : d)}</th>`).join('');
+  const varianceHeader = prevDate ? `<th class="num" data-sort="__variance">Change${arrow('__variance')}</th>` : '';
   const rows = tabDeals.map(d => {
     const bu = d.business_unit || 'UNMAPPED';
     const buCell = bu === 'UNMAPPED' ? `<span class="badge">UNMAPPED</span>` : escapeHtml(bu);
@@ -744,6 +752,19 @@ function renderDealsTable() {
       const v = byDate.get(date);
       return `<td class="num">${v === undefined ? '<span class="muted">-</span>' : fmtINR(v)}</td>`;
     }).join('');
+    let varianceCell = '';
+    if (prevDate) {
+      const latV = byDate.get(latestDate) ?? 0;
+      const prevV = byDate.get(prevDate) ?? 0;
+      if (!byDate.has(latestDate) && !byDate.has(prevDate)) {
+        varianceCell = `<td class="num muted">-</td>`;
+      } else {
+        const v = latV - prevV;
+        const cls = v > 0 ? 'var-pos' : v < 0 ? 'var-neg' : '';
+        const str = v > 0 ? `+${fmtINR(v)}` : fmtINR(v);
+        varianceCell = `<td class="num ${cls}">${str}</td>`;
+      }
+    }
     const link = ZOHO_DEAL_URL(d.deal_id);
     return `<tr>
       <td><a class="zoho-link" href="${link}" target="_blank" rel="noopener">${escapeHtml(d.deal_id)}</a></td>
@@ -751,7 +772,7 @@ function renderDealsTable() {
       <td>${escapeHtml(d.account_name || '')}</td>
       <td>${buCell}</td>
       <td>${escapeHtml(d.deal_type || '')}</td>
-      ${dateCells}
+      ${dateCells}${varianceCell}
     </tr>`;
   }).join('');
   const dealsTable = document.getElementById('deals-table');
@@ -767,7 +788,16 @@ function renderDealsTable() {
     });
     return `<td class="num">${any ? fmtINR(sum) : '<span class="muted">-</span>'}</td>`;
   }).join('');
-  const totalRow = tabDeals.length ? `<tr class="total-row"><td colspan="5">Total (${tabDeals.length} deal${tabDeals.length === 1 ? '' : 's'})</td>${totalCells}</tr>` : '';
+  let totalVarianceCell = '';
+  if (prevDate) {
+    const sumLatest = tabDeals.reduce((a, d) => a + (snapshotsByDeal.get(d.deal_id)?.get(latestDate) ?? 0), 0);
+    const sumPrev   = tabDeals.reduce((a, d) => a + (snapshotsByDeal.get(d.deal_id)?.get(prevDate)   ?? 0), 0);
+    const tv = sumLatest - sumPrev;
+    const cls = tv > 0 ? 'var-pos' : tv < 0 ? 'var-neg' : '';
+    const str = tv > 0 ? `+${fmtINR(tv)}` : fmtINR(tv);
+    totalVarianceCell = `<td class="num ${cls}">${str}</td>`;
+  }
+  const totalRow = tabDeals.length ? `<tr class="total-row"><td colspan="5">Total (${tabDeals.length} deal${tabDeals.length === 1 ? '' : 's'})</td>${totalCells}${totalVarianceCell}</tr>` : '';
   dealsTable.innerHTML = `<div class="table-scroll"><table>
     <thead><tr>
       <th data-sort="deal_id">Deal ID${arrow('deal_id')}</th>
@@ -775,16 +805,16 @@ function renderDealsTable() {
       <th data-sort="account_name">Account Name${arrow('account_name')}</th>
       <th data-sort="business_unit">Business Unit${arrow('business_unit')}</th>
       <th data-sort="deal_type">Type${arrow('deal_type')}</th>
-      ${dateHeaders}
+      ${dateHeaders}${varianceHeader}
     </tr></thead>
-    <tbody>${totalRow}${rows || `<tr><td colspan="${5 + dates.length}" class="muted">No matching deals.</td></tr>`}</tbody>
+    <tbody>${totalRow}${rows || `<tr><td colspan="${5 + dates.length + (prevDate ? 1 : 0)}" class="muted">No matching deals.</td></tr>`}</tbody>
   </table></div>`;
 
   dealsTable.querySelectorAll('th[data-sort]').forEach(th => {
     th.addEventListener('click', () => {
       const key = th.dataset.sort;
       if (sortKey === key) sortDir = sortDir === 'asc' ? 'desc' : 'asc';
-      else { sortKey = key; sortDir = key === '__latest' || dates.includes(key) ? 'desc' : 'asc'; }
+      else { sortKey = key; sortDir = key === '__latest' || key === '__variance' || dates.includes(key) ? 'desc' : 'asc'; }
       renderDealsTable();
     });
   });
