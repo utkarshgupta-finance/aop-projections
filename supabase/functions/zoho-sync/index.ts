@@ -436,6 +436,10 @@ Deno.serve(async (req: Request) => {
       extra.forEach((v, k) => accountNameMap.set(k, v));
     }
 
+    // Resolve BU tags for hunting deals (same logic as main universe)
+    const huntingIds = huntingRaw.map(d => String(d.id));
+    const { tagsByDeal: huntingTagsByDeal } = await fetchBUTags(token, huntingIds);
+
     const huntingRows = huntingRaw.map(d => {
       const currency = d.Currency as string;
       const rate     = CURRENCY_RATES[currency] ?? 1;
@@ -445,21 +449,23 @@ Deno.serve(async (req: Request) => {
       if (!accountName && d.Account_Name?.id) {
         accountName = accountNameMap.get(String(d.Account_Name.id)) ?? '';
       }
+      const { bu } = resolveBU(d.Deal_Name ?? '', huntingTagsByDeal.get(String(d.id)));
       return {
-        deal_id:     String(d.id),
-        deal_name:   d.Deal_Name ?? '',
-        stage:       typeof d.Stage === 'string' ? d.Stage : extractName(d.Stage),
-        closing_date: d.Closing_Date ?? null,
-        deal_owner:  extractName(d.Owner),
-        account_name: accountName,
-        probability: d.Probability ?? 0,
-        mrr_amount:  mrr,
-        nrr_amount:  nrr,
-        mrr_inr:     mrr === 0 ? 0 : Math.round(mrr * rate * 100) / 100,
-        nrr_inr:     nrr === 0 ? 0 : Math.round(nrr * rate * 100) / 100,
-        currency:    currency || 'INR',
-        quarter:     targetQuarter,
-        updated_at:  now.toISOString(),
+        deal_id:       String(d.id),
+        deal_name:     d.Deal_Name ?? '',
+        stage:         typeof d.Stage === 'string' ? d.Stage : extractName(d.Stage),
+        closing_date:  d.Closing_Date ?? null,
+        deal_owner:    extractName(d.Owner),
+        account_name:  accountName,
+        probability:   d.Probability ?? 0,
+        mrr_amount:    mrr,
+        nrr_amount:    nrr,
+        mrr_inr:       mrr === 0 ? 0 : Math.round(mrr * rate * 100) / 100,
+        nrr_inr:       nrr === 0 ? 0 : Math.round(nrr * rate * 100) / 100,
+        currency:      currency || 'INR',
+        quarter:       targetQuarter,
+        business_unit: bu ?? 'UNMAPPED',
+        updated_at:    now.toISOString(),
       };
     });
 

@@ -1011,7 +1011,7 @@ function renderHuntingTable(deals, dealsById, q) {
 
     const probClass = p => p >= 70 ? 'prob-high' : p >= 40 ? 'prob-mid' : 'prob-low';
     const rowsHtml = monthDeals.map(d => {
-      const bu = dealsById.get(d.deal_id)?.business_unit || '';
+      const bu = d.business_unit || dealsById.get(d.deal_id)?.business_unit || '';
       return `<tr>
         <td class="name-cell"><a class="zoho-link" href="${ZOHO_DEAL_URL(d.deal_id)}" target="_blank" rel="noopener">${escapeHtml(d.deal_name || d.deal_id)}</a></td>
         <td>${bu ? `<span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:${colorVar(bu)};margin-right:5px;vertical-align:middle;"></span>${escapeHtml(bu)}` : '<span class="muted">-</span>'}</td>
