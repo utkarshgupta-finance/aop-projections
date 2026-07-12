@@ -462,14 +462,14 @@ function render() {
 }
 
 // ============================================================
-// REVIEW VIEW (original dashboard)
+// REVIEW VIEW
 // ============================================================
 function renderReviewView() {
   const PERIOD_TABS = computePeriodTabs(currentQuarter);
-  const content  = document.getElementById('content');
-  const metric   = currentMetric;
+  const content   = document.getElementById('content');
+  const metric    = currentMetric;
   const snapshots = activeSnapshots();
-  const dates    = activeDates();
+  const dates     = activeDates();
   const periodTab = PERIOD_TABS.find(p => p.key === currentPeriodTab) || PERIOD_TABS[PERIOD_TABS.length - 1];
   const dealsById = new Map(DEALS.map(d => [d.deal_id, d]));
 
@@ -483,86 +483,12 @@ function renderReviewView() {
 
   const latestDate = dates[dates.length - 1];
   document.getElementById('subtitle').textContent = latestDate
-    ? `Latest ${metric} snapshot: ${latestDate} . ${dates.length} snapshot${dates.length === 1 ? '' : 's'} tracked`
+    ? `Latest ${metric} snapshot: ${latestDate} · ${dates.length} snapshot${dates.length === 1 ? '' : 's'} tracked`
     : `No ${metric} snapshots recorded yet`;
 
-  const latest = snapshots.filter(s => s.snapshot_date === latestDate && inScope(s.deal_id));
-  const total  = latest.reduce((a, s) => a + amountOf(s), 0);
-  const farmingTotal = snapshots.filter(s => s.snapshot_date === latestDate && dealsById.get(s.deal_id)?.deal_type === 'Farming' && inScope(s.deal_id)).reduce((a, s) => a + amountOf(s), 0);
-  const huntingTotal = snapshots.filter(s => s.snapshot_date === latestDate && dealsById.get(s.deal_id)?.deal_type === 'Hunting' && inScope(s.deal_id)).reduce((a, s) => a + amountOf(s), 0);
-  const unmappedDeals = latest.filter(s => (dealsById.get(s.deal_id)?.business_unit || 'UNMAPPED') === 'UNMAPPED');
-  const allBUs = targetBUList();
-  const targetTotal = currentBU
-    ? (targetFor(currentBU, periodTab) || 0)
-    : allBUs.reduce((a, bu) => a + (targetFor(bu, periodTab) || 0), 0);
-  const attainment = targetTotal ? (total / targetTotal) * 100 : null;
-
-  let statTiles = `<div class="stat-tile"><div class="stat-label">Total ${metric}${latestDate ? ` (${latestDate})` : ''}</div><div class="stat-value">${fmtINR(total)}</div></div>`;
-  if (currentTypeTab === 'combined') {
-    statTiles += `
-    <div class="stat-tile"><div class="stat-label">Target (${periodTab.label})</div><div class="stat-value">${fmtINR(targetTotal)}</div><div class="stat-sub">${attainment === null ? '' : attainment.toFixed(1) + '% attained'}</div></div>
-    <div class="stat-tile"><div class="stat-label">Farming ${metric}</div><div class="stat-value">${fmtINR(farmingTotal)}</div></div>
-    <div class="stat-tile"><div class="stat-label">Hunting ${metric}</div><div class="stat-value">${fmtINR(huntingTotal)}</div></div>`;
-  }
-  statTiles += `<div class="stat-tile"><div class="stat-label">Unmapped deals</div><div class="stat-value ${unmappedDeals.length ? 'warn' : ''}">${unmappedDeals.length}</div></div>`;
-
-  const buTotals = new Map();
-  for (const s of latest) {
-    const bu = dealsById.get(s.deal_id)?.business_unit || 'UNMAPPED';
-    buTotals.set(bu, (buTotals.get(bu) || 0) + amountOf(s));
-  }
-  const showTargets = currentTypeTab === 'combined' && !currentBU;
-  const buScope = currentBU ? [currentBU] : allBUs;
-  if (currentTypeTab === 'combined') for (const bu of buScope) if (!buTotals.has(bu)) buTotals.set(bu, 0);
-  if (currentBU) for (const [bu] of [...buTotals]) if (bu !== currentBU) buTotals.delete(bu);
-  const buRows = [...buTotals.entries()].sort((a, b) => b[1] - a[1]);
-  const maxAbs = Math.max(...buRows.map(([, v]) => Math.abs(v)), ...(showTargets ? allBUs.map(bu => targetFor(bu, periodTab) || 0) : []), 1);
-
-  const trend = dates.map(date => ({
-    date, total: snapshots.filter(s => s.snapshot_date === date && inScope(s.deal_id)).reduce((a, s) => a + amountOf(s), 0),
-  }));
-
   content.innerHTML = `
-    <div class="stat-row">${statTiles}</div>
     <div class="card">
-      <div class="card-head">
-        <h2>${metric} by Business Unit ${showTargets ? `<span class="hint">vs ${periodTab.label} target</span>` : ''}</h2>
-        <div class="view-toggle" id="bu-view-toggle">
-          <button data-mode="table" class="${buViewMode === 'table' ? 'active' : ''}">Table</button>
-          <button data-mode="chart" class="${buViewMode === 'chart' ? 'active' : ''}">Chart</button>
-        </div>
-      </div>
-      <div id="bu-view"></div>
-      ${buViewMode === 'chart' ? `<div class="legend">
-        <div class="legend-item"><span class="legend-swatch" style="background:var(--series-1);"></span>Net add</div>
-        <div class="legend-item"><span class="legend-swatch" style="background:var(--series-6);"></span>Net churn</div>
-        <div class="legend-item"><span class="legend-swatch" style="background:var(--warning);"></span>Unmapped</div>
-        ${showTargets ? `<div class="legend-item"><span class="legend-swatch tick"></span>Target</div>` : ''}
-      </div>` : ''}
-    </div>
-    ${currentTypeTab === 'combined' ? `<div class="card"><h2>Farming vs Hunting</h2><div id="split-chart"></div></div>` : ''}
-    <div class="card"><h2>${metric} trend over time</h2><div id="trend-chart"></div></div>
-    <div class="card">
-      <h2>Reference: current book and NRR targets</h2>
-      <div class="ref-grid">
-        <div><table class="ref-table">
-          <thead><tr><th>Business Unit</th><th class="num">Current MRR (June exit)</th></tr></thead>
-          <tbody>
-            <tr class="total-row"><td>Total</td><td class="num">${fmtINR(BASELINE.reduce((a, b) => a + Number(b.mrr_amount), 0))}</td></tr>
-            ${BASELINE.slice().sort((a, b) => Number(b.mrr_amount) - Number(a.mrr_amount)).map(b => `<tr><td>${escapeHtml(b.business_unit)}</td><td class="num">${fmtINR(Number(b.mrr_amount))}</td></tr>`).join('')}
-          </tbody>
-        </table></div>
-        <div><table class="ref-table">
-          <thead><tr><th>Business Unit</th><th class="num">NRR Target (${NRR_TARGETS[0]?.period || ''})</th></tr></thead>
-          <tbody>
-            <tr class="total-row"><td>Total</td><td class="num">${fmtINR(NRR_TARGETS.reduce((a, b) => a + Number(b.target_amount), 0))}</td></tr>
-            ${NRR_TARGETS.slice().sort((a, b) => Number(b.target_amount) - Number(a.target_amount)).map(b => `<tr><td>${escapeHtml(b.business_unit)}</td><td class="num">${fmtINR(Number(b.target_amount))}</td></tr>`).join('')}
-          </tbody>
-        </table></div>
-      </div>
-    </div>
-    <div class="card">
-      <h2>Deals - ${metric} by snapshot date</h2>
+      <h2>Deals — ${metric} by snapshot date</h2>
       <div class="table-controls">
         <input class="search-input" id="deal-search" type="text" placeholder="Search deal id, name, account, BU, type..." value="${escapeHtml(searchText)}">
         <select class="filter-select" id="bu-filter"><option value="">All business units</option></select>
@@ -570,50 +496,6 @@ function renderReviewView() {
       </div>
       <div id="deals-table"></div>
     </div>`;
-
-  renderBUView(buRows, maxAbs, showTargets, periodTab);
-  document.getElementById('bu-view-toggle').querySelectorAll('button').forEach(btn => {
-    btn.addEventListener('click', () => { buViewMode = btn.dataset.mode; render(); });
-  });
-
-  if (currentTypeTab === 'combined') {
-    const splitChart = document.getElementById('split-chart');
-    const splitTotal = Math.abs(farmingTotal) + Math.abs(huntingTotal) || 1;
-    const farmPct = (Math.abs(farmingTotal) / splitTotal) * 100;
-    const huntPct = 100 - farmPct;
-    splitChart.innerHTML = `
-      <div class="split-row">
-        <div class="split-seg" style="width:${farmPct}%;background:var(--series-1);" title="Farming: ${fmtINR(farmingTotal)}">${farmPct > 12 ? 'Farming' : ''}</div>
-        <div class="split-seg" style="width:${huntPct}%;background:var(--series-6);" title="Hunting: ${fmtINR(huntingTotal)}">${huntPct > 12 ? 'Hunting' : ''}</div>
-      </div>
-      <div class="legend">
-        <div class="legend-item"><span class="legend-swatch" style="background:var(--series-1);"></span>Farming . ${fmtINR(farmingTotal)}</div>
-        <div class="legend-item"><span class="legend-swatch" style="background:var(--series-6);"></span>Hunting . ${fmtINR(huntingTotal)}</div>
-      </div>`;
-  }
-
-  const trendChart = document.getElementById('trend-chart');
-  if (trend.length === 0) {
-    trendChart.innerHTML = `<p class="muted">No ${metric} snapshots recorded yet for this view.</p>`;
-  } else if (trend.length === 1) {
-    trendChart.innerHTML = `<p class="muted">Only one snapshot recorded so far (${trend[0].date}: ${fmtINR(trend[0].total)}). More snapshots needed for a trend line.</p>`;
-  } else {
-    const w = 1000, h = 220, padL = 70, padB = 30, padT = 20, padR = 20;
-    const vals = trend.map(t => t.total);
-    const minV = Math.min(0, ...vals), maxV = Math.max(...vals);
-    const x = i => padL + (i / (trend.length - 1)) * (w - padL - padR);
-    const y = v => h - padB - ((v - minV) / (maxV - minV || 1)) * (h - padT - padB);
-    const points = trend.map((t, i) => `${x(i)},${y(t.total)}`).join(' ');
-    const gridLines = [0, 0.25, 0.5, 0.75, 1].map(f => {
-      const yy = padT + f * (h - padT - padB);
-      const val = maxV - f * (maxV - minV);
-      return `<line x1="${padL}" y1="${yy}" x2="${w - padR}" y2="${yy}" stroke="var(--gridline)" stroke-width="1"/>
-              <text x="${padL - 10}" y="${yy + 4}" font-size="11" fill="var(--text-muted)" text-anchor="end">${fmtINR(Math.round(val))}</text>`;
-    }).join('');
-    const dots = trend.map((t, i) => `<circle cx="${x(i)}" cy="${y(t.total)}" r="4" fill="var(--series-1)" stroke="var(--surface-1)" stroke-width="2"><title>${t.date}: ${fmtINR(t.total)}</title></circle>`).join('');
-    const labels = trend.map((t, i) => `<text x="${x(i)}" y="${h - 8}" font-size="11" fill="var(--text-muted)" text-anchor="middle">${t.date}</text>`).join('');
-    trendChart.innerHTML = `<svg viewBox="0 0 ${w} ${h}" width="100%" height="${h}">${gridLines}<polyline points="${points}" fill="none" stroke="var(--series-1)" stroke-width="2"/>${dots}${labels}</svg>`;
-  }
 
   tableCtx = { dealsById, periodTab, latestDate, snapshots, metric };
   renderDealsTable();
