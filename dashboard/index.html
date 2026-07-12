@@ -584,23 +584,37 @@ function renderDealsTableWith({ dealsById, periodTab, snapshots, metric, tableId
   const allDates = metric === 'MRR' ? MRR_DATES : NRR_DATES;
   const amountOfRow = s => Number(metric === 'MRR' ? s.mrr_amount : s.nrr_amount);
 
-  // On the full-quarter tab show one column per month (last snapshot of each month).
-  // On a monthly tab show every snapshot date within that month.
+  // Column logic:
+  // Q tab: one column per month in the quarter (last snapshot of each), labeled with month name.
+  // Monthly tab Mk: prior months get one column each (last snapshot, month-name label),
+  //                 current month gets all available snapshot dates (date-string label).
   let dates, colLabel;
+  const allQuarterMonths = computePeriodTabs(currentQuarter).find(t => isFullQuarterTab(t))?.months || periodTab.months;
   if (isFullQuarterTab(periodTab)) {
     const byMonth = new Map();
     for (const d of allDates) {
       const m = Number(d.slice(5, 7)), y = Number(d.slice(0, 4));
-      if (y === periodTab.year && periodTab.months.includes(m)) byMonth.set(m, d);
+      if (y === periodTab.year && allQuarterMonths.includes(m)) byMonth.set(m, d);
     }
-    dates = periodTab.months.map(m => byMonth.get(m)).filter(Boolean);
+    dates = allQuarterMonths.map(m => byMonth.get(m)).filter(Boolean);
     colLabel = d => MONTH_FULL[Number(d.slice(5, 7)) - 1];
   } else {
-    dates = allDates.filter(d => {
+    const curMonth = periodTab.months[0];
+    const priorMonths = allQuarterMonths.filter(m => m < curMonth);
+    // Last snapshot for each prior month → labeled with month name
+    const priorDates = [];
+    const priorDateSet = new Set();
+    for (const pm of priorMonths) {
+      const last = [...allDates].reverse().find(d => Number(d.slice(5, 7)) === pm && Number(d.slice(0, 4)) === periodTab.year);
+      if (last) { priorDates.push(last); priorDateSet.add(last); }
+    }
+    // All snapshot dates within the current month
+    const curDates = allDates.filter(d => {
       const m = Number(d.slice(5, 7)), y = Number(d.slice(0, 4));
-      return periodTab.months.includes(m) && y === periodTab.year;
+      return m === curMonth && y === periodTab.year;
     });
-    colLabel = d => d;
+    dates = [...priorDates, ...curDates];
+    colLabel = d => priorDateSet.has(d) ? MONTH_FULL[Number(d.slice(5, 7)) - 1] : d;
   }
 
   const latestDate = dates[dates.length - 1];
@@ -615,9 +629,11 @@ function renderDealsTableWith({ dealsById, periodTab, snapshots, metric, tableId
     snapshotsByDeal.get(s.deal_id).set(s.snapshot_date, amountOfRow(s));
   }
 
+  // Always filter by the full quarter so all quarter deals appear on every monthly tab.
+  const quarterTab = computePeriodTabs(currentQuarter).find(t => isFullQuarterTab(t)) || periodTab;
   let tabDeals = DEALS.filter(d => currentTypeTab === 'combined' || d.deal_type === currentTypeTab)
     .filter(d => !currentBU || (d.business_unit || 'UNMAPPED') === currentBU)
-    .filter(d => dealInPeriod(d, periodTab))
+    .filter(d => dealInPeriod(d, quarterTab))
     .filter(d => snapshotsByDeal.has(d.deal_id));
 
   const buOptions = [...new Set(tabDeals.map(d => d.business_unit || 'UNMAPPED'))].sort();
