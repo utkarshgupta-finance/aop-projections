@@ -243,7 +243,7 @@ async function renderSettings() {
       sbRead(`nrr_targets?select=*&period=eq.${encodeURIComponent(settingsQuarter)}`),
       sbRead('target_settings?select=*'),
       sbRead('nrr_target_settings?select=*'),
-      sbRead('deals?select=deal_id,current_name,account_name,business_unit,bu_override&order=current_name.asc'),
+      sbRead('deals?select=deal_id,current_name,account_name,business_unit,bu_override,closing_date&order=current_name.asc'),
     ]);
   } catch (err) {
     content.innerHTML = `<div class="card"><p class="msg error">${escapeHtml(err.message)}</p></div>`;
@@ -255,9 +255,14 @@ async function renderSettings() {
   const settingByKey = new Map(targetSettings.map(s => [`${s.business_unit}::${s.period}`, s]));
   const nrrSettingByKey = new Map(nrrTargetSettings.map(s => [`${s.business_unit}::${s.period}`, s]));
 
-  const overrideDeals = allDeals.filter(d =>
-    d.bu_override || d.business_unit === 'UNMAPPED' || !d.business_unit
-  ).sort((a, b) => {
+  const q = QUARTERS.find(x => x.key === settingsQuarter) || QUARTERS[1];
+  const overrideDeals = allDeals.filter(d => {
+    if (!(d.bu_override || d.business_unit === 'UNMAPPED' || !d.business_unit)) return false;
+    if (!d.closing_date) return false;
+    const month = Number(d.closing_date.slice(5, 7));
+    const year  = Number(d.closing_date.slice(0, 4));
+    return q.months.includes(month) && year === q.year;
+  }).sort((a, b) => {
     if (a.bu_override && !b.bu_override) return -1;
     if (!a.bu_override && b.bu_override) return 1;
     return (a.current_name || '').localeCompare(b.current_name || '');
