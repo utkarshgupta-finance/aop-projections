@@ -257,7 +257,7 @@ const METRIC_TABS = [
   { key: 'NRR', label: 'NRR' },
 ];
 
-let DEALS = [], MRR_SNAPSHOTS = [], NRR_SNAPSHOTS = [], BU_TARGETS = [], TARGET_SETTINGS = [], NRR_TARGETS = [], NRR_TARGET_SETTINGS = [], BASELINE = [], HUNTING_PIPELINE = [];
+let DEALS = [], MRR_SNAPSHOTS = [], NRR_SNAPSHOTS = [], BU_TARGETS = [], TARGET_SETTINGS = [], NRR_TARGETS = [], NRR_TARGET_SETTINGS = [], BASELINE = [], HUNTING_PIPELINE = [], HUNTING_SNAPSHOTS = [];
 let MRR_DATES = [], NRR_DATES = [], BU_TAB_LIST = [];
 let currentViewMode   = 'review';
 let currentQuarter    = '2026-Q3';
@@ -277,7 +277,10 @@ const DEFAULT_HUNTING_STAGES = new Set([
 ]);
 let huntingStageFilter = new Set(DEFAULT_HUNTING_STAGES);
 let huntingShowClosedLost = false;
-let huntingBUFilter = null; // null = lazy-init to all BUs on first render
+let huntingBUFilter  = null; // null = lazy-init to all BUs on first render
+let huntingViewMode  = 'summary'; // 'summary' | 'detail'
+let mrrCompEnd = null, mrrCompBase = null;
+let nrrCompEnd = null, nrrCompBase = null;
 let summarySortKey  = 'bu';
 let summarySortDir  = 'asc';
 let summarySearch   = '';
@@ -414,7 +417,7 @@ function renderTabs() {
 async function main() {
   const content = document.getElementById('content');
   try {
-    [DEALS, MRR_SNAPSHOTS, NRR_SNAPSHOTS, BU_TARGETS, TARGET_SETTINGS, NRR_TARGETS, NRR_TARGET_SETTINGS, BASELINE, HUNTING_PIPELINE] = await Promise.all([
+    [DEALS, MRR_SNAPSHOTS, NRR_SNAPSHOTS, BU_TARGETS, TARGET_SETTINGS, NRR_TARGETS, NRR_TARGET_SETTINGS, BASELINE, HUNTING_PIPELINE, HUNTING_SNAPSHOTS] = await Promise.all([
       sb('deals?select=*'),
       sb('mrr_snapshots?select=*&order=snapshot_date.asc'),
       sb('nrr_snapshots?select=*&order=snapshot_date.asc'),
@@ -424,6 +427,7 @@ async function main() {
       sb('nrr_target_settings?select=*'),
       sb('bu_baseline_mrr?select=*'),
       sb('hunting_pipeline?select=*&order=closing_date.asc').catch(() => []),
+      sb('hunting_pipeline_snapshots?select=*&order=synced_at.desc').catch(() => []),
     ]);
   } catch (err) {
     content.innerHTML = `<div class="card"><p class="error">Failed to load data: ${escapeHtml(err.message)}</p></div>`;
@@ -453,6 +457,8 @@ async function main() {
     currentQuarter   = e.target.value;
     currentPeriodTab = 'Q';
     huntingBUFilter  = null;
+    huntingViewMode  = 'summary';
+    mrrCompEnd = null; mrrCompBase = null; nrrCompEnd = null; nrrCompBase = null;
     summarySortKey   = 'bu'; summarySortDir = 'asc'; summarySearch = '';
     renderTabs(); render();
   });
@@ -475,7 +481,7 @@ async function main() {
       const data = await res.json();
       if (!res.ok || !data.ok) throw new Error(data.error || `HTTP ${res.status}`);
 
-      [DEALS, MRR_SNAPSHOTS, NRR_SNAPSHOTS, BU_TARGETS, TARGET_SETTINGS, NRR_TARGETS, BASELINE, HUNTING_PIPELINE] = await Promise.all([
+      [DEALS, MRR_SNAPSHOTS, NRR_SNAPSHOTS, BU_TARGETS, TARGET_SETTINGS, NRR_TARGETS, BASELINE, HUNTING_PIPELINE, HUNTING_SNAPSHOTS] = await Promise.all([
         sb('deals?select=*'),
         sb('mrr_snapshots?select=*&order=snapshot_date.asc'),
         sb('nrr_snapshots?select=*&order=snapshot_date.asc'),
@@ -484,6 +490,7 @@ async function main() {
         sb('nrr_targets?select=*'),
         sb('bu_baseline_mrr?select=*'),
         sb('hunting_pipeline?select=*&order=closing_date.asc').catch(() => []),
+        sb('hunting_pipeline_snapshots?select=*&order=synced_at.desc').catch(() => []),
       ]);
       MRR_DATES = [...new Set(MRR_SNAPSHOTS.map(s => s.snapshot_date))].sort();
       NRR_DATES = [...new Set(NRR_SNAPSHOTS.map(s => s.snapshot_date))].sort();
@@ -820,6 +827,7 @@ function renderNRRDealsTable() {
     dealsById, periodTab, snapshots: NRR_SNAPSHOTS, metric: 'NRR',
     tableId: 'nrr-deals-table', buFilterId: 'nrr-bu-filter',
     resultCountId: 'nrr-result-count', buFilter: nrrBuFilter,
+    compEnd: nrrCompEnd, compBase: nrrCompBase,
   });
 }
 
@@ -828,18 +836,16 @@ function renderDealsTable() {
   renderDealsTableWith({ dealsById, periodTab, snapshots, metric,
     tableId: 'deals-table', buFilterId: 'bu-filter',
     resultCountId: 'result-count', buFilter: tableBuFilter,
+    compEnd: mrrCompEnd, compBase: mrrCompBase,
   });
 }
 
-function renderDealsTableWith({ dealsById, periodTab, snapshots, metric, tableId, buFilterId, resultCountId, buFilter }) {
+function renderDealsTableWith({ dealsById, periodTab, snapshots, metric, tableId, buFilterId, resultCountId, buFilter, compEnd, compBase }) {
   const allDates = metric === 'MRR' ? MRR_DATES : NRR_DATES;
   const amountOfRow = s => Number(metric === 'MRR' ? s.mrr_amount : s.nrr_amount);
 
-  // Column logic:
-  // Q tab: one column per month in the quarter (last snapshot of each), labeled with month name.
-  // Monthly tab Mk: prior months get one column each (last snapshot, month-name label),
-  //                 current month gets all available snapshot dates (date-string label).
-  let dates, colLabel;
+  // Build the full set of period dates (used for the date pickers)
+  let periodDates;
   const allQuarterMonths = computePeriodTabs(currentQuarter).find(t => isFullQuarterTab(t))?.months || periodTab.months;
   if (isFullQuarterTab(periodTab)) {
     const byMonth = new Map();
@@ -847,29 +853,34 @@ function renderDealsTableWith({ dealsById, periodTab, snapshots, metric, tableId
       const m = Number(d.slice(5, 7)), y = Number(d.slice(0, 4));
       if (y === periodTab.year && allQuarterMonths.includes(m)) byMonth.set(m, d);
     }
-    dates = allQuarterMonths.map(m => byMonth.get(m)).filter(Boolean);
-    colLabel = d => MONTH_FULL[Number(d.slice(5, 7)) - 1];
+    periodDates = allQuarterMonths.map(m => byMonth.get(m)).filter(Boolean);
   } else {
     const curMonth = periodTab.months[0];
-    const priorMonths = allQuarterMonths.filter(m => m < curMonth);
-    // Last snapshot for each prior month → labeled with month name
     const priorDates = [];
-    const priorDateSet = new Set();
-    for (const pm of priorMonths) {
-      const last = [...allDates].reverse().find(d => Number(d.slice(5, 7)) === pm && Number(d.slice(0, 4)) === periodTab.year);
-      if (last) { priorDates.push(last); priorDateSet.add(last); }
+    for (const pm of allQuarterMonths.filter(m => m < curMonth)) {
+      const last = [...allDates].reverse().find(d => Number(d.slice(5,7)) === pm && Number(d.slice(0,4)) === periodTab.year);
+      if (last) priorDates.push(last);
     }
-    // All snapshot dates within the current month
-    const curDates = allDates.filter(d => {
-      const m = Number(d.slice(5, 7)), y = Number(d.slice(0, 4));
-      return m === curMonth && y === periodTab.year;
-    });
-    dates = [...priorDates, ...curDates];
-    colLabel = d => priorDateSet.has(d) ? MONTH_FULL[Number(d.slice(5, 7)) - 1] : d;
+    const curDates = allDates.filter(d => Number(d.slice(5,7)) === curMonth && Number(d.slice(0,4)) === periodTab.year);
+    periodDates = [...priorDates, ...curDates];
   }
 
-  const latestDate = dates[dates.length - 1];
-  const prevDate = dates.length >= 2 ? dates[dates.length - 2] : undefined;
+  // Comparison dates: end defaults to latest, base defaults to T-7 from end
+  const latestInPeriod = periodDates[periodDates.length - 1];
+  const endDate = (compEnd && periodDates.includes(compEnd)) ? compEnd : latestInPeriod;
+  const t7Ms = endDate ? new Date(endDate).getTime() - 7 * 24 * 60 * 60 * 1000 : 0;
+  const t7Date = periodDates
+    .filter(d => d < endDate)
+    .reduce((best, d) => {
+      if (!best) return d;
+      return Math.abs(new Date(d).getTime() - t7Ms) < Math.abs(new Date(best).getTime() - t7Ms) ? d : best;
+    }, null);
+  const baseDate = (compBase && periodDates.includes(compBase) && compBase !== endDate) ? compBase : t7Date;
+
+  // Show only 2 comparison columns
+  const dates = [baseDate, endDate].filter(Boolean);
+  const latestDate = endDate;
+  const prevDate = baseDate || undefined;
   if (sortKey !== '__latest' && sortKey !== '__variance' && !dates.includes(sortKey) &&
       !['deal_id','deal_name','account_name','business_unit','deal_type'].includes(sortKey)) {
     sortKey = '__latest';
@@ -930,8 +941,28 @@ function renderDealsTableWith({ dealsById, periodTab, snapshots, metric, tableId
   if (rcEl) rcEl.textContent = `${tabDeals.length} deal${tabDeals.length === 1 ? '' : 's'}`;
 
   const arrow = key => key === sortKey ? `<span class="sort-arrow">${sortDir === 'asc' ? '↑' : '↓'}</span>` : '';
-  const dateHeaders = dates.map(d => `<th class="num" data-sort="${d}">${colLabel(d)}${arrow(sortKey === '__latest' && d === latestDate ? '__latest' : d)}</th>`).join('');
+  const fromLabel = baseDate ? `From` : 'Snapshot';
+  const dateHeaders = dates.map((d, i) => {
+    const sortK = (i === dates.length - 1) ? '__latest' : d;
+    const lbl = (i === dates.length - 1) ? `Latest` : fromLabel;
+    return `<th class="num" data-sort="${sortK}">${lbl}${arrow(sortK)}</th>`;
+  }).join('');
   const varianceHeader = prevDate ? `<th class="num" data-sort="__variance">Change${arrow('__variance')}</th>` : '';
+  const pickerStyle = `font-size:11px;padding:2px 4px;background:var(--surface-1);border:1px solid var(--border);border-radius:4px;color:var(--text);cursor:pointer;max-width:130px;`;
+  const pickerRow = dates.length >= 1 ? `<tr>
+    <th colspan="5" style="border-bottom:none;padding:2px 0;"></th>
+    ${baseDate ? `<th class="num" style="border-bottom:none;padding:2px 4px;">
+      <select class="comp-date-sel" data-role="base" data-metric="${metric}" style="${pickerStyle}">
+        ${periodDates.map(d => `<option value="${d}"${d===baseDate?' selected':''}>${d}</option>`).join('')}
+      </select>
+    </th>` : ''}
+    <th class="num" style="border-bottom:none;padding:2px 4px;">
+      <select class="comp-date-sel" data-role="end" data-metric="${metric}" style="${pickerStyle}">
+        ${periodDates.map(d => `<option value="${d}"${d===endDate?' selected':''}>${d}</option>`).join('')}
+      </select>
+    </th>
+    ${prevDate ? `<th style="border-bottom:none;"></th>` : ''}
+  </tr>` : '';
   const rows = tabDeals.map(d => {
     const bu = d.business_unit || 'UNMAPPED';
     const buCell = bu === 'UNMAPPED' ? `<span class="badge">UNMAPPED</span>` : escapeHtml(bu);
@@ -982,7 +1013,9 @@ function renderDealsTableWith({ dealsById, periodTab, snapshots, metric, tableId
   }
   const totalRow = tabDeals.length ? `<tr class="total-row"><td colspan="5">Total (${tabDeals.length} deal${tabDeals.length === 1 ? '' : 's'})</td>${totalCells}${totalVarianceCell}</tr>` : '';
   dealsTable.innerHTML = `<div class="table-scroll"><table>
-    <thead><tr>
+    <thead>
+    ${pickerRow}
+    <tr>
       <th data-sort="deal_id">Deal ID${arrow('deal_id')}</th>
       <th data-sort="deal_name">Deal Name${arrow('deal_name')}</th>
       <th data-sort="account_name">Account${arrow('account_name')}</th>
@@ -998,6 +1031,20 @@ function renderDealsTableWith({ dealsById, periodTab, snapshots, metric, tableId
       const key = th.dataset.sort;
       if (sortKey === key) sortDir = sortDir === 'asc' ? 'desc' : 'asc';
       else { sortKey = key; sortDir = (key === '__latest' || key === '__variance' || dates.includes(key)) ? 'desc' : 'asc'; }
+      renderDealsTable();
+      renderNRRDealsTable();
+    });
+  });
+
+  dealsTable.querySelectorAll('.comp-date-sel').forEach(sel => {
+    sel.addEventListener('change', e => {
+      e.stopPropagation();
+      const role = sel.dataset.role, val = sel.value;
+      if (metric === 'MRR') {
+        if (role === 'base') mrrCompBase = val; else mrrCompEnd = val;
+      } else {
+        if (role === 'base') nrrCompBase = val; else nrrCompEnd = val;
+      }
       renderDealsTable();
       renderNRRDealsTable();
     });
@@ -1269,6 +1316,19 @@ function renderHuntingView() {
   ];
   if (huntingBUFilter === null) huntingBUFilter = new Set(allBUs);
 
+  // Latest sync date from snapshots or hunting_pipeline updated_at
+  const latestSyncTs = (() => {
+    const snapDates = (HUNTING_SNAPSHOTS || [])
+      .filter(s => s.quarter === currentQuarter)
+      .map(s => s.synced_at).filter(Boolean);
+    const updDates = allPipelineDeals.map(d => d.updated_at).filter(Boolean);
+    const all = [...snapDates, ...updDates].sort();
+    return all[all.length - 1] || null;
+  })();
+  const fetchedLabel = latestSyncTs
+    ? `Last fetched: ${new Date(latestSyncTs).toLocaleString('en-IN', {dateStyle:'medium',timeStyle:'short'})}`
+    : '';
+
   document.getElementById('subtitle').textContent = `Hunting Pipeline: all new-account deals closing in ${q.label} (any probability)`;
 
   const stageCapsulesHtml = allStages.map(stage => {
@@ -1294,7 +1354,14 @@ function renderHuntingView() {
   const content = document.getElementById('content');
   content.innerHTML = `
     <div class="card">
-      <p class="summary-section-title">Hunting Pipeline · ${q.label} · ${deals.length} deals</p>
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:4px;">
+        <p class="summary-section-title" style="margin:0;">Hunting Pipeline · ${q.label} · ${deals.length} deals</p>
+        ${fetchedLabel ? `<span style="font-size:12px;color:var(--text-muted);">${fetchedLabel}</span>` : ''}
+        <div style="margin-left:auto;display:flex;gap:6px;">
+          <button class="stage-capsule${huntingViewMode === 'summary' ? ' active' : ''}" id="hunting-view-summary">Summary</button>
+          <button class="stage-capsule${huntingViewMode === 'detail' ? ' active' : ''}" id="hunting-view-detail">Movement</button>
+        </div>
+      </div>
       <div style="margin-bottom:8px;display:flex;flex-wrap:wrap;gap:6px;align-items:center;">
         <span style="font-size:12px;color:var(--text-muted);margin-right:4px;">Stages:</span>
         ${stageCapsulesHtml}
@@ -1335,7 +1402,18 @@ function renderHuntingView() {
     });
   });
 
-  renderHuntingTable(deals, dealsById, q);
+  document.getElementById('hunting-view-summary')?.addEventListener('click', () => {
+    huntingViewMode = 'summary'; renderHuntingView();
+  });
+  document.getElementById('hunting-view-detail')?.addEventListener('click', () => {
+    huntingViewMode = 'detail'; renderHuntingView();
+  });
+
+  if (huntingViewMode === 'detail') {
+    renderHuntingDetailView(deals, dealsById, q);
+  } else {
+    renderHuntingTable(deals, dealsById, q);
+  }
 }
 
 function renderHuntingTable(deals, dealsById, q) {
@@ -1417,6 +1495,114 @@ ${rowsHtml}`;
     </tr></thead>
     <tbody>${grandTotalRow}${monthGroupsHtml}</tbody>
   </table></div>`;
+}
+
+// ============================================================
+// HUNTING DETAIL VIEW (movement between two snapshots)
+// ============================================================
+function renderHuntingDetailView(deals, dealsById, q) {
+  const wrap = document.getElementById('hunting-table-wrap');
+  if (!wrap) return;
+
+  const snapshots = (HUNTING_SNAPSHOTS || []).filter(s => s.quarter === currentQuarter);
+  const syncTimes = [...new Set(snapshots.map(s => s.synced_at))].sort();
+
+  if (syncTimes.length < 2) {
+    wrap.innerHTML = `<p class="muted">Need at least 2 syncs to show movement. Current syncs: ${syncTimes.length}.</p>`;
+    return;
+  }
+
+  const latestTime = syncTimes[syncTimes.length - 1];
+  const prevTime   = syncTimes[syncTimes.length - 2];
+
+  const byId = ts => {
+    const m = new Map();
+    snapshots.filter(s => s.synced_at === ts).forEach(s => m.set(s.deal_id, s));
+    return m;
+  };
+  const latestMap = byId(latestTime);
+  const prevMap   = byId(prevTime);
+
+  const allIds = new Set([...latestMap.keys(), ...prevMap.keys()]);
+  const rows = [];
+
+  for (const id of allIds) {
+    const cur  = latestMap.get(id);
+    const prev = prevMap.get(id);
+
+    if (!prev && cur) {
+      rows.push({ type: 'added', deal: cur });
+    } else if (prev && !cur) {
+      rows.push({ type: 'dropped', deal: prev });
+    } else if (cur && prev) {
+      const changes = [];
+      if (cur.stage !== prev.stage) changes.push({ field: 'Stage', from: prev.stage, to: cur.stage });
+      if (Number(cur.probability) !== Number(prev.probability)) changes.push({ field: 'Probability', from: prev.probability + '%', to: cur.probability + '%' });
+      if (cur.deal_name !== prev.deal_name) changes.push({ field: 'Name', from: prev.deal_name, to: cur.deal_name });
+      if (Math.round(cur.mrr_inr) !== Math.round(prev.mrr_inr)) changes.push({ field: 'Exp. MRR', from: fmtINR(prev.mrr_inr), to: fmtINR(cur.mrr_inr) });
+      if (Math.round(cur.nrr_inr) !== Math.round(prev.nrr_inr)) changes.push({ field: 'Exp. NRR', from: fmtINR(prev.nrr_inr), to: fmtINR(cur.nrr_inr) });
+      if (changes.length > 0) rows.push({ type: 'changed', deal: cur, changes });
+    }
+  }
+
+  if (rows.length === 0) {
+    wrap.innerHTML = `<p class="muted">No changes detected between the last two syncs (${prevTime.slice(0,10)} → ${latestTime.slice(0,10)}).</p>`;
+    return;
+  }
+
+  const fmtTs = ts => new Date(ts).toLocaleString('en-IN', {dateStyle:'medium', timeStyle:'short'});
+  const changeHtml = changes => changes.map(c => {
+    const isPositive = field => ['Probability','Exp. MRR','Exp. NRR'].includes(field);
+    const better = (c.field === 'Probability' || c.field === 'Exp. MRR' || c.field === 'Exp. NRR')
+      ? (parseFloat(c.to) > parseFloat(c.from))
+      : null;
+    const toCls = better === true ? 'var-pos' : better === false ? 'var-neg' : '';
+    return `<span style="margin-right:8px;font-size:12px;">${escapeHtml(c.field)}: <span class="muted">${escapeHtml(c.from)}</span> → <span class="${toCls}">${escapeHtml(c.to)}</span></span>`;
+  }).join('');
+
+  const rowsHtml = rows.map(r => {
+    const d = r.deal;
+    const bu = d.business_unit || '';
+    const buDot = bu ? `<span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:${colorVar(bu)};margin-right:5px;vertical-align:middle;"></span>` : '';
+    let badge = '', detail = '';
+    if (r.type === 'added') {
+      badge = `<span class="badge" style="background:var(--green,#22c55e);color:#fff;">Added</span>`;
+      detail = `MRR ${fmtINR(d.mrr_inr || 0)} · NRR ${fmtINR(d.nrr_inr || 0)} · ${d.probability}% · ${escapeHtml(d.stage || '')}`;
+    } else if (r.type === 'dropped') {
+      badge = `<span class="badge" style="background:var(--red,#ef4444);color:#fff;">Dropped</span>`;
+      detail = `was: MRR ${fmtINR(d.mrr_inr || 0)} · NRR ${fmtINR(d.nrr_inr || 0)} · ${d.probability}% · ${escapeHtml(d.stage || '')}`;
+    } else {
+      badge = `<span class="badge" style="background:var(--accent,#3b82f6);color:#fff;">Changed</span>`;
+      detail = changeHtml(r.changes);
+    }
+    return `<tr>
+      <td>${badge}</td>
+      <td class="name-cell"><a class="zoho-link" href="${ZOHO_DEAL_URL(d.deal_id)}" target="_blank" rel="noopener">${escapeHtml(d.deal_name || d.deal_id)}</a></td>
+      <td>${buDot}${escapeHtml(bu || '-')}</td>
+      <td>${escapeHtml(d.stage || '-')}</td>
+      <td style="font-size:12px;">${detail}</td>
+    </tr>`;
+  }).join('');
+
+  const added = rows.filter(r => r.type === 'added').length;
+  const dropped = rows.filter(r => r.type === 'dropped').length;
+  const changed = rows.filter(r => r.type === 'changed').length;
+
+  wrap.innerHTML = `
+    <div style="margin-bottom:8px;font-size:12px;color:var(--text-muted);">
+      Comparing <strong>${fmtTs(prevTime)}</strong> → <strong>${fmtTs(latestTime)}</strong> ·
+      <span class="var-pos">${added} added</span> · <span class="var-neg">${dropped} dropped</span> · ${changed} changed
+    </div>
+    <div class="table-scroll"><table>
+      <thead><tr>
+        <th>Change</th>
+        <th>Deal Name</th>
+        <th>Business Unit</th>
+        <th>Stage</th>
+        <th>Details</th>
+      </tr></thead>
+      <tbody>${rowsHtml}</tbody>
+    </table></div>`;
 }
 
 // ============================================================
