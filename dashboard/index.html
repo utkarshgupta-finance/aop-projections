@@ -277,6 +277,11 @@ const DEFAULT_HUNTING_STAGES = new Set([
 let huntingStageFilter = new Set(DEFAULT_HUNTING_STAGES);
 let huntingShowClosedLost = false;
 let huntingBUFilter = null; // null = lazy-init to all BUs on first render
+let summarySortKey  = 'bu';
+let summarySortDir  = 'asc';
+let summarySearch   = '';
+const adjVar = (variance, prevMiss) =>
+  (variance !== null && prevMiss !== null) ? variance + prevMiss : variance;
 
 function fmtINR(n) {
   const sign = n < 0 ? '-' : '';
@@ -423,6 +428,7 @@ async function main() {
     currentQuarter   = e.target.value;
     currentPeriodTab = 'Q';
     huntingBUFilter  = null;
+    summarySortKey   = 'bu'; summarySortDir = 'asc'; summarySearch = '';
     renderTabs(); render();
   });
 
@@ -783,7 +789,7 @@ function renderDealsTableWith({ dealsById, periodTab, snapshots, metric, tableId
   const latestDate = dates[dates.length - 1];
   const prevDate = dates.length >= 2 ? dates[dates.length - 2] : undefined;
   if (sortKey !== '__latest' && sortKey !== '__variance' && !dates.includes(sortKey) &&
-      !['deal_id','deal_name','business_unit','deal_type'].includes(sortKey)) {
+      !['deal_id','deal_name','account_name','business_unit','deal_type'].includes(sortKey)) {
     sortKey = '__latest';
   }
   const snapshotsByDeal = new Map();
@@ -823,6 +829,7 @@ function renderDealsTableWith({ dealsById, periodTab, snapshots, metric, tableId
     else if (dates.includes(sortKey)){ va = byDateA.get(sortKey); vb = byDateB.get(sortKey); }
     else if (sortKey === 'deal_id')  { va = a.deal_id; vb = b.deal_id; }
     else if (sortKey === 'deal_name'){ va = a.current_name; vb = b.current_name; }
+    else if (sortKey === 'account_name') { va = a.account_name || ''; vb = b.account_name || ''; }
     else if (sortKey === 'business_unit') { va = a.business_unit || 'UNMAPPED'; vb = b.business_unit || 'UNMAPPED'; }
     else if (sortKey === 'deal_type') { va = a.deal_type || ''; vb = b.deal_type || ''; }
     else if (sortKey === '__variance' && prevDate) {
@@ -896,7 +903,7 @@ function renderDealsTableWith({ dealsById, periodTab, snapshots, metric, tableId
     <thead><tr>
       <th data-sort="deal_id">Deal ID${arrow('deal_id')}</th>
       <th data-sort="deal_name">Deal Name${arrow('deal_name')}</th>
-      <th>Account</th>
+      <th data-sort="account_name">Account${arrow('account_name')}</th>
       <th data-sort="business_unit">Business Unit${arrow('business_unit')}</th>
       <th data-sort="deal_type">Type${arrow('deal_type')}</th>
       ${dateHeaders}${varianceHeader}
@@ -1009,11 +1016,7 @@ function renderSummaryView() {
       ? `<td class="num muted">-</td>`
       : `<td class="num ${v >= 0 ? 'var-pos' : 'var-neg'}" title="${v >= 0 ? 'Excess from prior months reduces this month\'s obligation' : 'Miss from prior months adds to this month\'s obligation'}">${v >= 0 ? '+' : ''}${fmtINR(v)}</td>`;
 
-    // Adjusted variance: add prior-month carry to raw variance.
-    // prev carry > 0 (excess) → obligation reduced → adj variance is better.
-    // prev carry < 0 (miss)   → obligation added  → adj variance is worse.
-    const adjVar = (variance, prevMiss) =>
-      (variance !== null && prevMiss !== null) ? variance + prevMiss : variance;
+    const sArrow = key => key === summarySortKey ? `<span class="sort-arrow">${summarySortDir === 'asc' ? '↑' : '↓'}</span>` : '';
 
     const bodyRows = rows.map(r => `<tr>
       <td><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${colorVar(r.bu)};margin-right:8px;vertical-align:middle;"></span>${escapeHtml(r.bu)}</td>
@@ -1040,24 +1043,53 @@ function renderSummaryView() {
     const prevCarryColLabel = 'Prev Month Carry';
     return `<div class="table-scroll"><table>
       <thead><tr>
-        <th>Business Unit</th>
-        <th class="num">Farming ${metric} Commit</th>
-        <th class="num">Hunting ${metric} Commit</th>
-        <th class="num">Total Commit</th>
-        <th class="num">Target</th>
-        ${hasPrevMiss ? `<th class="num">${prevCarryColLabel}</th>` : ''}
-        <th class="num">${varColLabel}</th>
+        <th data-sort="bu" style="cursor:pointer;">Business Unit${sArrow('bu')}</th>
+        <th class="num" data-sort="farming" style="cursor:pointer;">Farming ${metric} Commit${sArrow('farming')}</th>
+        <th class="num" data-sort="hunting" style="cursor:pointer;">Hunting ${metric} Commit${sArrow('hunting')}</th>
+        <th class="num" data-sort="total" style="cursor:pointer;">Total Commit${sArrow('total')}</th>
+        <th class="num" data-sort="target" style="cursor:pointer;">Target${sArrow('target')}</th>
+        ${hasPrevMiss ? `<th class="num" data-sort="prevMiss" style="cursor:pointer;">${prevCarryColLabel}${sArrow('prevMiss')}</th>` : ''}
+        <th class="num" data-sort="variance" style="cursor:pointer;">${varColLabel}${sArrow('variance')}</th>
       </tr></thead>
       <tbody>${totalRow}${bodyRows}</tbody>
     </table></div><p style="font-size:11px;color:var(--text-muted);margin:8px 0 0;">Based on snapshot: ${latestDate}${hasPrevMiss ? ' · Adj. Variance = (Actual − Target) + Prev Month Carry' : ''}</p>`;
   }
 
-  const mrrRows = buildSummaryRows('MRR', MRR_SNAPSHOTS, latestMRR);
-  const nrrRows = buildSummaryRows('NRR', NRR_SNAPSHOTS, latestNRR);
+  let mrrRows = buildSummaryRows('MRR', MRR_SNAPSHOTS, latestMRR);
+  let nrrRows = buildSummaryRows('NRR', NRR_SNAPSHOTS, latestNRR);
+
+  // Apply search filter
+  if (summarySearch.trim()) {
+    const q = summarySearch.trim().toLowerCase();
+    mrrRows = mrrRows.filter(r => r.bu.toLowerCase().includes(q));
+    nrrRows = nrrRows.filter(r => r.bu.toLowerCase().includes(q));
+  }
+
+  // Sort rows
+  const sortSummaryRows = rows => {
+    return [...rows].sort((a, b) => {
+      let va, vb;
+      if (summarySortKey === 'bu')       { va = a.bu; vb = b.bu; }
+      else if (summarySortKey === 'farming') { va = a.farming; vb = b.farming; }
+      else if (summarySortKey === 'hunting') { va = a.hunting; vb = b.hunting; }
+      else if (summarySortKey === 'total')   { va = a.total; vb = b.total; }
+      else if (summarySortKey === 'target')  { va = a.target ?? 0; vb = b.target ?? 0; }
+      else if (summarySortKey === 'prevMiss'){ va = a.prevMiss ?? 0; vb = b.prevMiss ?? 0; }
+      else if (summarySortKey === 'variance'){ va = adjVar(a.variance, a.prevMiss) ?? 0; vb = adjVar(b.variance, b.prevMiss) ?? 0; }
+      let cmp = (typeof va === 'number' && typeof vb === 'number') ? va - vb : String(va).localeCompare(String(vb));
+      return summarySortDir === 'asc' ? cmp : -cmp;
+    });
+  };
+  mrrRows = sortSummaryRows(mrrRows);
+  nrrRows = sortSummaryRows(nrrRows);
 
   document.getElementById('subtitle').textContent = `Summary view: ${periodTab.label} . ${computePeriodTabs(currentQuarter).find(p=>p.key===currentQuarter)?.label || QUARTERS.find(q=>q.key===currentQuarter)?.label || ''}`;
 
   document.getElementById('content').innerHTML = `
+    <div style="margin-bottom:12px;">
+      <input id="summary-search" type="search" placeholder="Search business unit…" value="${escapeHtml(summarySearch)}"
+        style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;background:var(--surface-1);color:var(--text);font-size:13px;width:260px;outline:none;">
+    </div>
     <div class="card">
       <p class="summary-section-title">MRR Summary · ${escapeHtml(periodTab.label)}</p>
       ${summaryTableHtml('MRR', mrrRows, latestMRR)}
@@ -1067,9 +1099,23 @@ function renderSummaryView() {
       ${summaryTableHtml('NRR', nrrRows, latestNRR)}
     </div>`;
 
+  document.getElementById('summary-search').addEventListener('input', e => {
+    summarySearch = e.target.value;
+    renderSummaryView();
+  });
+
   document.querySelectorAll('.drilldown-cell').forEach(cell => {
     cell.addEventListener('click', () => {
       openDrillDownModal(cell.dataset.bu, cell.dataset.type, cell.dataset.metric, periodTab);
+    });
+  });
+
+  document.querySelectorAll('#content th[data-sort]').forEach(th => {
+    th.addEventListener('click', () => {
+      const key = th.dataset.sort;
+      if (summarySortKey === key) summarySortDir = summarySortDir === 'asc' ? 'desc' : 'asc';
+      else { summarySortKey = key; summarySortDir = (key === 'bu') ? 'asc' : 'desc'; }
+      renderSummaryView();
     });
   });
 }
