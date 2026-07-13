@@ -389,6 +389,11 @@ function snapClosingInPeriod(closingDate, periodTab) {
   return periodTab.months.includes(month) && year === periodTab.year;
 }
 
+// True if snapshot row counts as "committed": closing_date in period AND probability >= 70.
+function snapIsCommitted(s, periodTab) {
+  return snapClosingInPeriod(s.closing_date, periodTab) && (s.probability ?? 100) >= 70;
+}
+
 // ---- Tab rendering ----
 function renderTabs() {
   const PERIOD_TABS = computePeriodTabs(currentQuarter);
@@ -586,7 +591,7 @@ function renderModalDealsTable() {
   const snapshotsByDeal = new Map();
   for (const s of snapshots) {
     if (!snapshotsByDeal.has(s.deal_id)) snapshotsByDeal.set(s.deal_id, new Map());
-    snapshotsByDeal.get(s.deal_id).set(s.snapshot_date, { amount: amountOf(s), closing_date: s.closing_date });
+    snapshotsByDeal.get(s.deal_id).set(s.snapshot_date, { amount: amountOf(s), closing_date: s.closing_date, probability: s.probability });
   }
 
   // Validate sort key
@@ -599,7 +604,7 @@ function renderModalDealsTable() {
     .filter(d => d.deal_type === dealType)
     .filter(d => (d.business_unit || 'UNMAPPED') === bu)
     .filter(d => snapshotsByDeal.has(d.deal_id) &&
-      [...snapshotsByDeal.get(d.deal_id).values()].some(e => snapClosingInPeriod(e.closing_date, periodTab)));
+      [...snapshotsByDeal.get(d.deal_id).values()].some(e => snapClosingInPeriod(e.closing_date, periodTab) && (e.probability ?? 100) >= 70));
 
   // Search filter
   if (modalSearch.trim()) {
@@ -937,7 +942,7 @@ function renderDealsTableWith({ dealsById, periodTab, snapshots, metric, tableId
   const snapshotsByDeal = new Map();
   for (const s of snapshots) {
     if (!snapshotsByDeal.has(s.deal_id)) snapshotsByDeal.set(s.deal_id, new Map());
-    snapshotsByDeal.get(s.deal_id).set(s.snapshot_date, { amount: amountOfRow(s), closing_date: s.closing_date });
+    snapshotsByDeal.get(s.deal_id).set(s.snapshot_date, { amount: amountOfRow(s), closing_date: s.closing_date, probability: s.probability });
   }
 
   // Helper: effective amount respecting snapshot closing_date vs current period
@@ -945,13 +950,14 @@ function renderDealsTableWith({ dealsById, periodTab, snapshots, metric, tableId
     const e = byDate?.get(date);
     if (e === undefined) return undefined;
     if (!snapClosingInPeriod(e.closing_date, periodTab)) return null;
+    if ((e.probability ?? 100) < 70) return null;
     return e.amount;
   };
 
   let tabDeals = DEALS.filter(d => currentTypeTab === 'combined' || d.deal_type === currentTypeTab)
     .filter(d => !currentBU || (d.business_unit || 'UNMAPPED') === currentBU)
     .filter(d => snapshotsByDeal.has(d.deal_id) &&
-      [...snapshotsByDeal.get(d.deal_id).values()].some(e => snapClosingInPeriod(e.closing_date, periodTab)));
+      [...snapshotsByDeal.get(d.deal_id).values()].some(e => snapClosingInPeriod(e.closing_date, periodTab) && (e.probability ?? 100) >= 70));
 
   const buOptions = [...new Set(tabDeals.map(d => d.business_unit || 'UNMAPPED'))].sort();
   const buFilterEl = document.getElementById(buFilterId);
@@ -1137,7 +1143,7 @@ function renderSummaryView() {
         if (!tabDates.length) continue;
         const lastDate = tabDates[tabDates.length - 1];
         const commit = snapshots
-          .filter(s => s.snapshot_date === lastDate && dealsById.get(s.deal_id)?.business_unit === bu && snapClosingInPeriod(s.closing_date, tab))
+          .filter(s => s.snapshot_date === lastDate && dealsById.get(s.deal_id)?.business_unit === bu && snapIsCommitted(s, tab))
           .reduce((a, s) => a + Number(metric === 'MRR' ? s.mrr_amount : s.nrr_amount), 0);
         const target = targetFor(bu, tab, metric);
         if (target !== undefined) {
@@ -1171,7 +1177,7 @@ function renderSummaryView() {
       const byBU = new Map();
       for (const s of snapshots) {
         if (s.snapshot_date !== date) continue;
-        if (!snapClosingInPeriod(s.closing_date, periodTab)) continue;
+        if (!snapIsCommitted(s, periodTab)) continue;
         const deal = dealsById.get(s.deal_id);
         if (!deal) continue;
         const bu = deal.business_unit || 'UNMAPPED';
@@ -1182,10 +1188,10 @@ function renderSummaryView() {
 
     return buList.map(bu => {
       const farming = snapshots
-        .filter(s => s.snapshot_date === latestDate && dealsById.get(s.deal_id)?.business_unit === bu && dealsById.get(s.deal_id)?.deal_type === 'Farming' && snapClosingInPeriod(s.closing_date, periodTab))
+        .filter(s => s.snapshot_date === latestDate && dealsById.get(s.deal_id)?.business_unit === bu && dealsById.get(s.deal_id)?.deal_type === 'Farming' && snapIsCommitted(s, periodTab))
         .reduce((a, s) => a + amountOf(s), 0);
       const hunting = snapshots
-        .filter(s => s.snapshot_date === latestDate && dealsById.get(s.deal_id)?.business_unit === bu && dealsById.get(s.deal_id)?.deal_type === 'Hunting' && snapClosingInPeriod(s.closing_date, periodTab))
+        .filter(s => s.snapshot_date === latestDate && dealsById.get(s.deal_id)?.business_unit === bu && dealsById.get(s.deal_id)?.deal_type === 'Hunting' && snapIsCommitted(s, periodTab))
         .reduce((a, s) => a + amountOf(s), 0);
       const total   = farming + hunting;
       const target  = targetFor(bu, periodTab, metric);
@@ -1719,8 +1725,8 @@ function renderBUDetailView() {
   const buDealIds = new Set(buDeals.map(d => d.deal_id));
 
   // Commit = sum of latest snapshots whose closing_date is in this period
-  const mrrCommit = MRR_SNAPSHOTS.filter(s => s.snapshot_date === latestMRR && buDealIds.has(s.deal_id) && snapClosingInPeriod(s.closing_date, periodTab)).reduce((a, s) => a + amountMRR(s), 0);
-  const nrrCommit = NRR_SNAPSHOTS.filter(s => s.snapshot_date === latestNRR && buDealIds.has(s.deal_id) && snapClosingInPeriod(s.closing_date, periodTab)).reduce((a, s) => a + amountNRR(s), 0);
+  const mrrCommit = MRR_SNAPSHOTS.filter(s => s.snapshot_date === latestMRR && buDealIds.has(s.deal_id) && snapIsCommitted(s, periodTab)).reduce((a, s) => a + amountMRR(s), 0);
+  const nrrCommit = NRR_SNAPSHOTS.filter(s => s.snapshot_date === latestNRR && buDealIds.has(s.deal_id) && snapIsCommitted(s, periodTab)).reduce((a, s) => a + amountNRR(s), 0);
   const mrrTarget = targetFor(bu, periodTab, 'MRR');
   const nrrTarget = targetFor(bu, periodTab, 'NRR');
   const mrrVar = mrrTarget !== undefined ? mrrCommit - mrrTarget : null;
@@ -1807,7 +1813,7 @@ function renderBUDetailView() {
     const snapshotsByDeal = new Map();
     for (const s of snapshots) {
       if (!snapshotsByDeal.has(s.deal_id)) snapshotsByDeal.set(s.deal_id, new Map());
-      snapshotsByDeal.get(s.deal_id).set(s.snapshot_date, { amount: amountOf(s), closing_date: s.closing_date });
+      snapshotsByDeal.get(s.deal_id).set(s.snapshot_date, { amount: amountOf(s), closing_date: s.closing_date, probability: s.probability });
     }
 
     const snapAmt = (byDate, date) => {
