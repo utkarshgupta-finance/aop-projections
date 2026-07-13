@@ -279,7 +279,7 @@ let huntingStageFilter = new Set(DEFAULT_HUNTING_STAGES);
 let huntingShowClosedLost = false;
 let huntingBUFilter  = null; // null = lazy-init to all BUs on first render
 let huntingViewMode  = 'summary'; // 'summary' | 'detail'
-let compEnd = null, compBase = null;
+let reviewExpanded = false;
 let summarySortKey  = 'bu';
 let summarySortDir  = 'asc';
 let summarySearch   = '';
@@ -457,7 +457,7 @@ async function main() {
     currentPeriodTab = 'Q';
     huntingBUFilter  = null;
     huntingViewMode  = 'summary';
-    compEnd = null; compBase = null;
+    reviewExpanded = false;
     summarySortKey   = 'bu'; summarySortDir = 'asc'; summarySearch = '';
     renderTabs(); render();
   });
@@ -716,7 +716,13 @@ function renderReviewView() {
 
   content.innerHTML = `
     <div class="card">
-      <h2>MRR Commits by snapshot date</h2>
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px;">
+        <h2 style="margin:0;">MRR Commits by snapshot date</h2>
+        <div style="margin-left:auto;display:flex;gap:6px;">
+          <button class="stage-capsule${!reviewExpanded ? ' active' : ''}" id="view-compact">Compact</button>
+          <button class="stage-capsule${reviewExpanded ? ' active' : ''}" id="view-expanded">Expanded</button>
+        </div>
+      </div>
       <div class="table-controls">
         <input class="search-input" id="deal-search" type="text" placeholder="Search deal id, name, BU, type..." value="${escapeHtml(searchText)}">
         <select class="filter-select" id="bu-filter"><option value="">All business units</option></select>
@@ -739,6 +745,17 @@ function renderReviewView() {
   renderNRRDealsTable();
 
   // Search: any input syncs the other field and refreshes both tables
+  document.getElementById('view-compact')?.addEventListener('click', () => {
+    reviewExpanded = false; renderDealsTable(); renderNRRDealsTable();
+    document.getElementById('view-compact')?.classList.add('active');
+    document.getElementById('view-expanded')?.classList.remove('active');
+  });
+  document.getElementById('view-expanded')?.addEventListener('click', () => {
+    reviewExpanded = true; renderDealsTable(); renderNRRDealsTable();
+    document.getElementById('view-expanded')?.classList.add('active');
+    document.getElementById('view-compact')?.classList.remove('active');
+  });
+
   document.getElementById('deal-search').addEventListener('input', e => {
     searchText = e.target.value;
     const nrrInput = document.getElementById('nrr-deal-search');
@@ -826,7 +843,6 @@ function renderNRRDealsTable() {
     dealsById, periodTab, snapshots: NRR_SNAPSHOTS, metric: 'NRR',
     tableId: 'nrr-deals-table', buFilterId: 'nrr-bu-filter',
     resultCountId: 'nrr-result-count', buFilter: nrrBuFilter,
-    compEnd: compEnd, compBase: compBase,
   });
 }
 
@@ -835,55 +851,40 @@ function renderDealsTable() {
   renderDealsTableWith({ dealsById, periodTab, snapshots, metric,
     tableId: 'deals-table', buFilterId: 'bu-filter',
     resultCountId: 'result-count', buFilter: tableBuFilter,
-    compEnd: compEnd, compBase: compBase,
   });
 }
 
-function renderDealsTableWith({ dealsById, periodTab, snapshots, metric, tableId, buFilterId, resultCountId, buFilter, compEnd, compBase }) {
+function renderDealsTableWith({ dealsById, periodTab, snapshots, metric, tableId, buFilterId, resultCountId, buFilter }) {
   const allDates = metric === 'MRR' ? MRR_DATES : NRR_DATES;
   const amountOfRow = s => Number(metric === 'MRR' ? s.mrr_amount : s.nrr_amount);
 
-  // Build the full set of period dates (used for the date pickers)
-  let periodDates;
+  // All sync dates within this period (every individual sync date, not just one per month)
   const allQuarterMonths = computePeriodTabs(currentQuarter).find(t => isFullQuarterTab(t))?.months || periodTab.months;
+  let periodDates;
   if (isFullQuarterTab(periodTab)) {
-    const byMonth = new Map();
-    for (const d of allDates) {
-      const m = Number(d.slice(5, 7)), y = Number(d.slice(0, 4));
-      if (y === periodTab.year && allQuarterMonths.includes(m)) byMonth.set(m, d);
-    }
-    periodDates = allQuarterMonths.map(m => byMonth.get(m)).filter(Boolean);
+    periodDates = allDates.filter(d => {
+      const m = Number(d.slice(5,7)), y = Number(d.slice(0,4));
+      return y === periodTab.year && allQuarterMonths.includes(m);
+    });
   } else {
     const curMonth = periodTab.months[0];
-    const priorDates = [];
-    for (const pm of allQuarterMonths.filter(m => m < curMonth)) {
-      const last = [...allDates].reverse().find(d => Number(d.slice(5,7)) === pm && Number(d.slice(0,4)) === periodTab.year);
-      if (last) priorDates.push(last);
-    }
+    const priorLastDates = allQuarterMonths.filter(m => m < curMonth).map(pm => {
+      return [...allDates].reverse().find(d => Number(d.slice(5,7)) === pm && Number(d.slice(0,4)) === periodTab.year);
+    }).filter(Boolean);
     const curDates = allDates.filter(d => Number(d.slice(5,7)) === curMonth && Number(d.slice(0,4)) === periodTab.year);
-    periodDates = [...priorDates, ...curDates];
+    periodDates = [...priorLastDates, ...curDates];
   }
 
-  // Comparison dates: end defaults to latest, base defaults to T-7 from end
-  const latestInPeriod = periodDates[periodDates.length - 1];
-  const endDate = (compEnd && periodDates.includes(compEnd)) ? compEnd : latestInPeriod;
-  const t7Ms = endDate ? new Date(endDate).getTime() - 7 * 24 * 60 * 60 * 1000 : 0;
-  const t7Date = periodDates
-    .filter(d => d < endDate)
-    .reduce((best, d) => {
-      if (!best) return d;
-      return Math.abs(new Date(d).getTime() - t7Ms) < Math.abs(new Date(best).getTime() - t7Ms) ? d : best;
-    }, null);
-  const baseDate = (compBase && periodDates.includes(compBase) && compBase !== endDate) ? compBase : t7Date;
+  const latestDate = periodDates[periodDates.length - 1];
 
-  // Show only 2 comparison columns
-  const dates = [baseDate, endDate].filter(Boolean);
-  const latestDate = endDate;
-  const prevDate = baseDate || undefined;
-  if (sortKey !== '__latest' && sortKey !== '__variance' && !dates.includes(sortKey) &&
+  // In compact mode show only the latest date; expanded shows all
+  const dates = reviewExpanded ? periodDates : (latestDate ? [latestDate] : []);
+
+  if (sortKey !== '__latest' && !periodDates.includes(sortKey) &&
       !['deal_id','deal_name','account_name','business_unit','deal_type'].includes(sortKey)) {
     sortKey = '__latest';
   }
+
   const snapshotsByDeal = new Map();
   for (const s of snapshots) {
     if (!snapshotsByDeal.has(s.deal_id)) snapshotsByDeal.set(s.deal_id, new Map());
@@ -917,17 +918,13 @@ function renderDealsTableWith({ dealsById, periodTab, snapshots, metric, tableId
   const comparator = (a, b) => {
     const byDateA = snapshotsByDeal.get(a.deal_id), byDateB = snapshotsByDeal.get(b.deal_id);
     let va, vb;
-    if (sortKey === '__latest')      { va = byDateA.get(latestDate); vb = byDateB.get(latestDate); }
-    else if (dates.includes(sortKey)){ va = byDateA.get(sortKey); vb = byDateB.get(sortKey); }
-    else if (sortKey === 'deal_id')  { va = a.deal_id; vb = b.deal_id; }
-    else if (sortKey === 'deal_name'){ va = a.current_name; vb = b.current_name; }
-    else if (sortKey === 'account_name') { va = a.account_name || ''; vb = b.account_name || ''; }
-    else if (sortKey === 'business_unit') { va = a.business_unit || 'UNMAPPED'; vb = b.business_unit || 'UNMAPPED'; }
-    else if (sortKey === 'deal_type') { va = a.deal_type || ''; vb = b.deal_type || ''; }
-    else if (sortKey === '__variance' && prevDate) {
-      va = (byDateA?.get(latestDate) ?? 0) - (byDateA?.get(prevDate) ?? 0);
-      vb = (byDateB?.get(latestDate) ?? 0) - (byDateB?.get(prevDate) ?? 0);
-    }
+    if (sortKey === '__latest')         { va = byDateA.get(latestDate); vb = byDateB.get(latestDate); }
+    else if (periodDates.includes(sortKey)) { va = byDateA.get(sortKey); vb = byDateB.get(sortKey); }
+    else if (sortKey === 'deal_id')     { va = a.deal_id; vb = b.deal_id; }
+    else if (sortKey === 'deal_name')   { va = a.current_name; vb = b.current_name; }
+    else if (sortKey === 'account_name')   { va = a.account_name || ''; vb = b.account_name || ''; }
+    else if (sortKey === 'business_unit')  { va = a.business_unit || 'UNMAPPED'; vb = b.business_unit || 'UNMAPPED'; }
+    else if (sortKey === 'deal_type')      { va = a.deal_type || ''; vb = b.deal_type || ''; }
     const aMissing = va === undefined || va === null, bMissing = vb === undefined || vb === null;
     if (aMissing && bMissing) return 0;
     if (aMissing) return 1;
@@ -939,107 +936,76 @@ function renderDealsTableWith({ dealsById, periodTab, snapshots, metric, tableId
   const rcEl = document.getElementById(resultCountId);
   if (rcEl) rcEl.textContent = `${tabDeals.length} deal${tabDeals.length === 1 ? '' : 's'}`;
 
-  const arrow = key => key === sortKey ? `<span class="sort-arrow">${sortDir === 'asc' ? '↑' : '↓'}</span>` : '';
-  const fromLabel = baseDate ? `From` : 'Snapshot';
-  const dateHeaders = dates.map((d, i) => {
-    const sortK = (i === dates.length - 1) ? '__latest' : d;
-    const lbl = (i === dates.length - 1) ? `Latest` : fromLabel;
-    return `<th class="num" data-sort="${sortK}">${lbl}${arrow(sortK)}</th>`;
-  }).join('');
-  const varianceHeader = prevDate ? `<th class="num" data-sort="__variance">Change${arrow('__variance')}</th>` : '';
-  const pickerStyle = `font-size:11px;padding:2px 4px;background:var(--surface-1);border:1px solid var(--border);border-radius:4px;color:var(--text);cursor:pointer;max-width:130px;`;
-  const pickerRow = dates.length >= 1 ? `<tr>
-    <th colspan="5" style="border-bottom:none;padding:2px 0;"></th>
-    ${baseDate ? `<th class="num" style="border-bottom:none;padding:2px 4px;">
-      <select class="comp-date-sel" data-role="base" data-metric="${metric}" style="${pickerStyle}">
-        ${periodDates.map(d => `<option value="${d}"${d===baseDate?' selected':''}>${d}</option>`).join('')}
-      </select>
-    </th>` : ''}
-    <th class="num" style="border-bottom:none;padding:2px 4px;">
-      <select class="comp-date-sel" data-role="end" data-metric="${metric}" style="${pickerStyle}">
-        ${periodDates.map(d => `<option value="${d}"${d===endDate?' selected':''}>${d}</option>`).join('')}
-      </select>
-    </th>
-    ${prevDate ? `<th style="border-bottom:none;"></th>` : ''}
-  </tr>` : '';
-  const rows = tabDeals.map(d => {
-    const bu = d.business_unit || 'UNMAPPED';
-    const buCell = bu === 'UNMAPPED' ? `<span class="badge">UNMAPPED</span>` : escapeHtml(bu);
-    const byDate = snapshotsByDeal.get(d.deal_id);
-    const dateCells = dates.map(date => {
-      const v = byDate.get(date);
-      return `<td class="num">${v === undefined ? '<span class="muted">-</span>' : fmtINR(v)}</td>`;
-    }).join('');
-    let varianceCell = '';
-    if (prevDate) {
-      const latV = byDate.get(latestDate) ?? 0;
-      const prevV = byDate.get(prevDate) ?? 0;
-      if (!byDate.has(latestDate) && !byDate.has(prevDate)) {
-        varianceCell = `<td class="num muted">-</td>`;
-      } else {
-        const v = latV - prevV;
-        const cls = v > 0 ? 'var-pos' : v < 0 ? 'var-neg' : '';
-        varianceCell = `<td class="num ${cls}">${v > 0 ? '+' : ''}${fmtINR(v)}</td>`;
-      }
-    }
-    const link = ZOHO_DEAL_URL(d.deal_id);
-    return `<tr>
-      <td><a class="zoho-link" href="${link}" target="_blank" rel="noopener">${escapeHtml(d.deal_id)}</a></td>
-      <td class="name-cell"><a class="zoho-link" href="${link}" target="_blank" rel="noopener">${nameChainHtml(d)}</a></td>
-      <td class="name-cell">${escapeHtml(d.account_name || '')}</td>
-      <td>${buCell}</td>
-      <td>${escapeHtml(d.deal_type || '')}</td>
-      ${dateCells}${varianceCell}
-    </tr>`;
-  }).join('');
-
   const dealsTable = document.getElementById(tableId);
   if (!dealsTable) return;
   if (dates.length === 0) { dealsTable.innerHTML = `<p class="muted">No ${metric} snapshots recorded yet.</p>`; return; }
+
+  const arrow = key => key === sortKey ? `<span class="sort-arrow">${sortDir === 'asc' ? '↑' : '↓'}</span>` : '';
+
+  // In expanded mode, each date header shows the date; latest is highlighted
+  // In compact mode, single "Latest" header
+  const dateHeaders = dates.map((d, i) => {
+    const isLatest = d === latestDate;
+    const sortK = isLatest ? '__latest' : d;
+    const lbl = reviewExpanded ? d.slice(5) : 'Latest'; // mm-dd in expanded, "Latest" in compact
+    return `<th class="num" data-sort="${sortK}"${isLatest ? ' style="font-weight:700;"' : ''}>${lbl}${arrow(sortK)}</th>`;
+  }).join('');
+
+  const rows = tabDeals.map(deal => {
+    const bu = deal.business_unit || 'UNMAPPED';
+    const buCell = bu === 'UNMAPPED' ? `<span class="badge">UNMAPPED</span>` : escapeHtml(bu);
+    const byDate = snapshotsByDeal.get(deal.deal_id);
+    const dateCells = dates.map((date, i) => {
+      const v = byDate.get(date);
+      if (v === undefined) return `<td class="num"><span class="muted">-</span></td>`;
+      // Colour relative to immediately prior date in periodDates
+      const prevIdx = periodDates.indexOf(date) - 1;
+      const prevD = prevIdx >= 0 ? periodDates[prevIdx] : null;
+      const prevV = prevD !== null ? byDate.get(prevD) : undefined;
+      let cls = '';
+      if (prevV !== undefined && prevV !== null) {
+        cls = v > prevV ? 'var-pos' : v < prevV ? 'var-neg' : '';
+      }
+      return `<td class="num ${cls}">${fmtINR(v)}</td>`;
+    }).join('');
+    const link = ZOHO_DEAL_URL(deal.deal_id);
+    return `<tr>
+      <td><a class="zoho-link" href="${link}" target="_blank" rel="noopener">${escapeHtml(deal.deal_id)}</a></td>
+      <td class="name-cell"><a class="zoho-link" href="${link}" target="_blank" rel="noopener">${nameChainHtml(deal)}</a></td>
+      <td class="name-cell">${escapeHtml(deal.account_name || '')}</td>
+      <td>${buCell}</td>
+      <td>${escapeHtml(deal.deal_type || '')}</td>
+      ${dateCells}
+    </tr>`;
+  }).join('');
 
   const totalCells = dates.map(date => {
     let sum = 0, any = false;
     tabDeals.forEach(d => { const v = snapshotsByDeal.get(d.deal_id).get(date); if (v !== undefined) { sum += v; any = true; } });
     return `<td class="num">${any ? fmtINR(sum) : '<span class="muted">-</span>'}</td>`;
   }).join('');
-  let totalVarianceCell = '';
-  if (prevDate) {
-    const sumLatest = tabDeals.reduce((a, d) => a + (snapshotsByDeal.get(d.deal_id)?.get(latestDate) ?? 0), 0);
-    const sumPrev   = tabDeals.reduce((a, d) => a + (snapshotsByDeal.get(d.deal_id)?.get(prevDate)   ?? 0), 0);
-    const tv = sumLatest - sumPrev;
-    const cls = tv > 0 ? 'var-pos' : tv < 0 ? 'var-neg' : '';
-    totalVarianceCell = `<td class="num ${cls}">${tv > 0 ? '+' : ''}${fmtINR(tv)}</td>`;
-  }
-  const totalRow = tabDeals.length ? `<tr class="total-row"><td colspan="5">Total (${tabDeals.length} deal${tabDeals.length === 1 ? '' : 's'})</td>${totalCells}${totalVarianceCell}</tr>` : '';
+
+  const totalRow = tabDeals.length
+    ? `<tr class="total-row"><td colspan="5">Total (${tabDeals.length} deal${tabDeals.length === 1 ? '' : 's'})</td>${totalCells}</tr>`
+    : '';
+
   dealsTable.innerHTML = `<div class="table-scroll"><table>
-    <thead>
-    ${pickerRow}
-    <tr>
+    <thead><tr>
       <th data-sort="deal_id">Deal ID${arrow('deal_id')}</th>
       <th data-sort="deal_name">Deal Name${arrow('deal_name')}</th>
       <th data-sort="account_name">Account${arrow('account_name')}</th>
       <th data-sort="business_unit">Business Unit${arrow('business_unit')}</th>
       <th data-sort="deal_type">Type${arrow('deal_type')}</th>
-      ${dateHeaders}${varianceHeader}
+      ${dateHeaders}
     </tr></thead>
-    <tbody>${totalRow}${rows || `<tr><td colspan="${5 + dates.length + (prevDate ? 1 : 0)}" class="muted">No matching deals.</td></tr>`}</tbody>
+    <tbody>${totalRow}${rows || `<tr><td colspan="${5 + dates.length}" class="muted">No matching deals.</td></tr>`}</tbody>
   </table></div>`;
 
   dealsTable.querySelectorAll('th[data-sort]').forEach(th => {
     th.addEventListener('click', () => {
       const key = th.dataset.sort;
       if (sortKey === key) sortDir = sortDir === 'asc' ? 'desc' : 'asc';
-      else { sortKey = key; sortDir = (key === '__latest' || key === '__variance' || dates.includes(key)) ? 'desc' : 'asc'; }
-      renderDealsTable();
-      renderNRRDealsTable();
-    });
-  });
-
-  dealsTable.querySelectorAll('.comp-date-sel').forEach(sel => {
-    sel.addEventListener('change', e => {
-      e.stopPropagation();
-      const role = sel.dataset.role, val = sel.value;
-      if (role === 'base') compBase = val; else compEnd = val;
+      else { sortKey = key; sortDir = (key === '__latest' || periodDates.includes(key)) ? 'desc' : 'asc'; }
       renderDealsTable();
       renderNRRDealsTable();
     });
