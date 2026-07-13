@@ -1120,27 +1120,33 @@ function renderSummaryView() {
 
     const sArrow = key => key === summarySortKey ? `<span class="sort-arrow">${summarySortDir === 'asc' ? '↑' : '↓'}</span>` : '';
 
-    const bodyRows = rows.map(r => `<tr>
+    const bodyRows = rows.map(r => {
+      const av = adjVar(r.variance, r.prevMiss);
+      const sparkCls = av === null ? '' : av >= 0 ? 'var-pos' : 'var-neg';
+      const sparkColor = av === null ? colorVar(r.bu) : av >= 0 ? 'var(--good)' : 'var(--bad)';
+      const sparkTip = r.sparkline.map(p => `${p.date}: ${fmtINR(p.v)}`).join('\n');
+      return `<tr>
       <td><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${colorVar(r.bu)};margin-right:8px;vertical-align:middle;"></span>${escapeHtml(r.bu)}</td>
+      <td class="${sparkCls}" style="padding:4px 8px;" title="${escapeHtml(sparkTip)}">${sparklineSvg(r.sparkline, sparkColor)}</td>
       <td class="num drilldown-cell" data-bu="${escapeHtml(r.bu)}" data-type="Farming" data-metric="${metric}">${r.farming ? fmtINR(r.farming) : '<span class="muted">-</span>'}</td>
       <td class="num drilldown-cell" data-bu="${escapeHtml(r.bu)}" data-type="Hunting" data-metric="${metric}">${r.hunting ? fmtINR(r.hunting) : '<span class="muted">-</span>'}</td>
       <td class="num">${r.total ? fmtINR(r.total) : '<span class="muted">-</span>'}</td>
       <td class="num">${r.target !== undefined ? fmtINR(r.target) : '<span class="muted">-</span>'}</td>
       ${hasPrevMiss ? prevCarryCell(r.prevMiss) : ''}
-      ${varCell(adjVar(r.variance, r.prevMiss))}
-      <td style="padding:4px 8px;"><div title="${r.sparkline.map(p=>`${p.date}: ${fmtINR(p.v)}`).join('\n')}">${sparklineSvg(r.sparkline, colorVar(r.bu))}</div></td>
-    </tr>`).join('');
+      ${varCell(av)}
+    </tr>`;
+    }).join('');
 
     const totAdjVariance = adjVar(totVariance, totPrevMiss);
     const totalRow = `<tr class="total-row">
       <td>Total</td>
+      <td></td>
       <td class="num">${fmtINR(totFarming)}</td>
       <td class="num">${fmtINR(totHunting)}</td>
       <td class="num">${fmtINR(totTotal)}</td>
       <td class="num">${totTarget ? fmtINR(totTarget) : '<span class="muted">-</span>'}</td>
       ${hasPrevMiss ? prevCarryCell(totPrevMiss) : ''}
       ${varCell(totAdjVariance)}
-      <td></td>
     </tr>`;
 
     const varColLabel = hasPrevMiss ? 'Adj. Variance' : 'Variance';
@@ -1148,13 +1154,13 @@ function renderSummaryView() {
     return `<div class="table-scroll"><table>
       <thead><tr>
         <th data-sort="bu" style="cursor:pointer;">Business Unit${sArrow('bu')}</th>
+        <th>Commit Trend</th>
         <th class="num" data-sort="farming" style="cursor:pointer;">Farming ${metric} Commit${sArrow('farming')}</th>
         <th class="num" data-sort="hunting" style="cursor:pointer;">Hunting ${metric} Commit${sArrow('hunting')}</th>
         <th class="num" data-sort="total" style="cursor:pointer;">Total Commit${sArrow('total')}</th>
         <th class="num" data-sort="target" style="cursor:pointer;">Target${sArrow('target')}</th>
         ${hasPrevMiss ? `<th class="num" data-sort="prevMiss" style="cursor:pointer;">${prevCarryColLabel}${sArrow('prevMiss')}</th>` : ''}
         <th class="num" data-sort="variance" style="cursor:pointer;">${varColLabel}${sArrow('variance')}</th>
-        <th>Trend</th>
       </tr></thead>
       <tbody>${totalRow}${bodyRows}</tbody>
     </table></div><p style="font-size:11px;color:var(--text-muted);margin:8px 0 0;">Based on snapshot: ${latestDate}${hasPrevMiss ? ' · Adj. Variance = (Actual − Target) + Prev Month Carry' : ''}</p>`;
