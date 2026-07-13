@@ -589,7 +589,7 @@ function renderModalDealsTable() {
     .filter(d => d.deal_type === dealType)
     .filter(d => (d.business_unit || 'UNMAPPED') === bu)
     .filter(d => dealInPeriod(d, periodTab))
-    .filter(d => snapshotsByDeal.has(d.deal_id));
+    .filter(d => snapshotsByDeal.get(d.deal_id)?.has(latestDate));
 
   // Search filter
   if (modalSearch.trim()) {
@@ -894,7 +894,7 @@ function renderDealsTableWith({ dealsById, periodTab, snapshots, metric, tableId
   let tabDeals = DEALS.filter(d => currentTypeTab === 'combined' || d.deal_type === currentTypeTab)
     .filter(d => !currentBU || (d.business_unit || 'UNMAPPED') === currentBU)
     .filter(d => dealInPeriod(d, periodTab))
-    .filter(d => snapshotsByDeal.has(d.deal_id));
+    .filter(d => snapshotsByDeal.get(d.deal_id)?.has(latestDate));
 
   const buOptions = [...new Set(tabDeals.map(d => d.business_unit || 'UNMAPPED'))].sort();
   const buFilterEl = document.getElementById(buFilterId);
@@ -1678,7 +1678,7 @@ function renderBUDetailView() {
       snapshotsByDeal.get(s.deal_id).set(s.snapshot_date, amountOf(s));
     }
 
-    let deals = buDeals.filter(d => snapshotsByDeal.has(d.deal_id))
+    let deals = buDeals.filter(d => snapshotsByDeal.get(d.deal_id)?.has(latestDate))
       .sort((a, b) => (snapshotsByDeal.get(b.deal_id)?.get(latestDate) ?? 0) - (snapshotsByDeal.get(a.deal_id)?.get(latestDate) ?? 0));
 
     if (!deals.length) { el.innerHTML = `<p class="muted">No ${metric} data for this BU in this period.</p>`; return; }
