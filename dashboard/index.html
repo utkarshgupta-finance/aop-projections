@@ -281,6 +281,7 @@ let huntingBUFilter = null; // null = lazy-init to all BUs on first render
 let summarySortKey  = 'bu';
 let summarySortDir  = 'asc';
 let summarySearch   = '';
+let currentBUDetail = null;
 let modalSortKey    = '__latest';
 let modalSortDir    = 'desc';
 let modalSearch     = '';
@@ -688,6 +689,7 @@ function render() {
   document.querySelectorAll('#bu-tabs .tab-btn').forEach(b => b.classList.toggle('active', b.dataset.bu === currentBU));
 
   if (currentViewMode === 'summary') { renderSummaryView(); return; }
+  if (currentViewMode === 'bu-detail') { renderBUDetailView(); return; }
   if (currentViewMode === 'hunting') { renderHuntingView(); return; }
   renderReviewView();
 }
@@ -1126,7 +1128,7 @@ function renderSummaryView() {
       const sparkColor = av === null ? colorVar(r.bu) : av >= 0 ? 'var(--good)' : 'var(--bad)';
       const sparkTip = r.sparkline.map(p => `${p.date}: ${fmtINR(p.v)}`).join('\n');
       return `<tr>
-      <td><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${colorVar(r.bu)};margin-right:8px;vertical-align:middle;"></span>${escapeHtml(r.bu)}</td>
+      <td data-bu-nav="${escapeHtml(r.bu)}" title="View ${escapeHtml(r.bu)} detail"><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${colorVar(r.bu)};margin-right:8px;vertical-align:middle;"></span>${escapeHtml(r.bu)}<span style="margin-left:6px;font-size:10px;color:var(--text-muted);">↗</span></td>
       <td class="${sparkCls}" style="padding:4px 8px;" title="${escapeHtml(sparkTip)}">${sparklineSvg(r.sparkline, sparkColor)}</td>
       <td class="num drilldown-cell" data-bu="${escapeHtml(r.bu)}" data-type="Farming" data-metric="${metric}">${r.farming ? fmtINR(r.farming) : '<span class="muted">-</span>'}</td>
       <td class="num drilldown-cell" data-bu="${escapeHtml(r.bu)}" data-type="Hunting" data-metric="${metric}">${r.hunting ? fmtINR(r.hunting) : '<span class="muted">-</span>'}</td>
@@ -1196,11 +1198,22 @@ function renderSummaryView() {
 
   document.getElementById('subtitle').textContent = `Summary view: ${periodTab.label} . ${computePeriodTabs(currentQuarter).find(p=>p.key===currentQuarter)?.label || QUARTERS.find(q=>q.key===currentQuarter)?.label || ''}`;
 
-  document.getElementById('content').innerHTML = `
-    <div style="margin-bottom:12px;">
-      <input id="summary-search" type="search" placeholder="Search business unit…" value="${escapeHtml(summarySearch)}"
-        style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;background:var(--surface-1);color:var(--text);font-size:13px;width:260px;outline:none;">
-    </div>
+  // Render search input once; only re-render tables on sort/search
+  const content = document.getElementById('content');
+  if (!document.getElementById('summary-tables')) {
+    content.innerHTML = `
+      <div style="margin-bottom:12px;">
+        <input id="summary-search" type="search" placeholder="Search business unit…" value="${escapeHtml(summarySearch)}"
+          style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;background:var(--surface-1);color:var(--text);font-size:13px;width:260px;outline:none;">
+      </div>
+      <div id="summary-tables"></div>`;
+    document.getElementById('summary-search').addEventListener('input', e => {
+      summarySearch = e.target.value;
+      renderSummaryView();
+    });
+  }
+
+  document.getElementById('summary-tables').innerHTML = `
     <div class="card">
       <p class="summary-section-title">MRR Summary · ${escapeHtml(periodTab.label)}</p>
       ${summaryTableHtml('MRR', mrrRows, latestMRR)}
@@ -1210,23 +1223,28 @@ function renderSummaryView() {
       ${summaryTableHtml('NRR', nrrRows, latestNRR)}
     </div>`;
 
-  document.getElementById('summary-search').addEventListener('input', e => {
-    summarySearch = e.target.value;
-    renderSummaryView();
-  });
-
   document.querySelectorAll('.drilldown-cell').forEach(cell => {
     cell.addEventListener('click', () => {
       openDrillDownModal(cell.dataset.bu, cell.dataset.type, cell.dataset.metric, periodTab);
     });
   });
 
-  document.querySelectorAll('#content th[data-sort]').forEach(th => {
+  document.querySelectorAll('#summary-tables th[data-sort]').forEach(th => {
     th.addEventListener('click', () => {
       const key = th.dataset.sort;
       if (summarySortKey === key) summarySortDir = summarySortDir === 'asc' ? 'desc' : 'asc';
       else { summarySortKey = key; summarySortDir = (key === 'bu') ? 'asc' : 'desc'; }
       renderSummaryView();
+    });
+  });
+
+  // BU name click → BU detail page
+  document.querySelectorAll('#summary-tables td[data-bu-nav]').forEach(td => {
+    td.style.cursor = 'pointer';
+    td.addEventListener('click', () => {
+      currentBUDetail = td.dataset.buNav;
+      currentViewMode = 'bu-detail';
+      render();
     });
   });
 }
@@ -1399,6 +1417,272 @@ ${rowsHtml}`;
     </tr></thead>
     <tbody>${grandTotalRow}${monthGroupsHtml}</tbody>
   </table></div>`;
+}
+
+// ============================================================
+// BU DETAIL VIEW
+// ============================================================
+function renderBUDetailView() {
+  const bu = currentBUDetail;
+  const PERIOD_TABS = computePeriodTabs(currentQuarter);
+  const periodTab = PERIOD_TABS.find(p => p.key === currentPeriodTab) || PERIOD_TABS[PERIOD_TABS.length - 1];
+  const dealsById = new Map(DEALS.map(d => [d.deal_id, d]));
+  const latestMRR = MRR_DATES[MRR_DATES.length - 1];
+  const latestNRR = NRR_DATES[NRR_DATES.length - 1];
+
+  const amountMRR = s => Number(s.mrr_amount);
+  const amountNRR = s => Number(s.nrr_amount);
+
+  const buDeals = DEALS.filter(d => (d.business_unit || 'UNMAPPED') === bu && dealInPeriod(d, periodTab));
+  const buDealIds = new Set(buDeals.map(d => d.deal_id));
+
+  const mrrCommit = MRR_SNAPSHOTS.filter(s => s.snapshot_date === latestMRR && buDealIds.has(s.deal_id)).reduce((a, s) => a + amountMRR(s), 0);
+  const nrrCommit = NRR_SNAPSHOTS.filter(s => s.snapshot_date === latestNRR && buDealIds.has(s.deal_id)).reduce((a, s) => a + amountNRR(s), 0);
+  const mrrTarget = targetFor(bu, periodTab, 'MRR');
+  const nrrTarget = targetFor(bu, periodTab, 'NRR');
+  const mrrVar = mrrTarget !== undefined ? mrrCommit - mrrTarget : null;
+  const nrrVar = nrrTarget !== undefined ? nrrCommit - nrrTarget : null;
+
+  const varCls = v => v === null ? '' : v >= 0 ? 'var-pos' : 'var-neg';
+  const fmtVar = v => v === null ? '-' : (v >= 0 ? '+' : '') + fmtINR(v);
+
+  const tile = (label, value, isVar = false) => {
+    const cls = isVar ? varCls(value) : '';
+    const display = value === undefined || value === null ? '-' : isVar ? fmtVar(value) : fmtINR(value);
+    return `<div class="card" style="flex:1;min-width:140px;padding:14px 18px;">
+      <p style="font-size:11px;color:var(--text-muted);margin:0 0 6px;">${label}</p>
+      <p class="${cls}" style="font-size:18px;font-weight:700;margin:0;">${display}</p>
+    </div>`;
+  };
+
+  document.getElementById('subtitle').textContent = `${bu} · ${periodTab.label}`;
+  const content = document.getElementById('content');
+  content.innerHTML = `
+    <div style="margin-bottom:16px;display:flex;align-items:center;gap:12px;">
+      <button id="bu-back-btn" style="padding:6px 12px;border:1px solid var(--border);border-radius:6px;background:var(--surface-1);color:var(--text);font-size:13px;cursor:pointer;">← Summary</button>
+      <span style="font-size:16px;font-weight:700;"><span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:${colorVar(bu)};margin-right:8px;vertical-align:middle;"></span>${escapeHtml(bu)}</span>
+    </div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;">
+      ${tile('MRR Commit', mrrCommit)}${tile('MRR Target', mrrTarget)}${tile('MRR Variance', mrrVar, true)}
+      ${tile('NRR Commit', nrrCommit)}${tile('NRR Target', nrrTarget)}${tile('NRR Variance', nrrVar, true)}
+    </div>
+    <div class="card" style="margin-bottom:16px;">
+      <p class="summary-section-title">MRR Commit Details</p>
+      <div id="bu-mrr-table"></div>
+    </div>
+    <div class="card" style="margin-bottom:16px;">
+      <p class="summary-section-title">NRR Commit Details</p>
+      <div id="bu-nrr-table"></div>
+    </div>
+    <div class="card" style="margin-bottom:16px;">
+      <p class="summary-section-title">Hunting Pipeline</p>
+      <div id="bu-hunting-wrap"></div>
+    </div>
+    <div class="card">
+      <p class="summary-section-title">Activity Timeline</p>
+      <div id="bu-timeline"></div>
+    </div>`;
+
+  document.getElementById('bu-back-btn').addEventListener('click', () => {
+    currentViewMode = 'summary';
+    render();
+  });
+
+  // ── MRR / NRR commit tables ────────────────────────────────
+  function renderBUCommitTable(containerId, metric) {
+    const snapshots = metric === 'MRR' ? MRR_SNAPSHOTS : NRR_SNAPSHOTS;
+    const allDates  = metric === 'MRR' ? MRR_DATES : NRR_DATES;
+    const amountOf  = s => Number(metric === 'MRR' ? s.mrr_amount : s.nrr_amount);
+    const el = document.getElementById(containerId);
+
+    const allQuarterMonths = PERIOD_TABS.find(t => isFullQuarterTab(t))?.months || periodTab.months;
+    let dates, colLabel;
+    if (isFullQuarterTab(periodTab)) {
+      const byMonth = new Map();
+      for (const d of allDates) {
+        const m = Number(d.slice(5,7)), y = Number(d.slice(0,4));
+        if (y === periodTab.year && allQuarterMonths.includes(m)) byMonth.set(m, d);
+      }
+      dates = allQuarterMonths.map(m => byMonth.get(m)).filter(Boolean);
+      colLabel = d => MONTH_FULL[Number(d.slice(5,7)) - 1];
+    } else {
+      const curMonth = periodTab.months[0];
+      const priorDates = [], priorDateSet = new Set();
+      for (const pm of allQuarterMonths.filter(m => m < curMonth)) {
+        const last = [...allDates].reverse().find(d => Number(d.slice(5,7)) === pm && Number(d.slice(0,4)) === periodTab.year);
+        if (last) { priorDates.push(last); priorDateSet.add(last); }
+      }
+      const curDates = allDates.filter(d => Number(d.slice(5,7)) === curMonth && Number(d.slice(0,4)) === periodTab.year);
+      dates = [...priorDates, ...curDates];
+      colLabel = d => priorDateSet.has(d) ? MONTH_FULL[Number(d.slice(5,7)) - 1] : d;
+    }
+    if (!dates.length) { el.innerHTML = `<p class="muted">No ${metric} snapshots.</p>`; return; }
+
+    const latestDate = dates[dates.length - 1];
+    const prevDate   = dates.length >= 2 ? dates[dates.length - 2] : undefined;
+
+    const snapshotsByDeal = new Map();
+    for (const s of snapshots) {
+      if (!snapshotsByDeal.has(s.deal_id)) snapshotsByDeal.set(s.deal_id, new Map());
+      snapshotsByDeal.get(s.deal_id).set(s.snapshot_date, amountOf(s));
+    }
+
+    let deals = buDeals.filter(d => snapshotsByDeal.has(d.deal_id))
+      .sort((a, b) => (snapshotsByDeal.get(b.deal_id)?.get(latestDate) ?? 0) - (snapshotsByDeal.get(a.deal_id)?.get(latestDate) ?? 0));
+
+    if (!deals.length) { el.innerHTML = `<p class="muted">No ${metric} data for this BU in this period.</p>`; return; }
+
+    const dateHeaders = dates.map(d => `<th class="num">${colLabel(d)}</th>`).join('');
+    const varHeader   = prevDate ? `<th class="num">Change</th>` : '';
+    const rows = deals.map(d => {
+      const byDate = snapshotsByDeal.get(d.deal_id);
+      const dateCells = dates.map(date => {
+        const v = byDate.get(date);
+        return `<td class="num">${v === undefined ? '<span class="muted">-</span>' : fmtINR(v)}</td>`;
+      }).join('');
+      let varCell = '';
+      if (prevDate) {
+        const lv = byDate.get(latestDate) ?? 0, pv = byDate.get(prevDate) ?? 0;
+        if (!byDate.has(latestDate) && !byDate.has(prevDate)) {
+          varCell = `<td class="num muted">-</td>`;
+        } else {
+          const v = lv - pv;
+          varCell = `<td class="num ${v > 0 ? 'var-pos' : v < 0 ? 'var-neg' : ''}">${v > 0 ? '+' : ''}${fmtINR(v)}</td>`;
+        }
+      }
+      const link = ZOHO_DEAL_URL(d.deal_id);
+      return `<tr>
+        <td class="name-cell"><a class="zoho-link" href="${link}" target="_blank" rel="noopener">${nameChainHtml(d)}</a></td>
+        <td class="name-cell">${escapeHtml(d.account_name || '')}</td>
+        <td>${escapeHtml(d.deal_type || '')}</td>
+        ${dateCells}${varCell}
+      </tr>`;
+    }).join('');
+
+    const totalCells = dates.map(date => {
+      let sum = 0, any = false;
+      deals.forEach(d => { const v = snapshotsByDeal.get(d.deal_id).get(date); if (v !== undefined) { sum += v; any = true; } });
+      return `<td class="num">${any ? fmtINR(sum) : '<span class="muted">-</span>'}</td>`;
+    }).join('');
+    let totalVarCell = '';
+    if (prevDate) {
+      const sl = deals.reduce((a, d) => a + (snapshotsByDeal.get(d.deal_id)?.get(latestDate) ?? 0), 0);
+      const sp = deals.reduce((a, d) => a + (snapshotsByDeal.get(d.deal_id)?.get(prevDate)   ?? 0), 0);
+      const tv = sl - sp;
+      totalVarCell = `<td class="num ${tv > 0 ? 'var-pos' : tv < 0 ? 'var-neg' : ''}">${tv > 0 ? '+' : ''}${fmtINR(tv)}</td>`;
+    }
+
+    el.innerHTML = `<div class="table-scroll"><table>
+      <thead><tr>
+        <th>Deal Name</th><th>Account</th><th>Type</th>
+        ${dateHeaders}${varHeader}
+      </tr></thead>
+      <tbody>
+        <tr class="total-row"><td colspan="3">Total (${deals.length} deal${deals.length === 1 ? '' : 's'})</td>${totalCells}${totalVarCell}</tr>
+        ${rows}
+      </tbody>
+    </table></div>`;
+  }
+
+  // ── Hunting pipeline for this BU ──────────────────────────
+  function renderBUHuntingSection() {
+    const wrap = document.getElementById('bu-hunting-wrap');
+    const huntingDeals = (HUNTING_PIPELINE || []).filter(d => d.quarter === currentQuarter && (d.business_unit || 'UNMAPPED') === bu);
+    if (!huntingDeals.length) { wrap.innerHTML = `<p class="muted">No hunting pipeline deals for this BU in ${currentQuarter}.</p>`; return; }
+    renderHuntingTable(huntingDeals, dealsById, QUARTERS.find(x => x.key === currentQuarter) || QUARTERS[1]);
+    // renderHuntingTable writes to #hunting-table-wrap — redirect by creating it inside bu-hunting-wrap
+  }
+
+  // ── Activity Timeline ─────────────────────────────────────
+  function renderBUTimeline() {
+    const el = document.getElementById('bu-timeline');
+    const events = [];
+
+    for (const metric of ['MRR', 'NRR']) {
+      const snapshots = metric === 'MRR' ? MRR_SNAPSHOTS : NRR_SNAPSHOTS;
+      const allDates  = metric === 'MRR' ? MRR_DATES : NRR_DATES;
+      const amountOf  = s => Number(metric === 'MRR' ? s.mrr_amount : s.nrr_amount);
+
+      const periodDates = allDates.filter(d => {
+        const m = Number(d.slice(5,7)), y = Number(d.slice(0,4));
+        return periodTab.months.includes(m) && y === periodTab.year;
+      });
+      if (periodDates.length < 2) continue;
+
+      // Build deal → date → amount map
+      const byDeal = new Map();
+      for (const s of snapshots) {
+        if (!buDealIds.has(s.deal_id)) continue;
+        if (!byDeal.has(s.deal_id)) byDeal.set(s.deal_id, new Map());
+        byDeal.get(s.deal_id).set(s.snapshot_date, amountOf(s));
+      }
+
+      for (let i = 1; i < periodDates.length; i++) {
+        const prev = periodDates[i - 1], curr = periodDates[i];
+        for (const [dealId, byDate] of byDeal) {
+          const prevV = byDate.get(prev) ?? null;
+          const currV = byDate.get(curr) ?? null;
+          const deal  = dealsById.get(dealId);
+          const name  = deal ? (deal.current_name || dealId) : dealId;
+
+          if (prevV === null && currV !== null && currV > 0) {
+            events.push({ date: curr, metric, type: 'enter', name, dealId, value: currV });
+          } else if (prevV !== null && prevV > 0 && (currV === null || currV === 0)) {
+            events.push({ date: curr, metric, type: 'exit', name, dealId, value: prevV });
+          } else if (prevV !== null && currV !== null && currV !== prevV) {
+            const delta = currV - prevV;
+            events.push({ date: curr, metric, type: delta > 0 ? 'up' : 'down', name, dealId, delta, prevV, currV });
+          }
+        }
+      }
+    }
+
+    if (!events.length) { el.innerHTML = `<p class="muted">No changes recorded in this period.</p>`; return; }
+
+    events.sort((a, b) => b.date.localeCompare(a.date));
+
+    const icon = { enter: '🟢', exit: '🔴', up: '↑', down: '↓' };
+    const grouped = new Map();
+    for (const e of events) {
+      if (!grouped.has(e.date)) grouped.set(e.date, []);
+      grouped.get(e.date).push(e);
+    }
+
+    el.innerHTML = [...grouped.entries()].map(([date, evts]) => {
+      const rows = evts.map(e => {
+        const link = `<a class="zoho-link" href="${ZOHO_DEAL_URL(e.dealId)}" target="_blank" rel="noopener">${escapeHtml(e.name)}</a>`;
+        let desc;
+        if (e.type === 'enter') desc = `entered at ${fmtINR(e.value)}`;
+        else if (e.type === 'exit') desc = `dropped out (was ${fmtINR(e.value)})`;
+        else desc = `${fmtINR(e.prevV)} → ${fmtINR(e.currV)} <span class="${e.type === 'up' ? 'var-pos' : 'var-neg'}" style="font-weight:600;">${e.delta > 0 ? '+' : ''}${fmtINR(e.delta)}</span>`;
+        return `<tr>
+          <td style="width:24px;text-align:center;">${icon[e.type]}</td>
+          <td class="name-cell">${link}</td>
+          <td style="font-size:11px;color:var(--text-muted);padding:0 8px;">${e.metric}</td>
+          <td>${desc}</td>
+        </tr>`;
+      }).join('');
+      return `<div style="margin-bottom:16px;">
+        <p style="font-size:12px;font-weight:600;color:var(--text-muted);margin:0 0 6px;">${date}</p>
+        <table style="width:100%;border-collapse:collapse;">${rows}</table>
+      </div>`;
+    }).join('');
+  }
+
+  renderBUCommitTable('bu-mrr-table', 'MRR');
+  renderBUCommitTable('bu-nrr-table', 'NRR');
+
+  // Hunting section needs its own wrap element
+  const huntingDeals = (HUNTING_PIPELINE || []).filter(d => d.quarter === currentQuarter && (d.business_unit || 'UNMAPPED') === bu);
+  const huntingWrap = document.getElementById('bu-hunting-wrap');
+  if (!huntingDeals.length) {
+    huntingWrap.innerHTML = `<p class="muted">No hunting pipeline deals for this BU in ${currentQuarter}.</p>`;
+  } else {
+    huntingWrap.innerHTML = `<div id="hunting-table-wrap"></div>`;
+    renderHuntingTable(huntingDeals, dealsById, QUARTERS.find(x => x.key === currentQuarter) || QUARTERS[1]);
+  }
+
+  renderBUTimeline();
 }
 
 main();
