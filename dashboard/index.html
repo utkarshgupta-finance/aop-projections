@@ -961,9 +961,9 @@ function renderDealsTableWith({ dealsById, periodTab, snapshots, metric, tableId
       // Colour relative to immediately prior date in periodDates
       const prevIdx = periodDates.indexOf(date) - 1;
       const prevD = prevIdx >= 0 ? periodDates[prevIdx] : null;
-      const prevV = prevD !== null ? byDate.get(prevD) : undefined;
+      const prevV = prevD !== null ? (byDate.get(prevD) ?? 0) : null;
       let cls = '';
-      if (prevV !== undefined && prevV !== null) {
+      if (prevV !== null) {
         cls = v > prevV ? 'var-pos' : v < prevV ? 'var-neg' : '';
       }
       return `<td class="num ${cls}">${fmtINR(v)}</td>`;
