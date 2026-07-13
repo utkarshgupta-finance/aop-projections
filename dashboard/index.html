@@ -379,9 +379,10 @@ function dealInPeriod(deal, periodTab) {
   return periodTab.months.includes(month) && year === periodTab.year;
 }
 
-// Returns true if a snapshot entry's closing_date falls within the given period
+// Returns true if a snapshot entry's closing_date falls within the given period.
+// NULL closing_date = legacy row (pre-fix); treat as in-period for backward compat.
 function snapClosingInPeriod(closingDate, periodTab) {
-  if (!closingDate) return false;
+  if (!closingDate) return true;
   const month = Number(closingDate.slice(5, 7));
   const year  = Number(closingDate.slice(0, 4));
   return periodTab.months.includes(month) && year === periodTab.year;
@@ -648,9 +649,22 @@ function renderModalDealsTable() {
     const byDate = snapshotsByDeal.get(d.deal_id);
     const dateCells = dates.map(date => {
       const v = snapAmt(byDate, date);
-      if (v === undefined) return `<td class="num"><span class="muted">-</span></td>`;
-      if (v === null) return `<td class="num var-neg"><span class="muted">-</span></td>`;
-      return `<td class="num">${fmtINR(v)}</td>`;
+      const dateIdx = dates.indexOf(date);
+      // Last known value before this date
+      let lastKnownV = undefined;
+      for (let k = dateIdx - 1; k >= 0; k--) {
+        const kv = snapAmt(byDate, dates[k]);
+        if (kv !== undefined && kv !== null) { lastKnownV = kv; break; }
+      }
+      const prevD = dateIdx > 0 ? dates[dateIdx - 1] : null;
+      const prevV = prevD !== null ? (snapAmt(byDate, prevD) ?? 0) : null;
+      if (v === undefined || v === null) {
+        const cls = lastKnownV === undefined ? '' : lastKnownV > 0 ? 'var-neg' : lastKnownV < 0 ? 'var-pos' : '';
+        return `<td class="num ${cls}"><span class="muted">-</span></td>`;
+      }
+      let cls = '';
+      if (prevV !== null) { cls = v > prevV ? 'var-pos' : v < prevV ? 'var-neg' : ''; }
+      return `<td class="num ${cls}">${fmtINR(v)}</td>`;
     }).join('');
     let varCell = '';
     if (prevDate) {
@@ -983,13 +997,19 @@ function renderDealsTableWith({ dealsById, periodTab, snapshots, metric, tableId
     const byDate = snapshotsByDeal.get(deal.deal_id);
     const dateCells = dates.map((date, i) => {
       const v = snapAmt(byDate, date);
-      // Colour relative to immediately prior date in periodDates (treat missing as 0)
-      const prevIdx = periodDates.indexOf(date) - 1;
-      const prevD = prevIdx >= 0 ? periodDates[prevIdx] : null;
+      const dateIdx = periodDates.indexOf(date);
+      // Last known (non-missing) value before this date — used to colour missing cells
+      let lastKnownV = undefined;
+      for (let k = dateIdx - 1; k >= 0; k--) {
+        const kv = snapAmt(byDate, periodDates[k]);
+        if (kv !== undefined && kv !== null) { lastKnownV = kv; break; }
+      }
+      // Immediately prior date value — used to colour present cells
+      const prevD = dateIdx > 0 ? periodDates[dateIdx - 1] : null;
       const prevV = prevD !== null ? (snapAmt(byDate, prevD) ?? 0) : null;
       if (v === undefined || v === null) {
-        // Missing or dropped out of period — colour red if previous had a positive value
-        const cls = (prevV !== null && prevV > 0) ? 'var-neg' : (prevV !== null && prevV < 0) ? 'var-pos' : '';
+        // Missing or dropped out of period — colour based on last known value
+        const cls = lastKnownV === undefined ? '' : lastKnownV > 0 ? 'var-neg' : lastKnownV < 0 ? 'var-pos' : '';
         return `<td class="num ${cls}"><span class="muted">-</span></td>`;
       }
       let cls = '';
@@ -1726,8 +1746,21 @@ function renderBUDetailView() {
       const byDate = snapshotsByDeal.get(d.deal_id);
       const dateCells = dates.map(date => {
         const v = snapAmt(byDate, date);
-        if (v === null) return `<td class="num var-neg"><span class="muted">-</span></td>`;
-        return `<td class="num">${v === undefined ? '<span class="muted">-</span>' : fmtINR(v)}</td>`;
+        const dateIdx = dates.indexOf(date);
+        let lastKnownV = undefined;
+        for (let k = dateIdx - 1; k >= 0; k--) {
+          const kv = snapAmt(byDate, dates[k]);
+          if (kv !== undefined && kv !== null) { lastKnownV = kv; break; }
+        }
+        const prevD = dateIdx > 0 ? dates[dateIdx - 1] : null;
+        const prevV = prevD !== null ? (snapAmt(byDate, prevD) ?? 0) : null;
+        if (v === undefined || v === null) {
+          const cls = lastKnownV === undefined ? '' : lastKnownV > 0 ? 'var-neg' : lastKnownV < 0 ? 'var-pos' : '';
+          return `<td class="num ${cls}"><span class="muted">-</span></td>`;
+        }
+        let cls = '';
+        if (prevV !== null) { cls = v > prevV ? 'var-pos' : v < prevV ? 'var-neg' : ''; }
+        return `<td class="num ${cls}">${fmtINR(v)}</td>`;
       }).join('');
       let varCell = '';
       if (prevDate) {
