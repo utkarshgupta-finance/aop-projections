@@ -732,6 +732,7 @@ function renderDealsTableWith({ dealsById, periodTab, snapshots, metric, tableId
     return `<tr>
       <td><a class="zoho-link" href="${link}" target="_blank" rel="noopener">${escapeHtml(d.deal_id)}</a></td>
       <td class="name-cell"><a class="zoho-link" href="${link}" target="_blank" rel="noopener">${nameChainHtml(d)}</a></td>
+      <td class="name-cell">${escapeHtml(d.account_name || '')}</td>
       <td>${buCell}</td>
       <td>${escapeHtml(d.deal_type || '')}</td>
       ${dateCells}${varianceCell}
@@ -755,16 +756,17 @@ function renderDealsTableWith({ dealsById, periodTab, snapshots, metric, tableId
     const cls = tv > 0 ? 'var-pos' : tv < 0 ? 'var-neg' : '';
     totalVarianceCell = `<td class="num ${cls}">${tv > 0 ? '+' : ''}${fmtINR(tv)}</td>`;
   }
-  const totalRow = tabDeals.length ? `<tr class="total-row"><td colspan="4">Total (${tabDeals.length} deal${tabDeals.length === 1 ? '' : 's'})</td>${totalCells}${totalVarianceCell}</tr>` : '';
+  const totalRow = tabDeals.length ? `<tr class="total-row"><td colspan="5">Total (${tabDeals.length} deal${tabDeals.length === 1 ? '' : 's'})</td>${totalCells}${totalVarianceCell}</tr>` : '';
   dealsTable.innerHTML = `<div class="table-scroll"><table>
     <thead><tr>
       <th data-sort="deal_id">Deal ID${arrow('deal_id')}</th>
       <th data-sort="deal_name">Deal Name${arrow('deal_name')}</th>
+      <th>Account</th>
       <th data-sort="business_unit">Business Unit${arrow('business_unit')}</th>
       <th data-sort="deal_type">Type${arrow('deal_type')}</th>
       ${dateHeaders}${varianceHeader}
     </tr></thead>
-    <tbody>${totalRow}${rows || `<tr><td colspan="${4 + dates.length + (prevDate ? 1 : 0)}" class="muted">No matching deals.</td></tr>`}</tbody>
+    <tbody>${totalRow}${rows || `<tr><td colspan="${5 + dates.length + (prevDate ? 1 : 0)}" class="muted">No matching deals.</td></tr>`}</tbody>
   </table></div>`;
 
   dealsTable.querySelectorAll('th[data-sort]').forEach(th => {
