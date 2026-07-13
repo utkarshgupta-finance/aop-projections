@@ -183,6 +183,7 @@
       <p class="modal-title" id="modal-title"></p>
       <button class="modal-close" id="modal-close" aria-label="Close">✕</button>
     </div>
+    <div id="modal-search-bar"></div>
     <div id="modal-content"></div>
   </div>
 </div>
@@ -492,6 +493,8 @@ async function main() {
 
 function closeModal() {
   document.getElementById('modal-overlay').style.display = 'none';
+  document.getElementById('modal-search-bar').innerHTML = '';
+  modalCtx = null;
 }
 
 function openDrillDownModal(bu, dealType, metric, periodTab) {
@@ -502,6 +505,11 @@ function openDrillDownModal(bu, dealType, metric, periodTab) {
   modalCtx = { bu, dealType, metric, periodTab };
   document.getElementById('modal-title').textContent =
     `${bu} · ${dealType} · ${metric} · ${periodTab.label}`;
+  // Render search input once — not part of the re-rendered table area
+  const searchBar = document.getElementById('modal-search-bar');
+  searchBar.innerHTML = `<input id="modal-search" type="search" placeholder="Search deal or account…" value="${escapeHtml(modalSearch)}"
+    style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;background:var(--surface-1);color:var(--text);font-size:13px;width:260px;outline:none;margin-bottom:12px;">`;
+  document.getElementById('modal-search').addEventListener('input', e => { modalSearch = e.target.value; renderModalDealsTable(); });
   renderModalDealsTable();
   document.getElementById('modal-overlay').style.display = 'flex';
 }
@@ -585,11 +593,7 @@ function renderModalDealsTable() {
   });
 
   if (!dates.length || !deals.length) {
-    container.innerHTML = `
-      <input id="modal-search" type="search" placeholder="Search deal or account…" value="${escapeHtml(modalSearch)}"
-        style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;background:var(--surface-1);color:var(--text);font-size:13px;width:260px;outline:none;margin-bottom:12px;">
-      <p class="muted">No ${metric} data for ${escapeHtml(bu)} ${dealType} in this period.</p>`;
-    document.getElementById('modal-search').addEventListener('input', e => { modalSearch = e.target.value; renderModalDealsTable(); });
+    container.innerHTML = `<p class="muted">No ${metric} data for ${escapeHtml(bu)} ${dealType} in this period.</p>`;
     return;
   }
 
@@ -634,10 +638,7 @@ function renderModalDealsTable() {
     totalVarCell = `<td class="num ${tv > 0 ? 'var-pos' : tv < 0 ? 'var-neg' : ''}">${tv > 0 ? '+' : ''}${fmtINR(tv)}</td>`;
   }
 
-  container.innerHTML = `
-    <input id="modal-search" type="search" placeholder="Search deal or account…" value="${escapeHtml(modalSearch)}"
-      style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;background:var(--surface-1);color:var(--text);font-size:13px;width:260px;outline:none;margin-bottom:12px;">
-    <div class="table-scroll"><table>
+  container.innerHTML = `<div class="table-scroll"><table>
       <thead><tr>
         <th data-sort="deal_name" style="cursor:pointer;">Deal Name${arrow('deal_name')}</th>
         <th data-sort="account_name" style="cursor:pointer;">Account${arrow('account_name')}</th>
@@ -648,8 +649,6 @@ function renderModalDealsTable() {
         ${rows}
       </tbody>
     </table></div>`;
-
-  document.getElementById('modal-search').addEventListener('input', e => { modalSearch = e.target.value; renderModalDealsTable(); });
 
   container.querySelectorAll('th[data-sort]').forEach(th => {
     th.addEventListener('click', () => {
