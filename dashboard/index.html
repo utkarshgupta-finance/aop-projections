@@ -303,6 +303,25 @@ async function sb(path) {
 
 function colorVar(bu) { return `var(${BU_COLOR_VAR[bu] || '--series-8'})`; }
 
+function sparklineSvg(points, color, w=88, h=28) {
+  if (!points.length) return `<svg width="${w}" height="${h}"></svg>`;
+  const vals = points.map(p => p.v);
+  if (points.length === 1) {
+    return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}"><circle cx="${w/2}" cy="${h/2}" r="3" fill="${color}"/></svg>`;
+  }
+  const minV = Math.min(...vals), maxV = Math.max(...vals);
+  const pad = 4, rangeV = maxV - minV || 1;
+  const toX = i => pad + (i / (points.length - 1)) * (w - pad * 2);
+  const toY = v => h - pad - ((v - minV) / rangeV) * (h - pad * 2);
+  const pts = points.map((p, i) => `${toX(i).toFixed(1)},${toY(p.v).toFixed(1)}`).join(' ');
+  const lx = toX(points.length - 1).toFixed(1), ly = toY(vals[vals.length - 1]).toFixed(1);
+  const tip = points.map(p => `${p.date}: ${fmtINR(p.v)}`).join('\n');
+  return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" style="overflow:visible;display:block;" title="${escapeHtml(tip)}">
+    <polyline points="${pts}" fill="none" stroke="${color}" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/>
+    <circle cx="${lx}" cy="${ly}" r="2.5" fill="${color}"/>
+  </svg>`;
+}
+
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
@@ -1043,19 +1062,41 @@ function renderSummaryView() {
     ])].filter((v, i, a) => a.indexOf(v) === i);
 
     const prevMissMap = computePrevMissMap(metric, snapshots);
+    const amountOf = s => Number(metric === 'MRR' ? s.mrr_amount : s.nrr_amount);
+
+    // Precompute sparkline: all snapshot dates within the period, totals per BU
+    const allDates = metric === 'MRR' ? MRR_DATES : NRR_DATES;
+    const sparkDates = allDates.filter(d => {
+      const m = Number(d.slice(5,7)), y = Number(d.slice(0,4));
+      return periodTab.months.includes(m) && y === periodTab.year;
+    });
+    // date → bu → total map
+    const sparkMap = new Map(); // date → Map<bu, total>
+    for (const date of sparkDates) {
+      const byBU = new Map();
+      for (const s of snapshots) {
+        if (s.snapshot_date !== date) continue;
+        const deal = dealsById.get(s.deal_id);
+        if (!deal || !dealInPeriod(deal, periodTab)) continue;
+        const bu = deal.business_unit || 'UNMAPPED';
+        byBU.set(bu, (byBU.get(bu) || 0) + amountOf(s));
+      }
+      sparkMap.set(date, byBU);
+    }
 
     return buList.map(bu => {
       const farming = snapshots
         .filter(s => s.snapshot_date === latestDate && dealsById.get(s.deal_id)?.business_unit === bu && dealsById.get(s.deal_id)?.deal_type === 'Farming' && dealInPeriod(dealsById.get(s.deal_id), periodTab))
-        .reduce((a, s) => a + Number(metric === 'MRR' ? s.mrr_amount : s.nrr_amount), 0);
+        .reduce((a, s) => a + amountOf(s), 0);
       const hunting = snapshots
         .filter(s => s.snapshot_date === latestDate && dealsById.get(s.deal_id)?.business_unit === bu && dealsById.get(s.deal_id)?.deal_type === 'Hunting' && dealInPeriod(dealsById.get(s.deal_id), periodTab))
-        .reduce((a, s) => a + Number(metric === 'MRR' ? s.mrr_amount : s.nrr_amount), 0);
+        .reduce((a, s) => a + amountOf(s), 0);
       const total   = farming + hunting;
       const target  = targetFor(bu, periodTab, metric);
       const variance = target !== undefined ? total - target : null;
       const prevMiss = prevMissMap.get(bu) ?? null;
-      return { bu, farming, hunting, total, target, variance, prevMiss };
+      const sparkline = sparkDates.map(date => ({ date, v: sparkMap.get(date)?.get(bu) || 0 }));
+      return { bu, farming, hunting, total, target, variance, prevMiss, sparkline };
     });
   }
 
@@ -1087,6 +1128,7 @@ function renderSummaryView() {
       <td class="num">${r.target !== undefined ? fmtINR(r.target) : '<span class="muted">-</span>'}</td>
       ${hasPrevMiss ? prevCarryCell(r.prevMiss) : ''}
       ${varCell(adjVar(r.variance, r.prevMiss))}
+      <td style="padding:4px 8px;"><div title="${r.sparkline.map(p=>`${p.date}: ${fmtINR(p.v)}`).join('\n')}">${sparklineSvg(r.sparkline, colorVar(r.bu))}</div></td>
     </tr>`).join('');
 
     const totAdjVariance = adjVar(totVariance, totPrevMiss);
@@ -1098,6 +1140,7 @@ function renderSummaryView() {
       <td class="num">${totTarget ? fmtINR(totTarget) : '<span class="muted">-</span>'}</td>
       ${hasPrevMiss ? prevCarryCell(totPrevMiss) : ''}
       ${varCell(totAdjVariance)}
+      <td></td>
     </tr>`;
 
     const varColLabel = hasPrevMiss ? 'Adj. Variance' : 'Variance';
@@ -1111,6 +1154,7 @@ function renderSummaryView() {
         <th class="num" data-sort="target" style="cursor:pointer;">Target${sArrow('target')}</th>
         ${hasPrevMiss ? `<th class="num" data-sort="prevMiss" style="cursor:pointer;">${prevCarryColLabel}${sArrow('prevMiss')}</th>` : ''}
         <th class="num" data-sort="variance" style="cursor:pointer;">${varColLabel}${sArrow('variance')}</th>
+        <th>Trend</th>
       </tr></thead>
       <tbody>${totalRow}${bodyRows}</tbody>
     </table></div><p style="font-size:11px;color:var(--text-muted);margin:8px 0 0;">Based on snapshot: ${latestDate}${hasPrevMiss ? ' · Adj. Variance = (Actual − Target) + Prev Month Carry' : ''}</p>`;
