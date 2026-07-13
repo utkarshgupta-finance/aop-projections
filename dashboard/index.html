@@ -280,6 +280,10 @@ let huntingBUFilter = null; // null = lazy-init to all BUs on first render
 let summarySortKey  = 'bu';
 let summarySortDir  = 'asc';
 let summarySearch   = '';
+let modalSortKey    = '__latest';
+let modalSortDir    = 'desc';
+let modalSearch     = '';
+let modalCtx        = null; // { bu, dealType, metric, periodTab }
 const adjVar = (variance, prevMiss) =>
   (variance !== null && prevMiss !== null) ? variance + prevMiss : variance;
 
@@ -491,19 +495,25 @@ function closeModal() {
 }
 
 function openDrillDownModal(bu, dealType, metric, periodTab) {
+  // Reset sort/search when opening a new cell
+  if (!modalCtx || modalCtx.bu !== bu || modalCtx.dealType !== dealType || modalCtx.metric !== metric) {
+    modalSortKey = '__latest'; modalSortDir = 'desc'; modalSearch = '';
+  }
+  modalCtx = { bu, dealType, metric, periodTab };
   document.getElementById('modal-title').textContent =
     `${bu} · ${dealType} · ${metric} · ${periodTab.label}`;
-  renderModalDealsTable('modal-content', bu, dealType, metric, periodTab);
+  renderModalDealsTable();
   document.getElementById('modal-overlay').style.display = 'flex';
 }
 
-function renderModalDealsTable(containerId, bu, dealType, metric, periodTab) {
-  const container = document.getElementById(containerId);
+function renderModalDealsTable() {
+  if (!modalCtx) return;
+  const { bu, dealType, metric, periodTab } = modalCtx;
+  const container = document.getElementById('modal-content');
   const allDates  = metric === 'MRR' ? MRR_DATES : NRR_DATES;
   const snapshots = metric === 'MRR' ? MRR_SNAPSHOTS : NRR_SNAPSHOTS;
   const amountOf  = s => Number(metric === 'MRR' ? s.mrr_amount : s.nrr_amount);
 
-  // Build column dates using the same logic as the review table
   const allQuarterMonths = computePeriodTabs(currentQuarter).find(t => isFullQuarterTab(t))?.months || periodTab.months;
   let dates, colLabel;
   if (isFullQuarterTab(periodTab)) {
@@ -535,20 +545,57 @@ function renderModalDealsTable(containerId, bu, dealType, metric, periodTab) {
     snapshotsByDeal.get(s.deal_id).set(s.snapshot_date, amountOf(s));
   }
 
+  // Validate sort key
+  if (modalSortKey !== '__latest' && modalSortKey !== '__variance' && !dates.includes(modalSortKey) &&
+      !['deal_name','account_name'].includes(modalSortKey)) {
+    modalSortKey = '__latest';
+  }
+
   let deals = DEALS
     .filter(d => d.deal_type === dealType)
     .filter(d => (d.business_unit || 'UNMAPPED') === bu)
     .filter(d => dealInPeriod(d, periodTab))
-    .filter(d => snapshotsByDeal.has(d.deal_id))
-    .sort((a, b) => (snapshotsByDeal.get(b.deal_id)?.get(latestDate) ?? 0) - (snapshotsByDeal.get(a.deal_id)?.get(latestDate) ?? 0));
+    .filter(d => snapshotsByDeal.has(d.deal_id));
+
+  // Search filter
+  if (modalSearch.trim()) {
+    const q = modalSearch.trim().toLowerCase();
+    deals = deals.filter(d =>
+      fullNameChainText(d).toLowerCase().includes(q) ||
+      (d.account_name || '').toLowerCase().includes(q)
+    );
+  }
+
+  // Sort
+  deals = deals.sort((a, b) => {
+    const byDateA = snapshotsByDeal.get(a.deal_id), byDateB = snapshotsByDeal.get(b.deal_id);
+    let va, vb;
+    if (modalSortKey === '__latest')       { va = byDateA.get(latestDate); vb = byDateB.get(latestDate); }
+    else if (dates.includes(modalSortKey)) { va = byDateA.get(modalSortKey); vb = byDateB.get(modalSortKey); }
+    else if (modalSortKey === 'deal_name') { va = a.current_name; vb = b.current_name; }
+    else if (modalSortKey === 'account_name') { va = a.account_name || ''; vb = b.account_name || ''; }
+    else if (modalSortKey === '__variance' && prevDate) {
+      va = (byDateA?.get(latestDate) ?? 0) - (byDateA?.get(prevDate) ?? 0);
+      vb = (byDateB?.get(latestDate) ?? 0) - (byDateB?.get(prevDate) ?? 0);
+    }
+    const aMissing = va === undefined || va === null, bMissing = vb === undefined || vb === null;
+    if (aMissing && bMissing) return 0; if (aMissing) return 1; if (bMissing) return -1;
+    const cmp = (typeof va === 'number' && typeof vb === 'number') ? va - vb : String(va).localeCompare(String(vb));
+    return modalSortDir === 'asc' ? cmp : -cmp;
+  });
 
   if (!dates.length || !deals.length) {
-    container.innerHTML = `<p class="muted">No ${metric} data for ${escapeHtml(bu)} ${dealType} in this period.</p>`;
+    container.innerHTML = `
+      <input id="modal-search" type="search" placeholder="Search deal or account…" value="${escapeHtml(modalSearch)}"
+        style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;background:var(--surface-1);color:var(--text);font-size:13px;width:260px;outline:none;margin-bottom:12px;">
+      <p class="muted">No ${metric} data for ${escapeHtml(bu)} ${dealType} in this period.</p>`;
+    document.getElementById('modal-search').addEventListener('input', e => { modalSearch = e.target.value; renderModalDealsTable(); });
     return;
   }
 
-  const dateHeaders    = dates.map(d => `<th class="num">${colLabel(d)}</th>`).join('');
-  const varianceHeader = prevDate ? `<th class="num">Change</th>` : '';
+  const arrow = key => key === modalSortKey ? `<span class="sort-arrow">${modalSortDir === 'asc' ? '↑' : '↓'}</span>` : '';
+  const dateHeaders    = dates.map(d => `<th class="num" data-sort="${d}" style="cursor:pointer;">${colLabel(d)}${arrow(d)}</th>`).join('');
+  const varianceHeader = prevDate ? `<th class="num" data-sort="__variance" style="cursor:pointer;">Change${arrow('__variance')}</th>` : '';
 
   const rows = deals.map(d => {
     const link   = ZOHO_DEAL_URL(d.deal_id);
@@ -587,16 +634,31 @@ function renderModalDealsTable(containerId, bu, dealType, metric, periodTab) {
     totalVarCell = `<td class="num ${tv > 0 ? 'var-pos' : tv < 0 ? 'var-neg' : ''}">${tv > 0 ? '+' : ''}${fmtINR(tv)}</td>`;
   }
 
-  container.innerHTML = `<div class="table-scroll"><table>
-    <thead><tr>
-      <th>Deal Name</th><th>Account</th>
-      ${dateHeaders}${varianceHeader}
-    </tr></thead>
-    <tbody>
-      <tr class="total-row"><td colspan="2">Total (${deals.length} deal${deals.length === 1 ? '' : 's'})</td>${totalCells}${totalVarCell}</tr>
-      ${rows}
-    </tbody>
-  </table></div>`;
+  container.innerHTML = `
+    <input id="modal-search" type="search" placeholder="Search deal or account…" value="${escapeHtml(modalSearch)}"
+      style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;background:var(--surface-1);color:var(--text);font-size:13px;width:260px;outline:none;margin-bottom:12px;">
+    <div class="table-scroll"><table>
+      <thead><tr>
+        <th data-sort="deal_name" style="cursor:pointer;">Deal Name${arrow('deal_name')}</th>
+        <th data-sort="account_name" style="cursor:pointer;">Account${arrow('account_name')}</th>
+        ${dateHeaders}${varianceHeader}
+      </tr></thead>
+      <tbody>
+        <tr class="total-row"><td colspan="2">Total (${deals.length} deal${deals.length === 1 ? '' : 's'})</td>${totalCells}${totalVarCell}</tr>
+        ${rows}
+      </tbody>
+    </table></div>`;
+
+  document.getElementById('modal-search').addEventListener('input', e => { modalSearch = e.target.value; renderModalDealsTable(); });
+
+  container.querySelectorAll('th[data-sort]').forEach(th => {
+    th.addEventListener('click', () => {
+      const key = th.dataset.sort;
+      if (modalSortKey === key) modalSortDir = modalSortDir === 'asc' ? 'desc' : 'asc';
+      else { modalSortKey = key; modalSortDir = (key === '__latest' || key === '__variance' || dates.includes(key)) ? 'desc' : 'asc'; }
+      renderModalDealsTable();
+    });
+  });
 }
 
 function render() {
