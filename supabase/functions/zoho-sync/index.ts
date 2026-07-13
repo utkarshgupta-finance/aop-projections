@@ -503,6 +503,27 @@ Deno.serve(async (req: Request) => {
     // Also backfill from deals table for any hunting deals tracked there (prob >= 70).
     await supabase.rpc('backfill_hunting_bu');
 
+    // Insert snapshot of current pipeline state for movement tracking
+    const syncedAt = new Date().toISOString();
+    const snapshotRows = huntingRows.map((r: any) => ({
+      synced_at: syncedAt,
+      deal_id: r.deal_id,
+      deal_name: r.deal_name,
+      stage: r.stage,
+      closing_date: r.closing_date,
+      deal_owner: r.deal_owner,
+      account_name: r.account_name,
+      probability: r.probability,
+      mrr_inr: r.mrr_inr,
+      nrr_inr: r.nrr_inr,
+      quarter: r.quarter,
+      business_unit: r.business_unit,
+    }));
+    if (snapshotRows.length > 0) {
+      const { error: snapErr } = await supabase.from('hunting_pipeline_snapshots').insert(snapshotRows);
+      if (snapErr) console.warn('snapshot insert error:', JSON.stringify(snapErr));
+    }
+
     // ---- Summary stats ----
     const dealsWithBU = dealRows.filter(r => r.business_unit && r.business_unit !== 'UNMAPPED').length;
     const huntingWithBU = huntingRows.filter(r => r.business_unit && r.business_unit !== 'UNMAPPED').length;
