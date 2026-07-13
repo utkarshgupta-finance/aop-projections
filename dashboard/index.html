@@ -279,8 +279,7 @@ let huntingStageFilter = new Set(DEFAULT_HUNTING_STAGES);
 let huntingShowClosedLost = false;
 let huntingBUFilter  = null; // null = lazy-init to all BUs on first render
 let huntingViewMode  = 'summary'; // 'summary' | 'detail'
-let mrrCompEnd = null, mrrCompBase = null;
-let nrrCompEnd = null, nrrCompBase = null;
+let compEnd = null, compBase = null;
 let summarySortKey  = 'bu';
 let summarySortDir  = 'asc';
 let summarySearch   = '';
@@ -458,7 +457,7 @@ async function main() {
     currentPeriodTab = 'Q';
     huntingBUFilter  = null;
     huntingViewMode  = 'summary';
-    mrrCompEnd = null; mrrCompBase = null; nrrCompEnd = null; nrrCompBase = null;
+    compEnd = null; compBase = null;
     summarySortKey   = 'bu'; summarySortDir = 'asc'; summarySearch = '';
     renderTabs(); render();
   });
@@ -827,7 +826,7 @@ function renderNRRDealsTable() {
     dealsById, periodTab, snapshots: NRR_SNAPSHOTS, metric: 'NRR',
     tableId: 'nrr-deals-table', buFilterId: 'nrr-bu-filter',
     resultCountId: 'nrr-result-count', buFilter: nrrBuFilter,
-    compEnd: nrrCompEnd, compBase: nrrCompBase,
+    compEnd: compEnd, compBase: compBase,
   });
 }
 
@@ -836,7 +835,7 @@ function renderDealsTable() {
   renderDealsTableWith({ dealsById, periodTab, snapshots, metric,
     tableId: 'deals-table', buFilterId: 'bu-filter',
     resultCountId: 'result-count', buFilter: tableBuFilter,
-    compEnd: mrrCompEnd, compBase: mrrCompBase,
+    compEnd: compEnd, compBase: compBase,
   });
 }
 
@@ -1040,11 +1039,7 @@ function renderDealsTableWith({ dealsById, periodTab, snapshots, metric, tableId
     sel.addEventListener('change', e => {
       e.stopPropagation();
       const role = sel.dataset.role, val = sel.value;
-      if (metric === 'MRR') {
-        if (role === 'base') mrrCompBase = val; else mrrCompEnd = val;
-      } else {
-        if (role === 'base') nrrCompBase = val; else nrrCompEnd = val;
-      }
+      if (role === 'base') compBase = val; else compEnd = val;
       renderDealsTable();
       renderNRRDealsTable();
     });
