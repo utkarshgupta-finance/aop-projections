@@ -957,11 +957,15 @@ function renderDealsTableWith({ dealsById, periodTab, snapshots, metric, tableId
     const byDate = snapshotsByDeal.get(deal.deal_id);
     const dateCells = dates.map((date, i) => {
       const v = byDate.get(date);
-      if (v === undefined) return `<td class="num"><span class="muted">-</span></td>`;
-      // Colour relative to immediately prior date in periodDates
+      // Colour relative to immediately prior date in periodDates (treat missing as 0)
       const prevIdx = periodDates.indexOf(date) - 1;
       const prevD = prevIdx >= 0 ? periodDates[prevIdx] : null;
       const prevV = prevD !== null ? (byDate.get(prevD) ?? 0) : null;
+      if (v === undefined) {
+        // Missing in this sync — colour red if previous had a positive value
+        const cls = (prevV !== null && prevV > 0) ? 'var-neg' : (prevV !== null && prevV < 0) ? 'var-pos' : '';
+        return `<td class="num ${cls}"><span class="muted">-</span></td>`;
+      }
       let cls = '';
       if (prevV !== null) {
         cls = v > prevV ? 'var-pos' : v < prevV ? 'var-neg' : '';
