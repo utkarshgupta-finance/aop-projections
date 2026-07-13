@@ -430,6 +430,7 @@ Deno.serve(async (req: Request) => {
     // ---- MRR / NRR snapshots ----
     const mrrRows = universe.filter(d => d.mrrInr !== 0).map(d => ({
       deal_id: d.id, snapshot_date: snapshotDate, mrr_amount: d.mrrInr, probability: d.probability,
+      closing_date: d.closingDate,
     }));
     const { error: mrrErr } = await supabase.from('mrr_snapshots')
       .upsert(mrrRows, { onConflict: 'deal_id,snapshot_date' });
@@ -437,6 +438,7 @@ Deno.serve(async (req: Request) => {
 
     const nrrRows = universe.filter(d => d.nrrInr !== 0).map(d => ({
       deal_id: d.id, snapshot_date: snapshotDate, nrr_amount: d.nrrInr, probability: d.probability,
+      closing_date: d.closingDate,
     }));
     const { error: nrrErr } = await supabase.from('nrr_snapshots')
       .upsert(nrrRows, { onConflict: 'deal_id,snapshot_date' });
