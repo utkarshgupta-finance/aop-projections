@@ -379,6 +379,14 @@ function dealInPeriod(deal, periodTab) {
   return periodTab.months.includes(month) && year === periodTab.year;
 }
 
+// Returns true if a snapshot entry's closing_date falls within the given period
+function snapClosingInPeriod(closingDate, periodTab) {
+  if (!closingDate) return false;
+  const month = Number(closingDate.slice(5, 7));
+  const year  = Number(closingDate.slice(0, 4));
+  return periodTab.months.includes(month) && year === periodTab.year;
+}
+
 // ---- Tab rendering ----
 function renderTabs() {
   const PERIOD_TABS = computePeriodTabs(currentQuarter);
@@ -576,7 +584,7 @@ function renderModalDealsTable() {
   const snapshotsByDeal = new Map();
   for (const s of snapshots) {
     if (!snapshotsByDeal.has(s.deal_id)) snapshotsByDeal.set(s.deal_id, new Map());
-    snapshotsByDeal.get(s.deal_id).set(s.snapshot_date, amountOf(s));
+    snapshotsByDeal.get(s.deal_id).set(s.snapshot_date, { amount: amountOf(s), closing_date: s.closing_date });
   }
 
   // Validate sort key
@@ -588,8 +596,8 @@ function renderModalDealsTable() {
   let deals = DEALS
     .filter(d => d.deal_type === dealType)
     .filter(d => (d.business_unit || 'UNMAPPED') === bu)
-    .filter(d => dealInPeriod(d, periodTab))
-    .filter(d => snapshotsByDeal.has(d.deal_id));
+    .filter(d => snapshotsByDeal.has(d.deal_id) &&
+      [...snapshotsByDeal.get(d.deal_id).values()].some(e => snapClosingInPeriod(e.closing_date, periodTab)));
 
   // Search filter
   if (modalSearch.trim()) {
@@ -600,17 +608,25 @@ function renderModalDealsTable() {
     );
   }
 
+  // Helper: get effective amount for a deal at a date, respecting closing_date period
+  const snapAmt = (byDate, date) => {
+    const e = byDate?.get(date);
+    if (e === undefined) return undefined;
+    if (!snapClosingInPeriod(e.closing_date, periodTab)) return null; // out of period → treat as dropped
+    return e.amount;
+  };
+
   // Sort
   deals = deals.sort((a, b) => {
     const byDateA = snapshotsByDeal.get(a.deal_id), byDateB = snapshotsByDeal.get(b.deal_id);
     let va, vb;
-    if (modalSortKey === '__latest')       { va = byDateA.get(latestDate); vb = byDateB.get(latestDate); }
-    else if (dates.includes(modalSortKey)) { va = byDateA.get(modalSortKey); vb = byDateB.get(modalSortKey); }
+    if (modalSortKey === '__latest')       { va = snapAmt(byDateA, latestDate); vb = snapAmt(byDateB, latestDate); }
+    else if (dates.includes(modalSortKey)) { va = snapAmt(byDateA, modalSortKey); vb = snapAmt(byDateB, modalSortKey); }
     else if (modalSortKey === 'deal_name') { va = a.current_name; vb = b.current_name; }
     else if (modalSortKey === 'account_name') { va = a.account_name || ''; vb = b.account_name || ''; }
     else if (modalSortKey === '__variance' && prevDate) {
-      va = (byDateA?.get(latestDate) ?? 0) - (byDateA?.get(prevDate) ?? 0);
-      vb = (byDateB?.get(latestDate) ?? 0) - (byDateB?.get(prevDate) ?? 0);
+      va = (snapAmt(byDateA, latestDate) ?? 0) - (snapAmt(byDateA, prevDate) ?? 0);
+      vb = (snapAmt(byDateB, latestDate) ?? 0) - (snapAmt(byDateB, prevDate) ?? 0);
     }
     const aMissing = va === undefined || va === null, bMissing = vb === undefined || vb === null;
     if (aMissing && bMissing) return 0; if (aMissing) return 1; if (bMissing) return -1;
@@ -631,13 +647,15 @@ function renderModalDealsTable() {
     const link   = ZOHO_DEAL_URL(d.deal_id);
     const byDate = snapshotsByDeal.get(d.deal_id);
     const dateCells = dates.map(date => {
-      const v = byDate.get(date);
-      return `<td class="num">${v === undefined ? '<span class="muted">-</span>' : fmtINR(v)}</td>`;
+      const v = snapAmt(byDate, date);
+      if (v === undefined) return `<td class="num"><span class="muted">-</span></td>`;
+      if (v === null) return `<td class="num var-neg"><span class="muted">-</span></td>`;
+      return `<td class="num">${fmtINR(v)}</td>`;
     }).join('');
     let varCell = '';
     if (prevDate) {
-      const lv = byDate.get(latestDate) ?? 0, pv = byDate.get(prevDate) ?? 0;
-      if (!byDate.has(latestDate) && !byDate.has(prevDate)) {
+      const lv = snapAmt(byDate, latestDate) ?? 0, pv = snapAmt(byDate, prevDate) ?? 0;
+      if (snapAmt(byDate, latestDate) === undefined && snapAmt(byDate, prevDate) === undefined) {
         varCell = `<td class="num muted">-</td>`;
       } else {
         const v = lv - pv;
@@ -653,13 +671,13 @@ function renderModalDealsTable() {
 
   const totalCells = dates.map(date => {
     let sum = 0, any = false;
-    deals.forEach(d => { const v = snapshotsByDeal.get(d.deal_id).get(date); if (v !== undefined) { sum += v; any = true; } });
+    deals.forEach(d => { const v = snapAmt(snapshotsByDeal.get(d.deal_id), date); if (v !== undefined && v !== null) { sum += v; any = true; } });
     return `<td class="num">${any ? fmtINR(sum) : '<span class="muted">-</span>'}</td>`;
   }).join('');
   let totalVarCell = '';
   if (prevDate) {
-    const sl = deals.reduce((a, d) => a + (snapshotsByDeal.get(d.deal_id)?.get(latestDate) ?? 0), 0);
-    const sp = deals.reduce((a, d) => a + (snapshotsByDeal.get(d.deal_id)?.get(prevDate)   ?? 0), 0);
+    const sl = deals.reduce((a, d) => a + (snapAmt(snapshotsByDeal.get(d.deal_id), latestDate) ?? 0), 0);
+    const sp = deals.reduce((a, d) => a + (snapAmt(snapshotsByDeal.get(d.deal_id), prevDate)   ?? 0), 0);
     const tv = sl - sp;
     totalVarCell = `<td class="num ${tv > 0 ? 'var-pos' : tv < 0 ? 'var-neg' : ''}">${tv > 0 ? '+' : ''}${fmtINR(tv)}</td>`;
   }
@@ -888,13 +906,21 @@ function renderDealsTableWith({ dealsById, periodTab, snapshots, metric, tableId
   const snapshotsByDeal = new Map();
   for (const s of snapshots) {
     if (!snapshotsByDeal.has(s.deal_id)) snapshotsByDeal.set(s.deal_id, new Map());
-    snapshotsByDeal.get(s.deal_id).set(s.snapshot_date, amountOfRow(s));
+    snapshotsByDeal.get(s.deal_id).set(s.snapshot_date, { amount: amountOfRow(s), closing_date: s.closing_date });
   }
+
+  // Helper: effective amount respecting snapshot closing_date vs current period
+  const snapAmt = (byDate, date) => {
+    const e = byDate?.get(date);
+    if (e === undefined) return undefined;
+    if (!snapClosingInPeriod(e.closing_date, periodTab)) return null;
+    return e.amount;
+  };
 
   let tabDeals = DEALS.filter(d => currentTypeTab === 'combined' || d.deal_type === currentTypeTab)
     .filter(d => !currentBU || (d.business_unit || 'UNMAPPED') === currentBU)
-    .filter(d => dealInPeriod(d, periodTab))
-    .filter(d => snapshotsByDeal.has(d.deal_id));
+    .filter(d => snapshotsByDeal.has(d.deal_id) &&
+      [...snapshotsByDeal.get(d.deal_id).values()].some(e => snapClosingInPeriod(e.closing_date, periodTab)));
 
   const buOptions = [...new Set(tabDeals.map(d => d.business_unit || 'UNMAPPED'))].sort();
   const buFilterEl = document.getElementById(buFilterId);
@@ -918,8 +944,8 @@ function renderDealsTableWith({ dealsById, periodTab, snapshots, metric, tableId
   const comparator = (a, b) => {
     const byDateA = snapshotsByDeal.get(a.deal_id), byDateB = snapshotsByDeal.get(b.deal_id);
     let va, vb;
-    if (sortKey === '__latest')         { va = byDateA.get(latestDate); vb = byDateB.get(latestDate); }
-    else if (periodDates.includes(sortKey)) { va = byDateA.get(sortKey); vb = byDateB.get(sortKey); }
+    if (sortKey === '__latest')         { va = snapAmt(byDateA, latestDate); vb = snapAmt(byDateB, latestDate); }
+    else if (periodDates.includes(sortKey)) { va = snapAmt(byDateA, sortKey); vb = snapAmt(byDateB, sortKey); }
     else if (sortKey === 'deal_id')     { va = a.deal_id; vb = b.deal_id; }
     else if (sortKey === 'deal_name')   { va = a.current_name; vb = b.current_name; }
     else if (sortKey === 'account_name')   { va = a.account_name || ''; vb = b.account_name || ''; }
@@ -956,13 +982,13 @@ function renderDealsTableWith({ dealsById, periodTab, snapshots, metric, tableId
     const buCell = bu === 'UNMAPPED' ? `<span class="badge">UNMAPPED</span>` : escapeHtml(bu);
     const byDate = snapshotsByDeal.get(deal.deal_id);
     const dateCells = dates.map((date, i) => {
-      const v = byDate.get(date);
+      const v = snapAmt(byDate, date);
       // Colour relative to immediately prior date in periodDates (treat missing as 0)
       const prevIdx = periodDates.indexOf(date) - 1;
       const prevD = prevIdx >= 0 ? periodDates[prevIdx] : null;
-      const prevV = prevD !== null ? (byDate.get(prevD) ?? 0) : null;
-      if (v === undefined) {
-        // Missing in this sync — colour red if previous had a positive value
+      const prevV = prevD !== null ? (snapAmt(byDate, prevD) ?? 0) : null;
+      if (v === undefined || v === null) {
+        // Missing or dropped out of period — colour red if previous had a positive value
         const cls = (prevV !== null && prevV > 0) ? 'var-neg' : (prevV !== null && prevV < 0) ? 'var-pos' : '';
         return `<td class="num ${cls}"><span class="muted">-</span></td>`;
       }
@@ -985,7 +1011,7 @@ function renderDealsTableWith({ dealsById, periodTab, snapshots, metric, tableId
 
   const totalCells = dates.map(date => {
     let sum = 0, any = false;
-    tabDeals.forEach(d => { const v = snapshotsByDeal.get(d.deal_id).get(date); if (v !== undefined) { sum += v; any = true; } });
+    tabDeals.forEach(d => { const v = snapAmt(snapshotsByDeal.get(d.deal_id), date); if (v !== undefined && v !== null) { sum += v; any = true; } });
     return `<td class="num">${any ? fmtINR(sum) : '<span class="muted">-</span>'}</td>`;
   }).join('');
 
@@ -1056,7 +1082,7 @@ function renderSummaryView() {
         if (!tabDates.length) continue;
         const lastDate = tabDates[tabDates.length - 1];
         const commit = snapshots
-          .filter(s => s.snapshot_date === lastDate && dealsById.get(s.deal_id)?.business_unit === bu && dealInPeriod(dealsById.get(s.deal_id), tab))
+          .filter(s => s.snapshot_date === lastDate && dealsById.get(s.deal_id)?.business_unit === bu && snapClosingInPeriod(s.closing_date, tab))
           .reduce((a, s) => a + Number(metric === 'MRR' ? s.mrr_amount : s.nrr_amount), 0);
         const target = targetFor(bu, tab, metric);
         if (target !== undefined) {
@@ -1090,8 +1116,9 @@ function renderSummaryView() {
       const byBU = new Map();
       for (const s of snapshots) {
         if (s.snapshot_date !== date) continue;
+        if (!snapClosingInPeriod(s.closing_date, periodTab)) continue;
         const deal = dealsById.get(s.deal_id);
-        if (!deal || !dealInPeriod(deal, periodTab)) continue;
+        if (!deal) continue;
         const bu = deal.business_unit || 'UNMAPPED';
         byBU.set(bu, (byBU.get(bu) || 0) + amountOf(s));
       }
@@ -1100,10 +1127,10 @@ function renderSummaryView() {
 
     return buList.map(bu => {
       const farming = snapshots
-        .filter(s => s.snapshot_date === latestDate && dealsById.get(s.deal_id)?.business_unit === bu && dealsById.get(s.deal_id)?.deal_type === 'Farming' && dealInPeriod(dealsById.get(s.deal_id), periodTab))
+        .filter(s => s.snapshot_date === latestDate && dealsById.get(s.deal_id)?.business_unit === bu && dealsById.get(s.deal_id)?.deal_type === 'Farming' && snapClosingInPeriod(s.closing_date, periodTab))
         .reduce((a, s) => a + amountOf(s), 0);
       const hunting = snapshots
-        .filter(s => s.snapshot_date === latestDate && dealsById.get(s.deal_id)?.business_unit === bu && dealsById.get(s.deal_id)?.deal_type === 'Hunting' && dealInPeriod(dealsById.get(s.deal_id), periodTab))
+        .filter(s => s.snapshot_date === latestDate && dealsById.get(s.deal_id)?.business_unit === bu && dealsById.get(s.deal_id)?.deal_type === 'Hunting' && snapClosingInPeriod(s.closing_date, periodTab))
         .reduce((a, s) => a + amountOf(s), 0);
       const total   = farming + hunting;
       const target  = targetFor(bu, periodTab, metric);
@@ -1584,11 +1611,12 @@ function renderBUDetailView() {
   const amountMRR = s => Number(s.mrr_amount);
   const amountNRR = s => Number(s.nrr_amount);
 
-  const buDeals = DEALS.filter(d => (d.business_unit || 'UNMAPPED') === bu && dealInPeriod(d, periodTab));
+  const buDeals = DEALS.filter(d => (d.business_unit || 'UNMAPPED') === bu);
   const buDealIds = new Set(buDeals.map(d => d.deal_id));
 
-  const mrrCommit = MRR_SNAPSHOTS.filter(s => s.snapshot_date === latestMRR && buDealIds.has(s.deal_id)).reduce((a, s) => a + amountMRR(s), 0);
-  const nrrCommit = NRR_SNAPSHOTS.filter(s => s.snapshot_date === latestNRR && buDealIds.has(s.deal_id)).reduce((a, s) => a + amountNRR(s), 0);
+  // Commit = sum of latest snapshots whose closing_date is in this period
+  const mrrCommit = MRR_SNAPSHOTS.filter(s => s.snapshot_date === latestMRR && buDealIds.has(s.deal_id) && snapClosingInPeriod(s.closing_date, periodTab)).reduce((a, s) => a + amountMRR(s), 0);
+  const nrrCommit = NRR_SNAPSHOTS.filter(s => s.snapshot_date === latestNRR && buDealIds.has(s.deal_id) && snapClosingInPeriod(s.closing_date, periodTab)).reduce((a, s) => a + amountNRR(s), 0);
   const mrrTarget = targetFor(bu, periodTab, 'MRR');
   const nrrTarget = targetFor(bu, periodTab, 'NRR');
   const mrrVar = mrrTarget !== undefined ? mrrCommit - mrrTarget : null;
@@ -1675,11 +1703,20 @@ function renderBUDetailView() {
     const snapshotsByDeal = new Map();
     for (const s of snapshots) {
       if (!snapshotsByDeal.has(s.deal_id)) snapshotsByDeal.set(s.deal_id, new Map());
-      snapshotsByDeal.get(s.deal_id).set(s.snapshot_date, amountOf(s));
+      snapshotsByDeal.get(s.deal_id).set(s.snapshot_date, { amount: amountOf(s), closing_date: s.closing_date });
     }
 
-    let deals = buDeals.filter(d => snapshotsByDeal.has(d.deal_id))
-      .sort((a, b) => (snapshotsByDeal.get(b.deal_id)?.get(latestDate) ?? 0) - (snapshotsByDeal.get(a.deal_id)?.get(latestDate) ?? 0));
+    const snapAmt = (byDate, date) => {
+      const e = byDate?.get(date);
+      if (e === undefined) return undefined;
+      if (!snapClosingInPeriod(e.closing_date, periodTab)) return null;
+      return e.amount;
+    };
+
+    let deals = buDeals
+      .filter(d => snapshotsByDeal.has(d.deal_id) &&
+        [...snapshotsByDeal.get(d.deal_id).values()].some(e => snapClosingInPeriod(e.closing_date, periodTab)))
+      .sort((a, b) => (snapAmt(snapshotsByDeal.get(b.deal_id), latestDate) ?? 0) - (snapAmt(snapshotsByDeal.get(a.deal_id), latestDate) ?? 0));
 
     if (!deals.length) { el.innerHTML = `<p class="muted">No ${metric} data for this BU in this period.</p>`; return; }
 
@@ -1688,13 +1725,14 @@ function renderBUDetailView() {
     const rows = deals.map(d => {
       const byDate = snapshotsByDeal.get(d.deal_id);
       const dateCells = dates.map(date => {
-        const v = byDate.get(date);
+        const v = snapAmt(byDate, date);
+        if (v === null) return `<td class="num var-neg"><span class="muted">-</span></td>`;
         return `<td class="num">${v === undefined ? '<span class="muted">-</span>' : fmtINR(v)}</td>`;
       }).join('');
       let varCell = '';
       if (prevDate) {
-        const lv = byDate.get(latestDate) ?? 0, pv = byDate.get(prevDate) ?? 0;
-        if (!byDate.has(latestDate) && !byDate.has(prevDate)) {
+        const lv = snapAmt(byDate, latestDate) ?? 0, pv = snapAmt(byDate, prevDate) ?? 0;
+        if (snapAmt(byDate, latestDate) === undefined && snapAmt(byDate, prevDate) === undefined) {
           varCell = `<td class="num muted">-</td>`;
         } else {
           const v = lv - pv;
@@ -1712,13 +1750,13 @@ function renderBUDetailView() {
 
     const totalCells = dates.map(date => {
       let sum = 0, any = false;
-      deals.forEach(d => { const v = snapshotsByDeal.get(d.deal_id).get(date); if (v !== undefined) { sum += v; any = true; } });
+      deals.forEach(d => { const v = snapAmt(snapshotsByDeal.get(d.deal_id), date); if (v !== undefined && v !== null) { sum += v; any = true; } });
       return `<td class="num">${any ? fmtINR(sum) : '<span class="muted">-</span>'}</td>`;
     }).join('');
     let totalVarCell = '';
     if (prevDate) {
-      const sl = deals.reduce((a, d) => a + (snapshotsByDeal.get(d.deal_id)?.get(latestDate) ?? 0), 0);
-      const sp = deals.reduce((a, d) => a + (snapshotsByDeal.get(d.deal_id)?.get(prevDate)   ?? 0), 0);
+      const sl = deals.reduce((a, d) => a + (snapAmt(snapshotsByDeal.get(d.deal_id), latestDate) ?? 0), 0);
+      const sp = deals.reduce((a, d) => a + (snapAmt(snapshotsByDeal.get(d.deal_id), prevDate)   ?? 0), 0);
       const tv = sl - sp;
       totalVarCell = `<td class="num ${tv > 0 ? 'var-pos' : tv < 0 ? 'var-neg' : ''}">${tv > 0 ? '+' : ''}${fmtINR(tv)}</td>`;
     }
