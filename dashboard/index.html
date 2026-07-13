@@ -165,9 +165,26 @@
   .stage-capsule:hover { border-color: var(--series-1); color: var(--series-1); opacity: 1; }
   .stage-capsule.active { background: var(--series-1); border-color: var(--series-1); color: #fff; font-weight: 600; opacity: 1; box-shadow: 0 1px 4px rgba(42,120,214,0.35); }
   .stage-capsule.stage-closed-lost.active { background: var(--bad); border-color: var(--bad); box-shadow: 0 1px 4px rgba(208,59,59,0.35); }
+  .drilldown-cell { cursor: pointer; }
+  .drilldown-cell:hover { text-decoration: underline; text-decoration-style: dotted; }
+  .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.55); z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 20px; }
+  .modal-box { background: var(--surface-1); border: 1px solid var(--border); border-radius: 12px; padding: 24px; width: min(960px, 100%); max-height: 85vh; overflow-y: auto; position: relative; }
+  .modal-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; gap: 12px; }
+  .modal-title { font-size: 14px; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.04em; margin: 0; }
+  .modal-close { appearance: none; border: 1px solid var(--border); background: none; cursor: pointer; font: inherit; font-size: 16px; color: var(--text-muted); padding: 2px 8px; border-radius: 6px; line-height: 1.4; flex-shrink: 0; }
+  .modal-close:hover { color: var(--text-primary); border-color: var(--text-secondary); }
 </style>
 </head>
 <body>
+<div id="modal-overlay" class="modal-overlay" style="display:none;" role="dialog" aria-modal="true">
+  <div class="modal-box">
+    <div class="modal-header">
+      <p class="modal-title" id="modal-title"></p>
+      <button class="modal-close" id="modal-close" aria-label="Close">✕</button>
+    </div>
+    <div id="modal-content"></div>
+  </div>
+</div>
 <div class="viz-root">
   <div class="wrap">
     <div class="topbar">
@@ -454,8 +471,126 @@ async function main() {
     btn.disabled = false;
   });
 
+  // Modal close handlers (set up once)
+  document.getElementById('modal-close').addEventListener('click', closeModal);
+  document.getElementById('modal-overlay').addEventListener('click', e => { if (e.target === e.currentTarget) closeModal(); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+
   renderTabs();
   render();
+}
+
+function closeModal() {
+  document.getElementById('modal-overlay').style.display = 'none';
+}
+
+function openDrillDownModal(bu, dealType, metric, periodTab) {
+  document.getElementById('modal-title').textContent =
+    `${bu} · ${dealType} · ${metric} · ${periodTab.label}`;
+  renderModalDealsTable('modal-content', bu, dealType, metric, periodTab);
+  document.getElementById('modal-overlay').style.display = 'flex';
+}
+
+function renderModalDealsTable(containerId, bu, dealType, metric, periodTab) {
+  const container = document.getElementById(containerId);
+  const allDates  = metric === 'MRR' ? MRR_DATES : NRR_DATES;
+  const snapshots = metric === 'MRR' ? MRR_SNAPSHOTS : NRR_SNAPSHOTS;
+  const amountOf  = s => Number(metric === 'MRR' ? s.mrr_amount : s.nrr_amount);
+
+  // Build column dates using the same logic as the review table
+  const allQuarterMonths = computePeriodTabs(currentQuarter).find(t => isFullQuarterTab(t))?.months || periodTab.months;
+  let dates, colLabel;
+  if (isFullQuarterTab(periodTab)) {
+    const byMonth = new Map();
+    for (const d of allDates) {
+      const m = Number(d.slice(5, 7)), y = Number(d.slice(0, 4));
+      if (y === periodTab.year && allQuarterMonths.includes(m)) byMonth.set(m, d);
+    }
+    dates    = allQuarterMonths.map(m => byMonth.get(m)).filter(Boolean);
+    colLabel = d => MONTH_FULL[Number(d.slice(5, 7)) - 1];
+  } else {
+    const curMonth  = periodTab.months[0];
+    const priorDates = [], priorDateSet = new Set();
+    for (const pm of allQuarterMonths.filter(m => m < curMonth)) {
+      const last = [...allDates].reverse().find(d => Number(d.slice(5,7)) === pm && Number(d.slice(0,4)) === periodTab.year);
+      if (last) { priorDates.push(last); priorDateSet.add(last); }
+    }
+    const curDates = allDates.filter(d => Number(d.slice(5,7)) === curMonth && Number(d.slice(0,4)) === periodTab.year);
+    dates    = [...priorDates, ...curDates];
+    colLabel = d => priorDateSet.has(d) ? MONTH_FULL[Number(d.slice(5,7)) - 1] : d;
+  }
+
+  const latestDate = dates[dates.length - 1];
+  const prevDate   = dates.length >= 2 ? dates[dates.length - 2] : undefined;
+
+  const snapshotsByDeal = new Map();
+  for (const s of snapshots) {
+    if (!snapshotsByDeal.has(s.deal_id)) snapshotsByDeal.set(s.deal_id, new Map());
+    snapshotsByDeal.get(s.deal_id).set(s.snapshot_date, amountOf(s));
+  }
+
+  let deals = DEALS
+    .filter(d => d.deal_type === dealType)
+    .filter(d => (d.business_unit || 'UNMAPPED') === bu)
+    .filter(d => dealInPeriod(d, periodTab))
+    .filter(d => snapshotsByDeal.has(d.deal_id))
+    .sort((a, b) => (snapshotsByDeal.get(b.deal_id)?.get(latestDate) ?? 0) - (snapshotsByDeal.get(a.deal_id)?.get(latestDate) ?? 0));
+
+  if (!dates.length || !deals.length) {
+    container.innerHTML = `<p class="muted">No ${metric} data for ${escapeHtml(bu)} ${dealType} in this period.</p>`;
+    return;
+  }
+
+  const dateHeaders    = dates.map(d => `<th class="num">${colLabel(d)}</th>`).join('');
+  const varianceHeader = prevDate ? `<th class="num">Change</th>` : '';
+
+  const rows = deals.map(d => {
+    const link   = ZOHO_DEAL_URL(d.deal_id);
+    const byDate = snapshotsByDeal.get(d.deal_id);
+    const dateCells = dates.map(date => {
+      const v = byDate.get(date);
+      return `<td class="num">${v === undefined ? '<span class="muted">-</span>' : fmtINR(v)}</td>`;
+    }).join('');
+    let varCell = '';
+    if (prevDate) {
+      const lv = byDate.get(latestDate) ?? 0, pv = byDate.get(prevDate) ?? 0;
+      if (!byDate.has(latestDate) && !byDate.has(prevDate)) {
+        varCell = `<td class="num muted">-</td>`;
+      } else {
+        const v = lv - pv;
+        varCell = `<td class="num ${v > 0 ? 'var-pos' : v < 0 ? 'var-neg' : ''}">${v > 0 ? '+' : ''}${fmtINR(v)}</td>`;
+      }
+    }
+    return `<tr>
+      <td class="name-cell"><a class="zoho-link" href="${link}" target="_blank" rel="noopener">${nameChainHtml(d)}</a></td>
+      <td class="name-cell">${escapeHtml(d.account_name || '')}</td>
+      ${dateCells}${varCell}
+    </tr>`;
+  }).join('');
+
+  const totalCells = dates.map(date => {
+    let sum = 0, any = false;
+    deals.forEach(d => { const v = snapshotsByDeal.get(d.deal_id).get(date); if (v !== undefined) { sum += v; any = true; } });
+    return `<td class="num">${any ? fmtINR(sum) : '<span class="muted">-</span>'}</td>`;
+  }).join('');
+  let totalVarCell = '';
+  if (prevDate) {
+    const sl = deals.reduce((a, d) => a + (snapshotsByDeal.get(d.deal_id)?.get(latestDate) ?? 0), 0);
+    const sp = deals.reduce((a, d) => a + (snapshotsByDeal.get(d.deal_id)?.get(prevDate)   ?? 0), 0);
+    const tv = sl - sp;
+    totalVarCell = `<td class="num ${tv > 0 ? 'var-pos' : tv < 0 ? 'var-neg' : ''}">${tv > 0 ? '+' : ''}${fmtINR(tv)}</td>`;
+  }
+
+  container.innerHTML = `<div class="table-scroll"><table>
+    <thead><tr>
+      <th>Deal Name</th><th>Account</th>
+      ${dateHeaders}${varianceHeader}
+    </tr></thead>
+    <tbody>
+      <tr class="total-row"><td colspan="2">Total (${deals.length} deal${deals.length === 1 ? '' : 's'})</td>${totalCells}${totalVarCell}</tr>
+      ${rows}
+    </tbody>
+  </table></div>`;
 }
 
 function render() {
@@ -882,8 +1017,8 @@ function renderSummaryView() {
 
     const bodyRows = rows.map(r => `<tr>
       <td><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${colorVar(r.bu)};margin-right:8px;vertical-align:middle;"></span>${escapeHtml(r.bu)}</td>
-      <td class="num">${r.farming ? fmtINR(r.farming) : '<span class="muted">-</span>'}</td>
-      <td class="num">${r.hunting ? fmtINR(r.hunting) : '<span class="muted">-</span>'}</td>
+      <td class="num drilldown-cell" data-bu="${escapeHtml(r.bu)}" data-type="Farming" data-metric="${metric}">${r.farming ? fmtINR(r.farming) : '<span class="muted">-</span>'}</td>
+      <td class="num drilldown-cell" data-bu="${escapeHtml(r.bu)}" data-type="Hunting" data-metric="${metric}">${r.hunting ? fmtINR(r.hunting) : '<span class="muted">-</span>'}</td>
       <td class="num">${r.total ? fmtINR(r.total) : '<span class="muted">-</span>'}</td>
       <td class="num">${r.target !== undefined ? fmtINR(r.target) : '<span class="muted">-</span>'}</td>
       ${hasPrevMiss ? prevCarryCell(r.prevMiss) : ''}
@@ -931,6 +1066,12 @@ function renderSummaryView() {
       <p class="summary-section-title">NRR Summary · ${escapeHtml(periodTab.label)}</p>
       ${summaryTableHtml('NRR', nrrRows, latestNRR)}
     </div>`;
+
+  document.querySelectorAll('.drilldown-cell').forEach(cell => {
+    cell.addEventListener('click', () => {
+      openDrillDownModal(cell.dataset.bu, cell.dataset.type, cell.dataset.metric, periodTab);
+    });
+  });
 }
 
 // ============================================================
