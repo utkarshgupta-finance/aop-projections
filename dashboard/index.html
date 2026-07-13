@@ -1503,7 +1503,7 @@ function renderHuntingDetailView(deals, dealsById, q) {
   const syncTimes = [...new Set(snapshots.map(s => s.synced_at))].sort();
 
   if (syncTimes.length < 2) {
-    wrap.innerHTML = `<p class="muted">Need at least 2 syncs to show movement. Current syncs: ${syncTimes.length}.</p>`;
+    wrap.innerHTML = `<p class="muted">Movement tracking needs at least 2 syncs recorded after today's update. Run the sync ${syncTimes.length === 0 ? 'twice' : 'once more'} to see changes here.</p>`;
     return;
   }
 
