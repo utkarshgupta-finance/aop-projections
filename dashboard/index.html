@@ -259,6 +259,8 @@ const METRIC_TABS = [
 ];
 
 let DEALS = [], MRR_SNAPSHOTS = [], NRR_SNAPSHOTS = [], BU_TARGETS = [], TARGET_SETTINGS = [], NRR_TARGETS = [], NRR_TARGET_SETTINGS = [], BASELINE = [], HUNTING_PIPELINE = [], HUNTING_SNAPSHOTS = [];
+let PIPELINE_VIEWS = [];
+let activePipelineView = null; // null = no filter applied (show all with prob>=70)
 let MRR_DATES = [], NRR_DATES = [], BU_TAB_LIST = [];
 let currentViewMode   = 'review';
 let currentQuarter    = '2026-Q3';
@@ -303,6 +305,20 @@ async function sb(path) {
   });
   if (!res.ok) throw new Error(`Supabase ${path}: ${res.status} ${await res.text()}`);
   return res.json();
+}
+
+async function sbPost(path, body, method = 'POST') {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
+    method,
+    headers: {
+      apikey: SUPABASE_KEY,
+      Authorization: `Bearer ${SUPABASE_KEY}`,
+      'Content-Type': 'application/json',
+      Prefer: 'return=minimal',
+    },
+    body: body !== null ? JSON.stringify(body) : undefined,
+  });
+  if (!res.ok) throw new Error(`Supabase ${method} ${path}: ${res.status} ${await res.text()}`);
 }
 
 function colorVar(bu) { return `var(${BU_COLOR_VAR[bu] || '--series-8'})`; }
@@ -431,7 +447,7 @@ function renderTabs() {
 async function main() {
   const content = document.getElementById('content');
   try {
-    [DEALS, MRR_SNAPSHOTS, NRR_SNAPSHOTS, BU_TARGETS, TARGET_SETTINGS, NRR_TARGETS, NRR_TARGET_SETTINGS, BASELINE, HUNTING_PIPELINE, HUNTING_SNAPSHOTS] = await Promise.all([
+    [DEALS, MRR_SNAPSHOTS, NRR_SNAPSHOTS, BU_TARGETS, TARGET_SETTINGS, NRR_TARGETS, NRR_TARGET_SETTINGS, BASELINE, HUNTING_PIPELINE, HUNTING_SNAPSHOTS, PIPELINE_VIEWS] = await Promise.all([
       sb('deals?select=*'),
       sb('mrr_snapshots?select=*&order=snapshot_date.asc'),
       sb('nrr_snapshots?select=*&order=snapshot_date.asc'),
@@ -442,6 +458,7 @@ async function main() {
       sb('bu_baseline_mrr?select=*'),
       sb('hunting_pipeline?select=*&order=closing_date.asc').catch(() => []),
       sb('hunting_pipeline_snapshots?select=*&order=synced_at.desc').catch(() => []),
+      sb('pipeline_views?select=*&order=display_order.asc').catch(() => []),
     ]);
   } catch (err) {
     content.innerHTML = `<div class="card"><p class="error">Failed to load data: ${escapeHtml(err.message)}</p></div>`;
@@ -495,7 +512,7 @@ async function main() {
       const data = await res.json();
       if (!res.ok || !data.ok) throw new Error(data.error || `HTTP ${res.status}`);
 
-      [DEALS, MRR_SNAPSHOTS, NRR_SNAPSHOTS, BU_TARGETS, TARGET_SETTINGS, NRR_TARGETS, BASELINE, HUNTING_PIPELINE, HUNTING_SNAPSHOTS] = await Promise.all([
+      [DEALS, MRR_SNAPSHOTS, NRR_SNAPSHOTS, BU_TARGETS, TARGET_SETTINGS, NRR_TARGETS, BASELINE, HUNTING_PIPELINE, HUNTING_SNAPSHOTS, PIPELINE_VIEWS] = await Promise.all([
         sb('deals?select=*'),
         sb('mrr_snapshots?select=*&order=snapshot_date.asc'),
         sb('nrr_snapshots?select=*&order=snapshot_date.asc'),
@@ -505,6 +522,7 @@ async function main() {
         sb('bu_baseline_mrr?select=*'),
         sb('hunting_pipeline?select=*&order=closing_date.asc').catch(() => []),
         sb('hunting_pipeline_snapshots?select=*&order=synced_at.desc').catch(() => []),
+        sb('pipeline_views?select=*&order=display_order.asc').catch(() => []),
       ]);
       MRR_DATES = [...new Set(MRR_SNAPSHOTS.map(s => s.snapshot_date))].sort();
       NRR_DATES = [...new Set(NRR_SNAPSHOTS.map(s => s.snapshot_date))].sort();
@@ -1186,12 +1204,23 @@ function renderSummaryView() {
       sparkMap.set(date, byBU);
     }
 
+    const applyViewFilter = d => {
+      const minP = activePipelineView ? activePipelineView.min_probability : 70;
+      if ((d.probability ?? 100) < minP) return false;
+      if (activePipelineView?.deal_types?.length) {
+        if (!activePipelineView.deal_types.includes(d.deal_type)) return false;
+      }
+      if (activePipelineView?.stages?.length) {
+        if (!activePipelineView.stages.includes(d.stage)) return false;
+      }
+      return true;
+    };
     const dealAmount = d => Number(metric === 'MRR' ? d.mrr_inr : d.nrr_inr);
     return buList.map(bu => {
       const committedDeals = DEALS.filter(d =>
         d.business_unit === bu &&
         snapClosingInPeriod(d.closing_date, periodTab) &&
-        (d.probability ?? 100) >= 70
+        applyViewFilter(d)
       );
       const farming = committedDeals.filter(d => d.deal_type === 'Farming').reduce((a, d) => a + dealAmount(d), 0);
       const hunting = committedDeals.filter(d => d.deal_type === 'Hunting').reduce((a, d) => a + dealAmount(d), 0);
@@ -1206,6 +1235,11 @@ function renderSummaryView() {
 
   function summaryTableHtml(metric, rows, latestDate) {
     if (!latestDate) return '<p class="muted">No snapshot data yet.</p>';
+    const visibleCols = new Set(activePipelineView?.visible_columns?.length
+      ? activePipelineView.visible_columns
+      : ['farming','hunting','total','target','trend','prevMiss','variance']);
+    const showCol = key => visibleCols.has(key);
+
     const totFarming  = rows.reduce((a, r) => a + r.farming, 0);
     const totHunting  = rows.reduce((a, r) => a + r.hunting, 0);
     const totTotal    = totFarming + totHunting;
@@ -1231,43 +1265,44 @@ function renderSummaryView() {
       const sparkTip = r.sparkline.map(p => `${p.date}: ${fmtINR(p.v)}`).join('\n');
       return `<tr>
       <td data-bu-nav="${escapeHtml(r.bu)}" title="View ${escapeHtml(r.bu)} detail"><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${colorVar(r.bu)};margin-right:8px;vertical-align:middle;"></span>${escapeHtml(r.bu)}<span style="margin-left:6px;font-size:10px;color:var(--text-muted);">↗</span></td>
-      <td class="${sparkCls}" style="padding:4px 8px;" title="${escapeHtml(sparkTip)}">${sparklineSvg(r.sparkline, sparkColor)}</td>
-      <td class="num drilldown-cell" data-bu="${escapeHtml(r.bu)}" data-type="Farming" data-metric="${metric}">${r.farming ? fmtINR(r.farming) : '<span class="muted">-</span>'}</td>
-      <td class="num drilldown-cell" data-bu="${escapeHtml(r.bu)}" data-type="Hunting" data-metric="${metric}">${r.hunting ? fmtINR(r.hunting) : '<span class="muted">-</span>'}</td>
-      <td class="num">${r.total ? fmtINR(r.total) : '<span class="muted">-</span>'}</td>
-      <td class="num">${r.target !== undefined ? fmtINR(r.target) : '<span class="muted">-</span>'}</td>
-      ${hasPrevMiss ? prevCarryCell(r.prevMiss) : ''}
-      ${varCell(av)}
+      ${showCol('trend') ? `<td class="${sparkCls}" style="padding:4px 8px;" title="${escapeHtml(sparkTip)}">${sparklineSvg(r.sparkline, sparkColor)}</td>` : ''}
+      ${showCol('farming') ? `<td class="num drilldown-cell" data-bu="${escapeHtml(r.bu)}" data-type="Farming" data-metric="${metric}">${r.farming ? fmtINR(r.farming) : '<span class="muted">-</span>'}</td>` : ''}
+      ${showCol('hunting') ? `<td class="num drilldown-cell" data-bu="${escapeHtml(r.bu)}" data-type="Hunting" data-metric="${metric}">${r.hunting ? fmtINR(r.hunting) : '<span class="muted">-</span>'}</td>` : ''}
+      ${showCol('total') ? `<td class="num">${r.total ? fmtINR(r.total) : '<span class="muted">-</span>'}</td>` : ''}
+      ${showCol('target') ? `<td class="num">${r.target !== undefined ? fmtINR(r.target) : '<span class="muted">-</span>'}</td>` : ''}
+      ${hasPrevMiss && showCol('prevMiss') ? prevCarryCell(r.prevMiss) : ''}
+      ${showCol('variance') ? varCell(av) : ''}
     </tr>`;
     }).join('');
 
     const totAdjVariance = adjVar(totVariance, totPrevMiss);
     const totalRow = `<tr class="total-row">
       <td>Total</td>
-      <td></td>
-      <td class="num">${fmtINR(totFarming)}</td>
-      <td class="num">${fmtINR(totHunting)}</td>
-      <td class="num">${fmtINR(totTotal)}</td>
-      <td class="num">${totTarget ? fmtINR(totTarget) : '<span class="muted">-</span>'}</td>
-      ${hasPrevMiss ? prevCarryCell(totPrevMiss) : ''}
-      ${varCell(totAdjVariance)}
+      ${showCol('trend') ? '<td></td>' : ''}
+      ${showCol('farming') ? `<td class="num">${fmtINR(totFarming)}</td>` : ''}
+      ${showCol('hunting') ? `<td class="num">${fmtINR(totHunting)}</td>` : ''}
+      ${showCol('total') ? `<td class="num">${fmtINR(totTotal)}</td>` : ''}
+      ${showCol('target') ? `<td class="num">${totTarget ? fmtINR(totTarget) : '<span class="muted">-</span>'}</td>` : ''}
+      ${hasPrevMiss && showCol('prevMiss') ? prevCarryCell(totPrevMiss) : ''}
+      ${showCol('variance') ? varCell(totAdjVariance) : ''}
     </tr>`;
 
     const varColLabel = hasPrevMiss ? 'Adj. Variance' : 'Variance';
     const prevCarryColLabel = 'Prev Month Carry';
+    const minProbLabel = activePipelineView ? activePipelineView.min_probability : 70;
     return `<div class="table-scroll"><table>
       <thead><tr>
         <th data-sort="bu" style="cursor:pointer;">Business Unit${sArrow('bu')}</th>
-        <th>Commit Trend</th>
-        <th class="num" data-sort="farming" style="cursor:pointer;">Farming ${metric} Commit${sArrow('farming')}</th>
-        <th class="num" data-sort="hunting" style="cursor:pointer;">Hunting ${metric} Commit${sArrow('hunting')}</th>
-        <th class="num" data-sort="total" style="cursor:pointer;">Total Commit${sArrow('total')}</th>
-        <th class="num" data-sort="target" style="cursor:pointer;">Target${sArrow('target')}</th>
-        ${hasPrevMiss ? `<th class="num" data-sort="prevMiss" style="cursor:pointer;">${prevCarryColLabel}${sArrow('prevMiss')}</th>` : ''}
-        <th class="num" data-sort="variance" style="cursor:pointer;">${varColLabel}${sArrow('variance')}</th>
+        ${showCol('trend') ? '<th>Commit Trend</th>' : ''}
+        ${showCol('farming') ? `<th class="num" data-sort="farming" style="cursor:pointer;">Farming ${metric} Commit${sArrow('farming')}</th>` : ''}
+        ${showCol('hunting') ? `<th class="num" data-sort="hunting" style="cursor:pointer;">Hunting ${metric} Commit${sArrow('hunting')}</th>` : ''}
+        ${showCol('total') ? `<th class="num" data-sort="total" style="cursor:pointer;">Total Commit${sArrow('total')}</th>` : ''}
+        ${showCol('target') ? `<th class="num" data-sort="target" style="cursor:pointer;">Target${sArrow('target')}</th>` : ''}
+        ${hasPrevMiss && showCol('prevMiss') ? `<th class="num" data-sort="prevMiss" style="cursor:pointer;">${prevCarryColLabel}${sArrow('prevMiss')}</th>` : ''}
+        ${showCol('variance') ? `<th class="num" data-sort="variance" style="cursor:pointer;">${varColLabel}${sArrow('variance')}</th>` : ''}
       </tr></thead>
       <tbody>${totalRow}${bodyRows}</tbody>
-    </table></div><p style="font-size:11px;color:var(--text-muted);margin:8px 0 0;">Current committed pipeline (probability ≥ 70%)${latestDate ? ` · Trend as of ${latestDate}` : ''}${hasPrevMiss ? ' · Adj. Variance = (Actual − Target) + Prev Month Carry' : ''}</p>`;
+    </table></div><p style="font-size:11px;color:var(--text-muted);margin:8px 0 0;">Current committed pipeline (probability ≥ ${minProbLabel}%)${latestDate ? ` · Trend as of ${latestDate}` : ''}${hasPrevMiss ? ' · Adj. Variance = (Actual − Target) + Prev Month Carry' : ''}</p>`;
   }
 
   let mrrRows = buildSummaryRows('MRR', MRR_SNAPSHOTS, latestMRR);
@@ -1304,6 +1339,9 @@ function renderSummaryView() {
   const content = document.getElementById('content');
   if (!document.getElementById('summary-tables')) {
     content.innerHTML = `
+      <div id="pipeline-views-bar" style="margin-bottom:12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+        <!-- filled by renderPipelineViewsBar() -->
+      </div>
       <div style="margin-bottom:12px;">
         <input id="summary-search" type="search" placeholder="Search business unit…" value="${escapeHtml(summarySearch)}"
           style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;background:var(--surface-1);color:var(--text);font-size:13px;width:260px;outline:none;">
@@ -1314,6 +1352,7 @@ function renderSummaryView() {
       renderSummaryView();
     });
   }
+  renderPipelineViewsBar();
 
   document.getElementById('summary-tables').innerHTML = `
     <div class="card">
@@ -1726,8 +1765,15 @@ function renderBUDetailView() {
   const buDeals = DEALS.filter(d => (d.business_unit || 'UNMAPPED') === bu);
   const buDealIds = new Set(buDeals.map(d => d.deal_id));
 
-  // Commit = deals in this period with probability >= 70%
-  const committedBUDeals = buDeals.filter(d => snapClosingInPeriod(d.closing_date, periodTab) && (d.probability ?? 100) >= 70);
+  // Commit = deals in this period with probability >= 70% (or active view filter)
+  const minProb = activePipelineView ? activePipelineView.min_probability : 70;
+  const committedBUDeals = buDeals.filter(d => {
+    if (!snapClosingInPeriod(d.closing_date, periodTab)) return false;
+    if ((d.probability ?? 100) < minProb) return false;
+    if (activePipelineView?.deal_types?.length && !activePipelineView.deal_types.includes(d.deal_type)) return false;
+    if (activePipelineView?.stages?.length && !activePipelineView.stages.includes(d.stage)) return false;
+    return true;
+  });
   const mrrCommit = committedBUDeals.reduce((a, d) => a + Number(d.mrr_inr), 0);
   const nrrCommit = committedBUDeals.reduce((a, d) => a + Number(d.nrr_inr), 0);
   const mrrTarget = targetFor(bu, periodTab, 'MRR');
