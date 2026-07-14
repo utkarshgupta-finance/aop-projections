@@ -956,7 +956,13 @@ function renderDealsTable() {
 
 function renderDealsTableWith({ dealsById, snapshots, metric, tableId, buFilterId, resultCountId, buFilter, groupBy = 'deal', commitView = null }) {
   const allDates = metric === 'MRR' ? MRR_DATES : NRR_DATES;
-  const amountOfRow = s => Number(metric === 'MRR' ? s.mrr_amount : s.nrr_amount);
+  const mrrMode = commitView?.mrr_mode || 'expected';
+  const nrrMode = commitView?.nrr_mode || 'expected';
+  const amountOfRow = s => {
+    const raw = Number(metric === 'MRR' ? s.mrr_amount : s.nrr_amount);
+    const mode = metric === 'MRR' ? mrrMode : nrrMode;
+    return mode === 'adjusted' ? raw * (s.probability ?? 100) / 100 : raw;
+  };
 
   // Show all available snapshot dates (up to 12 most recent); expanded shows all
   const MAX_COLS = 12;
@@ -1328,27 +1334,38 @@ function renderSummaryView() {
       sparkMap.set(date, byBU);
     }
 
+    // View filter: applies probability, deal_types, stages, and closing_date range from the active view
+    const viewHasDates = !!(activePipelineView?.closing_date_start || activePipelineView?.closing_date_end);
     const applyViewFilter = d => {
-      const minP = activePipelineView ? activePipelineView.min_probability : 70;
+      const minP = activePipelineView ? (activePipelineView.min_probability ?? 0) : 0;
       if ((d.probability ?? 100) < minP) return false;
-      if (activePipelineView?.deal_types?.length) {
-        if (!activePipelineView.deal_types.includes(d.deal_type)) return false;
-      }
-      if (activePipelineView?.stages?.length) {
-        if (!activePipelineView.stages.includes(d.stage)) return false;
-      }
+      if (activePipelineView?.deal_types?.length && !activePipelineView.deal_types.includes(d.deal_type)) return false;
+      // Stage filter only on deals that have a stage value
+      if (activePipelineView?.stages?.length && d.stage && !activePipelineView.stages.includes(d.stage)) return false;
+      // Closing date filter from view (overrides period tab when present)
+      if (activePipelineView?.closing_date_start && (!d.closing_date || d.closing_date < activePipelineView.closing_date_start)) return false;
+      if (activePipelineView?.closing_date_end   && (!d.closing_date || d.closing_date > activePipelineView.closing_date_end))   return false;
       return true;
     };
-    const dealAmount = d => Number(metric === 'MRR' ? d.mrr_inr : d.nrr_inr);
+    const mrrMode = activePipelineView?.mrr_mode || 'expected';
+    const nrrMode = activePipelineView?.nrr_mode || 'expected';
+    const dealAmount = d => {
+      const base = Number(metric === 'MRR' ? d.mrr_inr : d.nrr_inr);
+      const mode = metric === 'MRR' ? mrrMode : nrrMode;
+      return mode === 'adjusted' ? base * (d.probability ?? 100) / 100 : base;
+    };
     return buList.map(bu => {
       const committedDeals = DEALS.filter(d =>
         d.business_unit === bu &&
-        snapClosingInPeriod(d.closing_date, periodTab) &&
+        // Use view's date range when set; otherwise fall back to period tab
+        (viewHasDates || snapClosingInPeriod(d.closing_date, periodTab)) &&
         applyViewFilter(d)
       );
+      // Total = sum of ALL matching deals regardless of deal_type
+      const total   = committedDeals.reduce((a, d) => a + dealAmount(d), 0);
+      // Farming / Hunting split only where those exact deal_type values exist
       const farming = committedDeals.filter(d => d.deal_type === 'Farming').reduce((a, d) => a + dealAmount(d), 0);
       const hunting = committedDeals.filter(d => d.deal_type === 'Hunting').reduce((a, d) => a + dealAmount(d), 0);
-      const total   = farming + hunting;
       const target  = targetFor(bu, periodTab, metric);
       const variance = target !== undefined ? total - target : null;
       const prevMiss = prevMissMap.get(bu) ?? null;
@@ -1426,7 +1443,7 @@ function renderSummaryView() {
         ${showCol('variance') ? `<th class="num" data-sort="variance" style="cursor:pointer;">${varColLabel}${sArrow('variance')}</th>` : ''}
       </tr></thead>
       <tbody>${totalRow}${bodyRows}</tbody>
-    </table></div><p style="font-size:11px;color:var(--text-muted);margin:8px 0 0;">Current committed pipeline (probability ≥ ${minProbLabel}%)${latestDate ? ` · Trend as of ${latestDate}` : ''}${hasPrevMiss ? ' · Adj. Variance = (Actual − Target) + Prev Month Carry' : ''}</p>`;
+    </table></div><p style="font-size:11px;color:var(--text-muted);margin:8px 0 0;">Current committed pipeline (probability ≥ ${minProbLabel}%) · ${metric} amounts: ${metric === 'MRR' ? mrrMode : nrrMode}${latestDate ? ` · Trend as of ${latestDate}` : ''}${hasPrevMiss ? ' · Adj. Variance = (Actual − Target) + Prev Month Carry' : ''}</p>`;
   }
 
   let mrrRows = buildSummaryRows('MRR', MRR_SNAPSHOTS, latestMRR);
@@ -1609,6 +1626,8 @@ function openViewBuilder(view, context) {
   const curGroupBy = view?.group_by || 'deal';
   const closingStart = view?.closing_date_start || '';
   const closingEnd   = view?.closing_date_end   || '';
+  const curMrrMode = view?.mrr_mode || 'expected';
+  const curNrrMode = view?.nrr_mode || 'expected';
   const visibleCols = new Set(view?.visible_columns?.length
     ? view.visible_columns
     : ['farming','hunting','total','target','trend','prevMiss','variance']);
@@ -1674,6 +1693,27 @@ function openViewBuilder(view, context) {
         style="width:100px;padding:7px 10px;border:1px solid var(--border);border-radius:6px;background:var(--surface-1);color:var(--text);font-size:13px;outline:none;">
     </div>
 
+    <div style="margin-bottom:14px;">
+      <label style="font-size:12px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:8px;">MRR &amp; NRR AMOUNTS</label>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+        <div>
+          <div style="font-size:11px;color:var(--text-muted);margin-bottom:5px;">MRR</div>
+          <div style="display:flex;gap:6px;">
+            <button class="vb-mrr-btn stage-capsule${curMrrMode === 'expected' ? ' active' : ''}" data-mrr="expected">Expected</button>
+            <button class="vb-mrr-btn stage-capsule${curMrrMode === 'adjusted' ? ' active' : ''}" data-mrr="adjusted">Adjusted</button>
+          </div>
+        </div>
+        <div>
+          <div style="font-size:11px;color:var(--text-muted);margin-bottom:5px;">NRR</div>
+          <div style="display:flex;gap:6px;">
+            <button class="vb-nrr-btn stage-capsule${curNrrMode === 'expected' ? ' active' : ''}" data-nrr="expected">Expected</button>
+            <button class="vb-nrr-btn stage-capsule${curNrrMode === 'adjusted' ? ' active' : ''}" data-nrr="adjusted">Adjusted</button>
+          </div>
+        </div>
+      </div>
+      <p style="font-size:11px;color:var(--text-muted);margin:6px 0 0;">Expected = full deal value &nbsp;·&nbsp; Adjusted = value × probability %</p>
+    </div>
+
     ${viewContext === 'commits' ? `
     <div style="margin-bottom:14px;">
       <label style="font-size:12px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:6px;">CLOSING DATE RANGE <span style="font-weight:400;">(empty = all)</span></label>
@@ -1731,6 +1771,20 @@ function openViewBuilder(view, context) {
     };
   });
 
+  panel.querySelectorAll('.vb-mrr-btn').forEach(btn => {
+    btn.onclick = () => {
+      panel.querySelectorAll('.vb-mrr-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+    };
+  });
+
+  panel.querySelectorAll('.vb-nrr-btn').forEach(btn => {
+    btn.onclick = () => {
+      panel.querySelectorAll('.vb-nrr-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+    };
+  });
+
   panel.querySelector('#vb-save').onclick = async () => {
     const viewName = panel.querySelector('#vb-name').value.trim();
     if (!viewName) { alert('Please enter a view name.'); return; }
@@ -1742,9 +1796,11 @@ function openViewBuilder(view, context) {
     const group_by = panel.querySelector('.vb-grp-btn.active')?.dataset?.grp || 'deal';
     const closing_date_start = panel.querySelector('#vb-date-start')?.value || null;
     const closing_date_end   = panel.querySelector('#vb-date-end')?.value   || null;
+    const mrr_mode = panel.querySelector('.vb-mrr-btn.active')?.dataset?.mrr || 'expected';
+    const nrr_mode = panel.querySelector('.vb-nrr-btn.active')?.dataset?.nrr || 'expected';
 
     const payload = { name: viewName, deal_types, stages, min_probability, visible_columns,
-      view_context: viewContext, group_by, closing_date_start, closing_date_end };
+      view_context: viewContext, group_by, closing_date_start, closing_date_end, mrr_mode, nrr_mode };
 
     try {
       if (editId) {
