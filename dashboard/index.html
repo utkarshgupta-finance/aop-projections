@@ -188,6 +188,10 @@
     <div id="modal-content"></div>
   </div>
 </div>
+<div id="vb-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:200;align-items:center;justify-content:center;">
+  <div id="vb-panel" style="background:var(--surface-1);border:1px solid var(--border);border-radius:12px;padding:24px;max-width:600px;width:90%;max-height:80vh;overflow-y:auto;">
+  </div>
+</div>
   <div class="wrap">
     <div class="topbar">
       <div>
@@ -259,6 +263,8 @@ const METRIC_TABS = [
 ];
 
 let DEALS = [], MRR_SNAPSHOTS = [], NRR_SNAPSHOTS = [], BU_TARGETS = [], TARGET_SETTINGS = [], NRR_TARGETS = [], NRR_TARGET_SETTINGS = [], BASELINE = [], HUNTING_PIPELINE = [], HUNTING_SNAPSHOTS = [];
+let PIPELINE_VIEWS = [];
+let activePipelineView = null; // null = no filter applied (show all with prob>=70)
 let MRR_DATES = [], NRR_DATES = [], BU_TAB_LIST = [];
 let currentViewMode   = 'review';
 let currentQuarter    = '2026-Q3';
@@ -303,6 +309,20 @@ async function sb(path) {
   });
   if (!res.ok) throw new Error(`Supabase ${path}: ${res.status} ${await res.text()}`);
   return res.json();
+}
+
+async function sbPost(path, body, method = 'POST') {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
+    method,
+    headers: {
+      apikey: SUPABASE_KEY,
+      Authorization: `Bearer ${SUPABASE_KEY}`,
+      'Content-Type': 'application/json',
+      Prefer: 'return=minimal',
+    },
+    body: body !== null ? JSON.stringify(body) : undefined,
+  });
+  if (!res.ok) throw new Error(`Supabase ${method} ${path}: ${res.status} ${await res.text()}`);
 }
 
 function colorVar(bu) { return `var(${BU_COLOR_VAR[bu] || '--series-8'})`; }
@@ -431,7 +451,7 @@ function renderTabs() {
 async function main() {
   const content = document.getElementById('content');
   try {
-    [DEALS, MRR_SNAPSHOTS, NRR_SNAPSHOTS, BU_TARGETS, TARGET_SETTINGS, NRR_TARGETS, NRR_TARGET_SETTINGS, BASELINE, HUNTING_PIPELINE, HUNTING_SNAPSHOTS] = await Promise.all([
+    [DEALS, MRR_SNAPSHOTS, NRR_SNAPSHOTS, BU_TARGETS, TARGET_SETTINGS, NRR_TARGETS, NRR_TARGET_SETTINGS, BASELINE, HUNTING_PIPELINE, HUNTING_SNAPSHOTS, PIPELINE_VIEWS] = await Promise.all([
       sb('deals?select=*'),
       sb('mrr_snapshots?select=*&order=snapshot_date.asc'),
       sb('nrr_snapshots?select=*&order=snapshot_date.asc'),
@@ -442,6 +462,7 @@ async function main() {
       sb('bu_baseline_mrr?select=*'),
       sb('hunting_pipeline?select=*&order=closing_date.asc').catch(() => []),
       sb('hunting_pipeline_snapshots?select=*&order=synced_at.desc').catch(() => []),
+      sb('pipeline_views?select=*&order=display_order.asc').catch(() => []),
     ]);
   } catch (err) {
     content.innerHTML = `<div class="card"><p class="error">Failed to load data: ${escapeHtml(err.message)}</p></div>`;
@@ -495,7 +516,7 @@ async function main() {
       const data = await res.json();
       if (!res.ok || !data.ok) throw new Error(data.error || `HTTP ${res.status}`);
 
-      [DEALS, MRR_SNAPSHOTS, NRR_SNAPSHOTS, BU_TARGETS, TARGET_SETTINGS, NRR_TARGETS, BASELINE, HUNTING_PIPELINE, HUNTING_SNAPSHOTS] = await Promise.all([
+      [DEALS, MRR_SNAPSHOTS, NRR_SNAPSHOTS, BU_TARGETS, TARGET_SETTINGS, NRR_TARGETS, BASELINE, HUNTING_PIPELINE, HUNTING_SNAPSHOTS, PIPELINE_VIEWS] = await Promise.all([
         sb('deals?select=*'),
         sb('mrr_snapshots?select=*&order=snapshot_date.asc'),
         sb('nrr_snapshots?select=*&order=snapshot_date.asc'),
@@ -505,6 +526,7 @@ async function main() {
         sb('bu_baseline_mrr?select=*'),
         sb('hunting_pipeline?select=*&order=closing_date.asc').catch(() => []),
         sb('hunting_pipeline_snapshots?select=*&order=synced_at.desc').catch(() => []),
+        sb('pipeline_views?select=*&order=display_order.asc').catch(() => []),
       ]);
       MRR_DATES = [...new Set(MRR_SNAPSHOTS.map(s => s.snapshot_date))].sort();
       NRR_DATES = [...new Set(NRR_SNAPSHOTS.map(s => s.snapshot_date))].sort();
@@ -1186,12 +1208,23 @@ function renderSummaryView() {
       sparkMap.set(date, byBU);
     }
 
+    const applyViewFilter = d => {
+      const minP = activePipelineView ? activePipelineView.min_probability : 70;
+      if ((d.probability ?? 100) < minP) return false;
+      if (activePipelineView?.deal_types?.length) {
+        if (!activePipelineView.deal_types.includes(d.deal_type)) return false;
+      }
+      if (activePipelineView?.stages?.length) {
+        if (!activePipelineView.stages.includes(d.stage)) return false;
+      }
+      return true;
+    };
     const dealAmount = d => Number(metric === 'MRR' ? d.mrr_inr : d.nrr_inr);
     return buList.map(bu => {
       const committedDeals = DEALS.filter(d =>
         d.business_unit === bu &&
         snapClosingInPeriod(d.closing_date, periodTab) &&
-        (d.probability ?? 100) >= 70
+        applyViewFilter(d)
       );
       const farming = committedDeals.filter(d => d.deal_type === 'Farming').reduce((a, d) => a + dealAmount(d), 0);
       const hunting = committedDeals.filter(d => d.deal_type === 'Hunting').reduce((a, d) => a + dealAmount(d), 0);
@@ -1206,6 +1239,11 @@ function renderSummaryView() {
 
   function summaryTableHtml(metric, rows, latestDate) {
     if (!latestDate) return '<p class="muted">No snapshot data yet.</p>';
+    const visibleCols = new Set(activePipelineView?.visible_columns?.length
+      ? activePipelineView.visible_columns
+      : ['farming','hunting','total','target','trend','prevMiss','variance']);
+    const showCol = key => visibleCols.has(key);
+
     const totFarming  = rows.reduce((a, r) => a + r.farming, 0);
     const totHunting  = rows.reduce((a, r) => a + r.hunting, 0);
     const totTotal    = totFarming + totHunting;
@@ -1231,43 +1269,44 @@ function renderSummaryView() {
       const sparkTip = r.sparkline.map(p => `${p.date}: ${fmtINR(p.v)}`).join('\n');
       return `<tr>
       <td data-bu-nav="${escapeHtml(r.bu)}" title="View ${escapeHtml(r.bu)} detail"><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${colorVar(r.bu)};margin-right:8px;vertical-align:middle;"></span>${escapeHtml(r.bu)}<span style="margin-left:6px;font-size:10px;color:var(--text-muted);">↗</span></td>
-      <td class="${sparkCls}" style="padding:4px 8px;" title="${escapeHtml(sparkTip)}">${sparklineSvg(r.sparkline, sparkColor)}</td>
-      <td class="num drilldown-cell" data-bu="${escapeHtml(r.bu)}" data-type="Farming" data-metric="${metric}">${r.farming ? fmtINR(r.farming) : '<span class="muted">-</span>'}</td>
-      <td class="num drilldown-cell" data-bu="${escapeHtml(r.bu)}" data-type="Hunting" data-metric="${metric}">${r.hunting ? fmtINR(r.hunting) : '<span class="muted">-</span>'}</td>
-      <td class="num">${r.total ? fmtINR(r.total) : '<span class="muted">-</span>'}</td>
-      <td class="num">${r.target !== undefined ? fmtINR(r.target) : '<span class="muted">-</span>'}</td>
-      ${hasPrevMiss ? prevCarryCell(r.prevMiss) : ''}
-      ${varCell(av)}
+      ${showCol('trend') ? `<td class="${sparkCls}" style="padding:4px 8px;" title="${escapeHtml(sparkTip)}">${sparklineSvg(r.sparkline, sparkColor)}</td>` : ''}
+      ${showCol('farming') ? `<td class="num drilldown-cell" data-bu="${escapeHtml(r.bu)}" data-type="Farming" data-metric="${metric}">${r.farming ? fmtINR(r.farming) : '<span class="muted">-</span>'}</td>` : ''}
+      ${showCol('hunting') ? `<td class="num drilldown-cell" data-bu="${escapeHtml(r.bu)}" data-type="Hunting" data-metric="${metric}">${r.hunting ? fmtINR(r.hunting) : '<span class="muted">-</span>'}</td>` : ''}
+      ${showCol('total') ? `<td class="num">${r.total ? fmtINR(r.total) : '<span class="muted">-</span>'}</td>` : ''}
+      ${showCol('target') ? `<td class="num">${r.target !== undefined ? fmtINR(r.target) : '<span class="muted">-</span>'}</td>` : ''}
+      ${hasPrevMiss && showCol('prevMiss') ? prevCarryCell(r.prevMiss) : ''}
+      ${showCol('variance') ? varCell(av) : ''}
     </tr>`;
     }).join('');
 
     const totAdjVariance = adjVar(totVariance, totPrevMiss);
     const totalRow = `<tr class="total-row">
       <td>Total</td>
-      <td></td>
-      <td class="num">${fmtINR(totFarming)}</td>
-      <td class="num">${fmtINR(totHunting)}</td>
-      <td class="num">${fmtINR(totTotal)}</td>
-      <td class="num">${totTarget ? fmtINR(totTarget) : '<span class="muted">-</span>'}</td>
-      ${hasPrevMiss ? prevCarryCell(totPrevMiss) : ''}
-      ${varCell(totAdjVariance)}
+      ${showCol('trend') ? '<td></td>' : ''}
+      ${showCol('farming') ? `<td class="num">${fmtINR(totFarming)}</td>` : ''}
+      ${showCol('hunting') ? `<td class="num">${fmtINR(totHunting)}</td>` : ''}
+      ${showCol('total') ? `<td class="num">${fmtINR(totTotal)}</td>` : ''}
+      ${showCol('target') ? `<td class="num">${totTarget ? fmtINR(totTarget) : '<span class="muted">-</span>'}</td>` : ''}
+      ${hasPrevMiss && showCol('prevMiss') ? prevCarryCell(totPrevMiss) : ''}
+      ${showCol('variance') ? varCell(totAdjVariance) : ''}
     </tr>`;
 
     const varColLabel = hasPrevMiss ? 'Adj. Variance' : 'Variance';
     const prevCarryColLabel = 'Prev Month Carry';
+    const minProbLabel = activePipelineView ? activePipelineView.min_probability : 70;
     return `<div class="table-scroll"><table>
       <thead><tr>
         <th data-sort="bu" style="cursor:pointer;">Business Unit${sArrow('bu')}</th>
-        <th>Commit Trend</th>
-        <th class="num" data-sort="farming" style="cursor:pointer;">Farming ${metric} Commit${sArrow('farming')}</th>
-        <th class="num" data-sort="hunting" style="cursor:pointer;">Hunting ${metric} Commit${sArrow('hunting')}</th>
-        <th class="num" data-sort="total" style="cursor:pointer;">Total Commit${sArrow('total')}</th>
-        <th class="num" data-sort="target" style="cursor:pointer;">Target${sArrow('target')}</th>
-        ${hasPrevMiss ? `<th class="num" data-sort="prevMiss" style="cursor:pointer;">${prevCarryColLabel}${sArrow('prevMiss')}</th>` : ''}
-        <th class="num" data-sort="variance" style="cursor:pointer;">${varColLabel}${sArrow('variance')}</th>
+        ${showCol('trend') ? '<th>Commit Trend</th>' : ''}
+        ${showCol('farming') ? `<th class="num" data-sort="farming" style="cursor:pointer;">Farming ${metric} Commit${sArrow('farming')}</th>` : ''}
+        ${showCol('hunting') ? `<th class="num" data-sort="hunting" style="cursor:pointer;">Hunting ${metric} Commit${sArrow('hunting')}</th>` : ''}
+        ${showCol('total') ? `<th class="num" data-sort="total" style="cursor:pointer;">Total Commit${sArrow('total')}</th>` : ''}
+        ${showCol('target') ? `<th class="num" data-sort="target" style="cursor:pointer;">Target${sArrow('target')}</th>` : ''}
+        ${hasPrevMiss && showCol('prevMiss') ? `<th class="num" data-sort="prevMiss" style="cursor:pointer;">${prevCarryColLabel}${sArrow('prevMiss')}</th>` : ''}
+        ${showCol('variance') ? `<th class="num" data-sort="variance" style="cursor:pointer;">${varColLabel}${sArrow('variance')}</th>` : ''}
       </tr></thead>
       <tbody>${totalRow}${bodyRows}</tbody>
-    </table></div><p style="font-size:11px;color:var(--text-muted);margin:8px 0 0;">Current committed pipeline (probability ≥ 70%)${latestDate ? ` · Trend as of ${latestDate}` : ''}${hasPrevMiss ? ' · Adj. Variance = (Actual − Target) + Prev Month Carry' : ''}</p>`;
+    </table></div><p style="font-size:11px;color:var(--text-muted);margin:8px 0 0;">Current committed pipeline (probability ≥ ${minProbLabel}%)${latestDate ? ` · Trend as of ${latestDate}` : ''}${hasPrevMiss ? ' · Adj. Variance = (Actual − Target) + Prev Month Carry' : ''}</p>`;
   }
 
   let mrrRows = buildSummaryRows('MRR', MRR_SNAPSHOTS, latestMRR);
@@ -1304,6 +1343,9 @@ function renderSummaryView() {
   const content = document.getElementById('content');
   if (!document.getElementById('summary-tables')) {
     content.innerHTML = `
+      <div id="pipeline-views-bar" style="margin-bottom:12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+        <!-- filled by renderPipelineViewsBar() -->
+      </div>
       <div style="margin-bottom:12px;">
         <input id="summary-search" type="search" placeholder="Search business unit…" value="${escapeHtml(summarySearch)}"
           style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;background:var(--surface-1);color:var(--text);font-size:13px;width:260px;outline:none;">
@@ -1314,6 +1356,7 @@ function renderSummaryView() {
       renderSummaryView();
     });
   }
+  renderPipelineViewsBar();
 
   document.getElementById('summary-tables').innerHTML = `
     <div class="card">
@@ -1370,6 +1413,194 @@ function renderSummaryView() {
       currentViewMode = 'bu-detail';
       render();
     });
+  });
+}
+
+// ============================================================
+// PIPELINE VIEWS BAR
+// ============================================================
+function renderPipelineViewsBar() {
+  const bar = document.getElementById('pipeline-views-bar');
+  if (!bar) return;
+
+  const btnStyle = (active) => `
+    padding:5px 12px;border-radius:16px;border:1px solid var(--border);
+    background:${active ? 'var(--series-1)' : 'var(--surface-1)'};
+    color:${active ? '#fff' : 'var(--text)'};font-size:12px;cursor:pointer;white-space:nowrap;`;
+
+  const allBtn = `<button style="${btnStyle(!activePipelineView)}" id="pv-btn-all">All Deals</button>`;
+
+  const viewBtns = PIPELINE_VIEWS.map(v =>
+    `<button style="${btnStyle(activePipelineView?.id === v.id)}" class="pv-view-btn" data-id="${v.id}">${escapeHtml(v.name)}</button>`
+  ).join('');
+
+  const newBtn = `<button style="padding:5px 12px;border-radius:16px;border:1px dashed var(--border);background:transparent;color:var(--text-muted);font-size:12px;cursor:pointer;" id="pv-new-btn">+ New View</button>`;
+
+  bar.innerHTML = allBtn + viewBtns + newBtn;
+
+  bar.querySelector('#pv-btn-all').onclick = () => {
+    activePipelineView = null;
+    renderSummaryView();
+  };
+
+  bar.querySelectorAll('.pv-view-btn').forEach(btn => {
+    btn.onclick = () => {
+      const id = Number(btn.dataset.id);
+      activePipelineView = PIPELINE_VIEWS.find(v => v.id === id) || null;
+      renderSummaryView();
+    };
+    btn.ondblclick = () => {
+      const id = Number(btn.dataset.id);
+      const view = PIPELINE_VIEWS.find(v => v.id === id);
+      if (view) openViewBuilder(view);
+    };
+  });
+
+  bar.querySelector('#pv-new-btn').onclick = () => openViewBuilder(null);
+}
+
+function openViewBuilder(view) {
+  const allDealTypes = [...new Set(DEALS.map(d => d.deal_type).filter(Boolean))].sort();
+  const allStages = [...new Set(DEALS.map(d => d.stage).filter(Boolean))].sort();
+
+  const editId = view?.id || null;
+  const name = view?.name || '';
+  const selTypes = new Set(view?.deal_types || []);
+  const selStages = new Set(view?.stages || []);
+  const minProb = view?.min_probability ?? 70;
+  const visibleCols = new Set(view?.visible_columns?.length
+    ? view.visible_columns
+    : ['farming','hunting','total','target','trend','prevMiss','variance']);
+
+  const ALL_COLS = [
+    { key: 'trend', label: 'Trend Sparkline' },
+    { key: 'farming', label: 'Farming Commit' },
+    { key: 'hunting', label: 'Hunting Commit' },
+    { key: 'total', label: 'Total Commit' },
+    { key: 'target', label: 'Target' },
+    { key: 'prevMiss', label: 'Prev Month Carry' },
+    { key: 'variance', label: 'Variance' },
+  ];
+
+  const typeCapsulesHtml = allDealTypes.map(t => {
+    const active = selTypes.has(t);
+    return `<button class="vb-type-cap stage-capsule${active ? ' active' : ''}" data-val="${escapeHtml(t)}" style="margin:2px;">${escapeHtml(t)}</button>`;
+  }).join('');
+
+  const stageCapsulesHtml = allStages.map(s => {
+    const active = selStages.has(s);
+    return `<button class="vb-stage-cap stage-capsule${active ? ' active' : ''}" data-val="${escapeHtml(s)}" style="margin:2px;">${escapeHtml(s)}</button>`;
+  }).join('');
+
+  const colCheckboxesHtml = ALL_COLS.map(c =>
+    `<label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;padding:3px 0;">
+      <input type="checkbox" class="vb-col-chk" data-col="${c.key}" ${visibleCols.has(c.key) ? 'checked' : ''}>
+      ${escapeHtml(c.label)}
+    </label>`
+  ).join('');
+
+  const overlay = document.getElementById('vb-overlay');
+  const panel = document.getElementById('vb-panel');
+  panel.innerHTML = `
+    <div style="display:flex;align-items:center;margin-bottom:16px;">
+      <h3 style="margin:0;font-size:15px;">${editId ? 'Edit View' : 'New Pipeline View'}</h3>
+      <button id="vb-close" style="margin-left:auto;background:none;border:none;font-size:18px;cursor:pointer;color:var(--text-muted);">✕</button>
+    </div>
+
+    <div style="margin-bottom:14px;">
+      <label style="font-size:12px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:5px;">VIEW NAME</label>
+      <input id="vb-name" type="text" value="${escapeHtml(name)}" placeholder="e.g. MRR Commit"
+        style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:6px;background:var(--surface-1);color:var(--text);font-size:13px;box-sizing:border-box;outline:none;">
+    </div>
+
+    <div style="margin-bottom:14px;">
+      <label style="font-size:12px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:5px;">DEAL TYPES <span style="font-weight:400;color:var(--text-muted)">(empty = all)</span></label>
+      <div id="vb-types" style="display:flex;flex-wrap:wrap;gap:4px;">${typeCapsulesHtml}</div>
+    </div>
+
+    <div style="margin-bottom:14px;">
+      <label style="font-size:12px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:5px;">STAGES <span style="font-weight:400;color:var(--text-muted)">(empty = all)</span></label>
+      <div style="display:flex;gap:6px;margin-bottom:6px;">
+        <button id="vb-stages-all" class="stage-capsule" style="font-size:11px;padding:3px 8px;">Select All</button>
+        <button id="vb-stages-none" class="stage-capsule" style="font-size:11px;padding:3px 8px;">Clear All</button>
+      </div>
+      <div id="vb-stages" style="display:flex;flex-wrap:wrap;gap:4px;">${stageCapsulesHtml}</div>
+    </div>
+
+    <div style="margin-bottom:14px;">
+      <label style="font-size:12px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:5px;">MIN PROBABILITY (%)</label>
+      <input id="vb-prob" type="number" min="0" max="100" value="${minProb}"
+        style="width:100px;padding:7px 10px;border:1px solid var(--border);border-radius:6px;background:var(--surface-1);color:var(--text);font-size:13px;outline:none;">
+    </div>
+
+    <div style="margin-bottom:20px;">
+      <label style="font-size:12px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:8px;">COLUMNS TO SHOW</label>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:2px;">${colCheckboxesHtml}</div>
+    </div>
+
+    <div style="display:flex;gap:8px;">
+      <button id="vb-save" style="padding:8px 18px;border-radius:8px;border:none;background:var(--series-1,#3b82f6);color:#fff;font-size:13px;font-weight:600;cursor:pointer;">
+        ${editId ? 'Update View' : 'Save View'}
+      </button>
+      ${editId ? `<button id="vb-delete" style="padding:8px 18px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--bad,#ef4444);font-size:13px;cursor:pointer;">Delete</button>` : ''}
+      <button id="vb-cancel" style="margin-left:auto;padding:8px 18px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--text);font-size:13px;cursor:pointer;">Cancel</button>
+    </div>`;
+
+  overlay.style.display = 'flex';
+
+  panel.querySelector('#vb-close').onclick = () => { overlay.style.display = 'none'; };
+  panel.querySelector('#vb-cancel').onclick = () => { overlay.style.display = 'none'; };
+  overlay.onclick = e => { if (e.target === overlay) overlay.style.display = 'none'; };
+
+  panel.querySelectorAll('.vb-type-cap').forEach(btn => {
+    btn.onclick = () => { btn.classList.toggle('active'); };
+  });
+
+  panel.querySelectorAll('.vb-stage-cap').forEach(btn => {
+    btn.onclick = () => { btn.classList.toggle('active'); };
+  });
+  panel.querySelector('#vb-stages-all').onclick = () =>
+    panel.querySelectorAll('.vb-stage-cap').forEach(b => b.classList.add('active'));
+  panel.querySelector('#vb-stages-none').onclick = () =>
+    panel.querySelectorAll('.vb-stage-cap').forEach(b => b.classList.remove('active'));
+
+  panel.querySelector('#vb-save').onclick = async () => {
+    const viewName = panel.querySelector('#vb-name').value.trim();
+    if (!viewName) { alert('Please enter a view name.'); return; }
+
+    const deal_types = [...panel.querySelectorAll('.vb-type-cap.active')].map(b => b.dataset.val);
+    const stages = [...panel.querySelectorAll('.vb-stage-cap.active')].map(b => b.dataset.val);
+    const min_probability = Math.max(0, Math.min(100, parseInt(panel.querySelector('#vb-prob').value) || 0));
+    const visible_columns = [...panel.querySelectorAll('.vb-col-chk:checked')].map(b => b.dataset.col);
+
+    const payload = { name: viewName, deal_types, stages, min_probability, visible_columns };
+
+    try {
+      if (editId) {
+        await sbPost(`pipeline_views?id=eq.${editId}`, payload, 'PATCH');
+      } else {
+        payload.display_order = PIPELINE_VIEWS.length;
+        await sbPost('pipeline_views', payload, 'POST');
+      }
+      PIPELINE_VIEWS = await sb('pipeline_views?select=*&order=display_order.asc');
+      overlay.style.display = 'none';
+      renderSummaryView();
+    } catch (err) {
+      alert('Failed to save view: ' + err.message);
+    }
+  };
+
+  panel.querySelector('#vb-delete')?.addEventListener('click', async () => {
+    if (!confirm('Delete this view?')) return;
+    try {
+      await sbPost(`pipeline_views?id=eq.${editId}`, null, 'DELETE');
+      PIPELINE_VIEWS = await sb('pipeline_views?select=*&order=display_order.asc');
+      if (activePipelineView?.id === editId) activePipelineView = null;
+      overlay.style.display = 'none';
+      renderSummaryView();
+    } catch (err) {
+      alert('Failed to delete view: ' + err.message);
+    }
   });
 }
 
@@ -1726,8 +1957,15 @@ function renderBUDetailView() {
   const buDeals = DEALS.filter(d => (d.business_unit || 'UNMAPPED') === bu);
   const buDealIds = new Set(buDeals.map(d => d.deal_id));
 
-  // Commit = deals in this period with probability >= 70%
-  const committedBUDeals = buDeals.filter(d => snapClosingInPeriod(d.closing_date, periodTab) && (d.probability ?? 100) >= 70);
+  // Commit = deals in this period with probability >= 70% (or active view filter)
+  const minProb = activePipelineView ? activePipelineView.min_probability : 70;
+  const committedBUDeals = buDeals.filter(d => {
+    if (!snapClosingInPeriod(d.closing_date, periodTab)) return false;
+    if ((d.probability ?? 100) < minProb) return false;
+    if (activePipelineView?.deal_types?.length && !activePipelineView.deal_types.includes(d.deal_type)) return false;
+    if (activePipelineView?.stages?.length && !activePipelineView.stages.includes(d.stage)) return false;
+    return true;
+  });
   const mrrCommit = committedBUDeals.reduce((a, d) => a + Number(d.mrr_inr), 0);
   const nrrCommit = committedBUDeals.reduce((a, d) => a + Number(d.nrr_inr), 0);
   const mrrTarget = targetFor(bu, periodTab, 'MRR');
