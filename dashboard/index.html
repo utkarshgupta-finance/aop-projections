@@ -1337,7 +1337,7 @@ function renderSummaryView() {
     // View filter: applies probability, deal_types, stages, and closing_date range from the active view
     const viewHasDates = !!(activePipelineView?.closing_date_start || activePipelineView?.closing_date_end);
     const applyViewFilter = d => {
-      const minP = activePipelineView ? (activePipelineView.min_probability ?? 0) : 0;
+      const minP = activePipelineView ? (activePipelineView.min_probability ?? 0) : 70;
       if ((d.probability ?? 100) < minP) return false;
       if (activePipelineView?.deal_types?.length && !activePipelineView.deal_types.includes(d.deal_type)) return false;
       // Stage filter only on deals that have a stage value
@@ -1361,16 +1361,12 @@ function renderSummaryView() {
         (viewHasDates || snapClosingInPeriod(d.closing_date, periodTab)) &&
         applyViewFilter(d)
       );
-      // Total = sum of ALL matching deals regardless of deal_type
-      const total   = committedDeals.reduce((a, d) => a + dealAmount(d), 0);
-      // Farming / Hunting split only where those exact deal_type values exist
-      const farming = committedDeals.filter(d => d.deal_type === 'Farming').reduce((a, d) => a + dealAmount(d), 0);
-      const hunting = committedDeals.filter(d => d.deal_type === 'Hunting').reduce((a, d) => a + dealAmount(d), 0);
-      const target  = targetFor(bu, periodTab, metric);
+      const total    = committedDeals.reduce((a, d) => a + dealAmount(d), 0);
+      const target   = targetFor(bu, periodTab, metric);
       const variance = target !== undefined ? total - target : null;
       const prevMiss = prevMissMap.get(bu) ?? null;
       const sparkline = sparkDates.map(date => ({ date, v: sparkMap.get(date)?.get(bu) || 0 }));
-      return { bu, farming, hunting, total, target, variance, prevMiss, sparkline };
+      return { bu, total, target, variance, prevMiss, sparkline };
     });
   }
 
@@ -1378,12 +1374,10 @@ function renderSummaryView() {
     if (!latestDate) return '<p class="muted">No snapshot data yet.</p>';
     const visibleCols = new Set(activePipelineView?.visible_columns?.length
       ? activePipelineView.visible_columns
-      : ['farming','hunting','total','target','trend','prevMiss','variance']);
+      : ['total','target','trend','prevMiss','variance']);
     const showCol = key => visibleCols.has(key);
 
-    const totFarming  = rows.reduce((a, r) => a + r.farming, 0);
-    const totHunting  = rows.reduce((a, r) => a + r.hunting, 0);
-    const totTotal    = totFarming + totHunting;
+    const totTotal    = rows.reduce((a, r) => a + r.total, 0);
     const totTarget   = rows.reduce((a, r) => a + (r.target ?? 0), 0);
     const totVariance = totTarget ? totTotal - totTarget : null;
     const hasPrevMiss = rows.some(r => r.prevMiss !== null);
@@ -1407,8 +1401,6 @@ function renderSummaryView() {
       return `<tr>
       <td data-bu-nav="${escapeHtml(r.bu)}" title="View ${escapeHtml(r.bu)} detail"><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${colorVar(r.bu)};margin-right:8px;vertical-align:middle;"></span>${escapeHtml(r.bu)}<span style="margin-left:6px;font-size:10px;color:var(--text-muted);">↗</span></td>
       ${showCol('trend') ? `<td class="${sparkCls}" style="padding:4px 8px;" title="${escapeHtml(sparkTip)}">${sparklineSvg(r.sparkline, sparkColor)}</td>` : ''}
-      ${showCol('farming') ? `<td class="num drilldown-cell" data-bu="${escapeHtml(r.bu)}" data-type="Farming" data-metric="${metric}">${r.farming ? fmtINR(r.farming) : '<span class="muted">-</span>'}</td>` : ''}
-      ${showCol('hunting') ? `<td class="num drilldown-cell" data-bu="${escapeHtml(r.bu)}" data-type="Hunting" data-metric="${metric}">${r.hunting ? fmtINR(r.hunting) : '<span class="muted">-</span>'}</td>` : ''}
       ${showCol('total') ? `<td class="num">${r.total ? fmtINR(r.total) : '<span class="muted">-</span>'}</td>` : ''}
       ${showCol('target') ? `<td class="num">${r.target !== undefined ? fmtINR(r.target) : '<span class="muted">-</span>'}</td>` : ''}
       ${hasPrevMiss && showCol('prevMiss') ? prevCarryCell(r.prevMiss) : ''}
@@ -1420,8 +1412,6 @@ function renderSummaryView() {
     const totalRow = `<tr class="total-row">
       <td>Total</td>
       ${showCol('trend') ? '<td></td>' : ''}
-      ${showCol('farming') ? `<td class="num">${fmtINR(totFarming)}</td>` : ''}
-      ${showCol('hunting') ? `<td class="num">${fmtINR(totHunting)}</td>` : ''}
       ${showCol('total') ? `<td class="num">${fmtINR(totTotal)}</td>` : ''}
       ${showCol('target') ? `<td class="num">${totTarget ? fmtINR(totTarget) : '<span class="muted">-</span>'}</td>` : ''}
       ${hasPrevMiss && showCol('prevMiss') ? prevCarryCell(totPrevMiss) : ''}
@@ -1430,22 +1420,21 @@ function renderSummaryView() {
 
     const varColLabel = hasPrevMiss ? 'Adj. Variance' : 'Variance';
     const prevCarryColLabel = 'Prev Month Carry';
-    const minProbLabel = activePipelineView ? activePipelineView.min_probability : 70;
+    const minProbLabel = activePipelineView ? (activePipelineView.min_probability ?? 0) : 70;
     const mrrModeLabel = activePipelineView?.mrr_mode || 'expected';
     const nrrModeLabel = activePipelineView?.nrr_mode || 'expected';
+    const amtMode = metric === 'MRR' ? mrrModeLabel : nrrModeLabel;
     return `<div class="table-scroll"><table>
       <thead><tr>
         <th data-sort="bu" style="cursor:pointer;">Business Unit${sArrow('bu')}</th>
         ${showCol('trend') ? '<th>Commit Trend</th>' : ''}
-        ${showCol('farming') ? `<th class="num" data-sort="farming" style="cursor:pointer;">Farming ${metric} Commit${sArrow('farming')}</th>` : ''}
-        ${showCol('hunting') ? `<th class="num" data-sort="hunting" style="cursor:pointer;">Hunting ${metric} Commit${sArrow('hunting')}</th>` : ''}
-        ${showCol('total') ? `<th class="num" data-sort="total" style="cursor:pointer;">Total Commit${sArrow('total')}</th>` : ''}
+        ${showCol('total') ? `<th class="num" data-sort="total" style="cursor:pointer;">${metric} Commit (${amtMode})${sArrow('total')}</th>` : ''}
         ${showCol('target') ? `<th class="num" data-sort="target" style="cursor:pointer;">Target${sArrow('target')}</th>` : ''}
         ${hasPrevMiss && showCol('prevMiss') ? `<th class="num" data-sort="prevMiss" style="cursor:pointer;">${prevCarryColLabel}${sArrow('prevMiss')}</th>` : ''}
         ${showCol('variance') ? `<th class="num" data-sort="variance" style="cursor:pointer;">${varColLabel}${sArrow('variance')}</th>` : ''}
       </tr></thead>
       <tbody>${totalRow}${bodyRows}</tbody>
-    </table></div><p style="font-size:11px;color:var(--text-muted);margin:8px 0 0;">Current committed pipeline (probability ≥ ${minProbLabel}%) · ${metric} amounts: ${metric === 'MRR' ? mrrModeLabel : nrrModeLabel}${latestDate ? ` · Trend as of ${latestDate}` : ''}${hasPrevMiss ? ' · Adj. Variance = (Actual − Target) + Prev Month Carry' : ''}</p>`;
+    </table></div><p style="font-size:11px;color:var(--text-muted);margin:8px 0 0;">Pipeline with probability ≥ ${minProbLabel}%${activePipelineView?.deal_types?.length ? ` · Types: ${activePipelineView.deal_types.join(', ')}` : ''}${activePipelineView?.closing_date_start || activePipelineView?.closing_date_end ? ` · Closing: ${activePipelineView.closing_date_start || '…'} → ${activePipelineView.closing_date_end || '…'}` : ` · Closing in ${periodTab.label}`}${latestDate ? ` · As of ${latestDate}` : ''}${hasPrevMiss ? ' · Adj. Variance = (Actual − Target) + Prev Month Carry' : ''}</p>`;
   }
 
   let mrrRows = buildSummaryRows('MRR', MRR_SNAPSHOTS, latestMRR);
@@ -1632,13 +1621,11 @@ function openViewBuilder(view, context) {
   const curNrrMode = view?.nrr_mode || 'expected';
   const visibleCols = new Set(view?.visible_columns?.length
     ? view.visible_columns
-    : ['farming','hunting','total','target','trend','prevMiss','variance']);
+    : ['total','target','trend','prevMiss','variance']);
 
   const ALL_COLS = [
     { key: 'trend', label: 'Trend Sparkline' },
-    { key: 'farming', label: 'Farming Commit' },
-    { key: 'hunting', label: 'Hunting Commit' },
-    { key: 'total', label: 'Total Commit' },
+    { key: 'total', label: 'Commit Amount' },
     { key: 'target', label: 'Target' },
     { key: 'prevMiss', label: 'Prev Month Carry' },
     { key: 'variance', label: 'Variance' },
