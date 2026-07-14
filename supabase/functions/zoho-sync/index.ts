@@ -492,6 +492,14 @@ Deno.serve(async (req: Request) => {
     const { error: dealsErr } = await supabase.from('deals').upsert(allDealRows, { onConflict: 'deal_id' });
     if (dealsErr) throw dealsErr;
 
+    // ---- Upsert all unique stages seen in this sync ----
+    const allStageNames = new Set<string>();
+    for (const row of allDealRows) { if (row.stage) allStageNames.add(row.stage); }
+    if (allStageNames.size > 0) {
+      const stageRows = [...allStageNames].map(s => ({ stage_name: s, module: 'Deals', updated_at: new Date().toISOString() }));
+      await supabase.from('crm_stages').upsert(stageRows, { onConflict: 'stage_name' });
+    }
+
     // ---- MRR / NRR snapshots ----
     const mrrRows = universe.filter(d => d.mrrInr !== 0).map(d => ({
       deal_id: d.id, snapshot_date: snapshotDate, mrr_amount: d.mrrInr, probability: d.probability,

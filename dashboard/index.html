@@ -248,7 +248,7 @@ function computePeriodTabs(qKey) {
 }
 
 const VIEW_MODES = [
-  { key: 'review',  label: 'Review' },
+  { key: 'review',  label: 'Commits' },
   { key: 'summary', label: 'Summary' },
   { key: 'hunting', label: 'Hunting Pipeline' },
 ];
@@ -263,8 +263,10 @@ const METRIC_TABS = [
 ];
 
 let DEALS = [], MRR_SNAPSHOTS = [], NRR_SNAPSHOTS = [], BU_TARGETS = [], TARGET_SETTINGS = [], NRR_TARGETS = [], NRR_TARGET_SETTINGS = [], BASELINE = [], HUNTING_PIPELINE = [], HUNTING_SNAPSHOTS = [];
-let PIPELINE_VIEWS = [];
+let PIPELINE_VIEWS = [], CRM_STAGES = [];
 let activePipelineView = null; // null = no filter applied (show all with prob>=70)
+let activeCommitView = null;   // active view for the Commits tab
+let commitGroupBy = 'deal';    // 'deal' | 'account' | 'bu'
 let MRR_DATES = [], NRR_DATES = [], BU_TAB_LIST = [];
 let currentViewMode   = 'review';
 let currentQuarter    = '2026-Q3';
@@ -451,7 +453,7 @@ function renderTabs() {
 async function main() {
   const content = document.getElementById('content');
   try {
-    [DEALS, MRR_SNAPSHOTS, NRR_SNAPSHOTS, BU_TARGETS, TARGET_SETTINGS, NRR_TARGETS, NRR_TARGET_SETTINGS, BASELINE, HUNTING_PIPELINE, HUNTING_SNAPSHOTS, PIPELINE_VIEWS] = await Promise.all([
+    [DEALS, MRR_SNAPSHOTS, NRR_SNAPSHOTS, BU_TARGETS, TARGET_SETTINGS, NRR_TARGETS, NRR_TARGET_SETTINGS, BASELINE, HUNTING_PIPELINE, HUNTING_SNAPSHOTS, PIPELINE_VIEWS, CRM_STAGES] = await Promise.all([
       sb('deals?select=*'),
       sb('mrr_snapshots?select=*&order=snapshot_date.asc'),
       sb('nrr_snapshots?select=*&order=snapshot_date.asc'),
@@ -463,6 +465,7 @@ async function main() {
       sb('hunting_pipeline?select=*&order=closing_date.asc').catch(() => []),
       sb('hunting_pipeline_snapshots?select=*&order=synced_at.desc').catch(() => []),
       sb('pipeline_views?select=*&order=display_order.asc').catch(() => []),
+      sb('crm_stages?select=stage_name&order=stage_name.asc').catch(() => []),
     ]);
   } catch (err) {
     content.innerHTML = `<div class="card"><p class="error">Failed to load data: ${escapeHtml(err.message)}</p></div>`;
@@ -775,7 +778,7 @@ function render() {
 }
 
 // ============================================================
-// REVIEW VIEW
+// COMMITS VIEW (formerly Review)
 // ============================================================
 function renderReviewView() {
   const PERIOD_TABS = computePeriodTabs(currentQuarter);
@@ -788,7 +791,17 @@ function renderReviewView() {
   document.getElementById('subtitle').textContent =
     `MRR snapshot: ${mrrLatest || 'none'} · NRR snapshot: ${nrrLatest || 'none'}`;
 
+  const grpCap = (id, label, key) =>
+    `<button class="stage-capsule${commitGroupBy === key ? ' active' : ''}" id="${id}">${label}</button>`;
+
   content.innerHTML = `
+    <div style="margin-bottom:10px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;" id="commit-views-bar"></div>
+    <div style="margin-bottom:12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+      <span style="font-size:12px;color:var(--text-muted);font-weight:600;letter-spacing:.03em;">GROUP BY</span>
+      ${grpCap('grp-deal','Deal','deal')}
+      ${grpCap('grp-account','Account','account')}
+      ${grpCap('grp-bu','Business Unit','bu')}
+    </div>
     <div class="card">
       <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px;">
         <h2 style="margin:0;">MRR Commits by snapshot date</h2>
@@ -798,8 +811,8 @@ function renderReviewView() {
         </div>
       </div>
       <div class="table-controls">
-        <input class="search-input" id="deal-search" type="text" placeholder="Search deal id, name, BU, type..." value="${escapeHtml(searchText)}">
-        <select class="filter-select" id="bu-filter"><option value="">All business units</option></select>
+        <input class="search-input" id="deal-search" type="text" placeholder="Search deal, account, BU…" value="${escapeHtml(searchText)}">
+        ${commitGroupBy === 'deal' ? `<select class="filter-select" id="bu-filter"><option value="">All business units</option></select>` : ''}
         <span class="result-count" id="result-count"></span>
         <span id="deals-table-export"></span>
       </div>
@@ -808,19 +821,27 @@ function renderReviewView() {
     <div class="card" style="margin-top:16px;">
       <h2>NRR Commits by snapshot date</h2>
       <div class="table-controls">
-        <input class="search-input" id="nrr-deal-search" type="text" placeholder="Search deal id, name, BU, type..." value="${escapeHtml(searchText)}">
-        <select class="filter-select" id="nrr-bu-filter"><option value="">All business units</option></select>
+        <input class="search-input" id="nrr-deal-search" type="text" placeholder="Search deal, account, BU…" value="${escapeHtml(searchText)}">
+        ${commitGroupBy === 'deal' ? `<select class="filter-select" id="nrr-bu-filter"><option value="">All business units</option></select>` : ''}
         <span class="result-count" id="nrr-result-count"></span>
         <span id="nrr-deals-table-export"></span>
       </div>
       <div id="nrr-deals-table"></div>
     </div>`;
 
-  tableCtx = { dealsById, periodTab, latestDate: mrrLatest, snapshots: MRR_SNAPSHOTS, metric: 'MRR' };
+  renderCommitViewsBar();
+
+  tableCtx = { dealsById, periodTab, latestDate: mrrLatest, snapshots: MRR_SNAPSHOTS, metric: 'MRR',
+    groupBy: commitGroupBy, commitView: activeCommitView };
   renderDealsTable();
   renderNRRDealsTable();
 
-  // Search: any input syncs the other field and refreshes both tables
+  // Group-by buttons
+  document.getElementById('grp-deal').onclick = () => { commitGroupBy = 'deal'; renderReviewView(); };
+  document.getElementById('grp-account').onclick = () => { commitGroupBy = 'account'; renderReviewView(); };
+  document.getElementById('grp-bu').onclick = () => { commitGroupBy = 'bu'; renderReviewView(); };
+
+  // Compact/Expanded only meaningful in deal view
   document.getElementById('view-compact')?.addEventListener('click', () => {
     reviewExpanded = false; renderDealsTable(); renderNRRDealsTable();
     document.getElementById('view-compact')?.classList.add('active');
@@ -845,14 +866,13 @@ function renderReviewView() {
     renderDealsTable(); renderNRRDealsTable();
   });
 
-  // BU filter: selecting a BU in either dropdown syncs the other to the same value
-  document.getElementById('bu-filter').addEventListener('change', e => {
+  document.getElementById('bu-filter')?.addEventListener('change', e => {
     tableBuFilter = e.target.value; nrrBuFilter = e.target.value;
     const nrrSel = document.getElementById('nrr-bu-filter');
     if (nrrSel) nrrSel.value = nrrBuFilter;
     renderDealsTable(); renderNRRDealsTable();
   });
-  document.getElementById('nrr-bu-filter').addEventListener('change', e => {
+  document.getElementById('nrr-bu-filter')?.addEventListener('change', e => {
     nrrBuFilter = e.target.value; tableBuFilter = e.target.value;
     const mrrSel = document.getElementById('bu-filter');
     if (mrrSel) mrrSel.value = tableBuFilter;
@@ -913,24 +933,26 @@ function renderBUView(buRows, maxAbs, showTargets, periodTab) {
 let tableCtx = {};
 
 function renderNRRDealsTable() {
-  const { dealsById, periodTab } = tableCtx;
+  const { dealsById, periodTab, groupBy, commitView } = tableCtx;
   if (!dealsById) return;
   renderDealsTableWith({
     dealsById, periodTab, snapshots: NRR_SNAPSHOTS, metric: 'NRR',
     tableId: 'nrr-deals-table', buFilterId: 'nrr-bu-filter',
     resultCountId: 'nrr-result-count', buFilter: nrrBuFilter,
+    groupBy: groupBy || 'deal', commitView,
   });
 }
 
 function renderDealsTable() {
-  const { dealsById, periodTab, snapshots, metric } = tableCtx;
+  const { dealsById, periodTab, snapshots, metric, groupBy, commitView } = tableCtx;
   renderDealsTableWith({ dealsById, periodTab, snapshots, metric,
     tableId: 'deals-table', buFilterId: 'bu-filter',
     resultCountId: 'result-count', buFilter: tableBuFilter,
+    groupBy: groupBy || 'deal', commitView,
   });
 }
 
-function renderDealsTableWith({ dealsById, periodTab, snapshots, metric, tableId, buFilterId, resultCountId, buFilter }) {
+function renderDealsTableWith({ dealsById, periodTab, snapshots, metric, tableId, buFilterId, resultCountId, buFilter, groupBy = 'deal', commitView = null }) {
   const allDates = metric === 'MRR' ? MRR_DATES : NRR_DATES;
   const amountOfRow = s => Number(metric === 'MRR' ? s.mrr_amount : s.nrr_amount);
 
@@ -967,19 +989,27 @@ function renderDealsTableWith({ dealsById, periodTab, snapshots, metric, tableId
     snapshotsByDeal.get(s.deal_id).set(s.snapshot_date, { amount: amountOfRow(s), closing_date: s.closing_date, probability: s.probability });
   }
 
+  const minProb = commitView ? commitView.min_probability : 70;
+  const matchesCommitView = d => {
+    if (commitView?.deal_types?.length && !commitView.deal_types.includes(d.deal_type)) return false;
+    if (commitView?.stages?.length && !commitView.stages.includes(d.stage)) return false;
+    return true;
+  };
+
   // Helper: effective amount respecting snapshot closing_date vs current period
   const snapAmt = (byDate, date) => {
     const e = byDate?.get(date);
     if (e === undefined) return undefined;
     if (!snapClosingInPeriod(e.closing_date, periodTab)) return null;
-    if ((e.probability ?? 100) < 70) return null;
+    if ((e.probability ?? 100) < minProb) return null;
     return e.amount;
   };
 
   let tabDeals = DEALS.filter(d => currentTypeTab === 'combined' || d.deal_type === currentTypeTab)
     .filter(d => !currentBU || (d.business_unit || 'UNMAPPED') === currentBU)
+    .filter(d => matchesCommitView(d))
     .filter(d => snapshotsByDeal.has(d.deal_id) &&
-      [...snapshotsByDeal.get(d.deal_id).values()].some(e => snapClosingInPeriod(e.closing_date, periodTab) && (e.probability ?? 100) >= 70));
+      [...snapshotsByDeal.get(d.deal_id).values()].some(e => snapClosingInPeriod(e.closing_date, periodTab) && (e.probability ?? 100) >= minProb));
 
   const buOptions = [...new Set(tabDeals.map(d => d.business_unit || 'UNMAPPED'))].sort();
   const buFilterEl = document.getElementById(buFilterId);
@@ -1019,6 +1049,107 @@ function renderDealsTableWith({ dealsById, periodTab, snapshots, metric, tableId
   };
   tabDeals = tabDeals.sort(comparator);
   const rcEl = document.getElementById(resultCountId);
+
+  // ── GROUPED VIEW (account or BU) ──────────────────────────
+  if (groupBy === 'account' || groupBy === 'bu') {
+    const keyFn = d => groupBy === 'account' ? (d.account_name || 'Unknown') : (d.business_unit || 'UNMAPPED');
+    const groups = new Map();
+    for (const d of tabDeals) {
+      const k = keyFn(d);
+      if (!groups.has(k)) groups.set(k, []);
+      groups.get(k).push(d);
+    }
+    if (rcEl) rcEl.textContent = `${groups.size} ${groupBy === 'account' ? 'account' : 'BU'}${groups.size === 1 ? '' : 's'} · ${tabDeals.length} deals`;
+
+    const expEl = document.getElementById(`${tableId}-export`);
+    const groupLabel = groupBy === 'account' ? 'Account' : 'Business Unit';
+    const latestDate = periodDates[periodDates.length - 1];
+    const prevDate   = periodDates.length >= 2 ? periodDates[periodDates.length - 2] : null;
+    const displayDates = reviewExpanded ? periodDates : (latestDate ? [latestDate] : []);
+
+    // sum snapAmt across all deals in a group for a date
+    const groupAmt = (deals, date) => {
+      let sum = 0, any = false;
+      for (const d of deals) {
+        const v = snapAmt(snapshotsByDeal.get(d.deal_id), date);
+        if (v !== undefined && v !== null) { sum += v; any = true; }
+      }
+      return any ? sum : null;
+    };
+
+    // Sort groups by latest amount desc
+    const sortedGroups = [...groups.entries()].sort((a, b) => {
+      const av = groupAmt(a[1], latestDate) ?? -Infinity;
+      const bv = groupAmt(b[1], latestDate) ?? -Infinity;
+      return bv - av;
+    });
+
+    if (expEl) {
+      const xId = `${tableId}-xbtn`;
+      const expHeaders = [groupLabel, ...(groupBy === 'account' ? ['BU(s)'] : []), 'Deals',
+        ...displayDates.map(d => reviewExpanded ? d : `Latest (${d})`), ...(prevDate ? ['Change'] : [])];
+      const expRows = sortedGroups.map(([key, deals]) => {
+        const buVal = groupBy === 'account' ? [...new Set(deals.map(d => d.business_unit || 'UNMAPPED'))].join(', ') : undefined;
+        const dateVals = displayDates.map(date => { const v = groupAmt(deals, date); return v !== null ? v : ''; });
+        const changeVal = prevDate ? ((groupAmt(deals, latestDate) ?? 0) - (groupAmt(deals, prevDate) ?? 0)) : null;
+        return [key, ...(groupBy === 'account' ? [buVal] : []), deals.length, ...dateVals, ...(prevDate ? [changeVal ?? ''] : [])];
+      });
+      expEl.innerHTML = `<button class="sync-btn" id="${xId}">↓ Export</button>`;
+      document.getElementById(xId).onclick = () =>
+        downloadXLSX(`${metric}_${groupBy}_${currentPeriodTab}`, expHeaders, expRows);
+    }
+
+    const dealsTable = document.getElementById(tableId);
+    if (!dealsTable) return;
+    if (!displayDates.length) { dealsTable.innerHTML = `<p class="muted">No ${metric} snapshots recorded yet.</p>`; return; }
+
+    const arrow2 = () => '';
+    const dateHdrs = displayDates.map(d => {
+      const lbl = reviewExpanded ? d.slice(5) : 'Latest';
+      return `<th class="num">${lbl}</th>`;
+    }).join('');
+    const changeHdr = prevDate ? `<th class="num">Change</th>` : '';
+
+    let grandTotal = 0;
+    const bodyRows = sortedGroups.map(([key, deals]) => {
+      const latest = groupAmt(deals, latestDate);
+      const prev = prevDate ? groupAmt(deals, prevDate) : null;
+      const change = (latest !== null && prev !== null) ? latest - prev : null;
+      if (latest) grandTotal += latest;
+      const buDisplay = groupBy === 'account'
+        ? `<td style="font-size:11px;color:var(--text-muted);">${escapeHtml([...new Set(deals.map(d => d.business_unit || 'UNMAPPED'))].join(', '))}</td>`
+        : '';
+      const dateCells = displayDates.map(date => {
+        const v = groupAmt(deals, date);
+        return `<td class="num">${v !== null ? fmtINR(v) : '<span class="muted">-</span>'}</td>`;
+      }).join('');
+      const changeCell = prevDate ? `<td class="num ${change === null ? '' : change > 0 ? 'var-pos' : change < 0 ? 'var-neg' : ''}">${change === null ? '<span class="muted">-</span>' : (change >= 0 ? '+' : '') + fmtINR(change)}</td>` : '';
+      return `<tr>
+        <td style="font-weight:600;">${escapeHtml(key)}</td>
+        ${buDisplay}
+        <td class="num" style="color:var(--text-muted);font-size:12px;">${deals.length}</td>
+        ${dateCells}${changeCell}
+      </tr>`;
+    }).join('');
+
+    const buHdr = groupBy === 'account' ? `<th style="font-size:11px;">BU(s)</th>` : '';
+    dealsTable.innerHTML = `<div class="table-scroll"><table>
+      <thead><tr>
+        <th>${escapeHtml(groupLabel)}</th>${buHdr}<th class="num" style="font-size:11px;">Deals</th>
+        ${dateHdrs}${changeHdr}
+      </tr></thead>
+      <tbody>
+        <tr class="total-row"><td colspan="${groupBy === 'account' ? 3 : 2}">Total</td>
+          ${displayDates.map(date => { const s = sortedGroups.reduce((a,[,d]) => a + (groupAmt(d,date)??0),0); return `<td class="num">${fmtINR(s)}</td>`; }).join('')}
+          ${prevDate ? `<td class="num"></td>` : ''}
+        </tr>
+        ${bodyRows || `<tr><td colspan="10" class="muted">No data.</td></tr>`}
+      </tbody>
+    </table></div>`;
+    return;
+  }
+  // ── END GROUPED VIEW ──────────────────────────────────────
+
   if (rcEl) rcEl.textContent = `${tabDeals.length} deal${tabDeals.length === 1 ? '' : 's'}`;
 
   const expEl = document.getElementById(`${tableId}-export`);
@@ -1417,57 +1548,69 @@ function renderSummaryView() {
 }
 
 // ============================================================
-// PIPELINE VIEWS BAR
+// VIEWS BARS (Summary + Commits)
 // ============================================================
-function renderPipelineViewsBar() {
-  const bar = document.getElementById('pipeline-views-bar');
+function _renderViewsBar({ barId, views, activeView, setActive, rerender, context }) {
+  const bar = document.getElementById(barId);
   if (!bar) return;
 
-  const btnStyle = (active) => `
-    padding:5px 12px;border-radius:16px;border:1px solid var(--border);
-    background:${active ? 'var(--series-1)' : 'var(--surface-1)'};
-    color:${active ? '#fff' : 'var(--text)'};font-size:12px;cursor:pointer;white-space:nowrap;`;
+  const btnStyle = active => `padding:5px 12px;border-radius:16px;border:1px solid var(--border);background:${active ? 'var(--series-1)' : 'var(--surface-1)'};color:${active ? '#fff' : 'var(--text)'};font-size:12px;cursor:pointer;white-space:nowrap;`;
 
-  const allBtn = `<button style="${btnStyle(!activePipelineView)}" id="pv-btn-all">All Deals</button>`;
-
-  const viewBtns = PIPELINE_VIEWS.map(v =>
-    `<button style="${btnStyle(activePipelineView?.id === v.id)}" class="pv-view-btn" data-id="${v.id}">${escapeHtml(v.name)}</button>`
+  const allBtn = `<button style="${btnStyle(!activeView)}" id="${barId}-all">All Deals</button>`;
+  const viewBtns = views.map(v =>
+    `<button style="${btnStyle(activeView?.id === v.id)}" class="${barId}-view-btn" data-id="${v.id}">${escapeHtml(v.name)}</button>`
   ).join('');
-
-  const newBtn = `<button style="padding:5px 12px;border-radius:16px;border:1px dashed var(--border);background:transparent;color:var(--text-muted);font-size:12px;cursor:pointer;" id="pv-new-btn">+ New View</button>`;
+  const newBtn = `<button style="padding:5px 12px;border-radius:16px;border:1px dashed var(--border);background:transparent;color:var(--text-muted);font-size:12px;cursor:pointer;" id="${barId}-new">+ New View</button>`;
 
   bar.innerHTML = allBtn + viewBtns + newBtn;
 
-  bar.querySelector('#pv-btn-all').onclick = () => {
-    activePipelineView = null;
-    renderSummaryView();
-  };
-
-  bar.querySelectorAll('.pv-view-btn').forEach(btn => {
-    btn.onclick = () => {
-      const id = Number(btn.dataset.id);
-      activePipelineView = PIPELINE_VIEWS.find(v => v.id === id) || null;
-      renderSummaryView();
-    };
-    btn.ondblclick = () => {
-      const id = Number(btn.dataset.id);
-      const view = PIPELINE_VIEWS.find(v => v.id === id);
-      if (view) openViewBuilder(view);
-    };
+  bar.querySelector(`#${barId}-all`).onclick = () => { setActive(null); rerender(); };
+  bar.querySelectorAll(`.${barId}-view-btn`).forEach(btn => {
+    btn.onclick = () => { setActive(views.find(v => v.id === Number(btn.dataset.id)) || null); rerender(); };
+    btn.ondblclick = () => { const v = views.find(v => v.id === Number(btn.dataset.id)); if (v) openViewBuilder(v, context); };
   });
-
-  bar.querySelector('#pv-new-btn').onclick = () => openViewBuilder(null);
+  bar.querySelector(`#${barId}-new`).onclick = () => openViewBuilder(null, context);
 }
 
-function openViewBuilder(view) {
+function renderPipelineViewsBar() {
+  const summaryViews = PIPELINE_VIEWS.filter(v => !v.view_context || v.view_context === 'summary');
+  _renderViewsBar({
+    barId: 'pipeline-views-bar', views: summaryViews,
+    activeView: activePipelineView,
+    setActive: v => { activePipelineView = v; },
+    rerender: renderSummaryView,
+    context: 'summary',
+  });
+}
+
+function renderCommitViewsBar() {
+  const commitViews = PIPELINE_VIEWS.filter(v => v.view_context === 'commits');
+  _renderViewsBar({
+    barId: 'commit-views-bar', views: commitViews,
+    activeView: activeCommitView,
+    setActive: v => {
+      activeCommitView = v;
+      if (v?.group_by) commitGroupBy = v.group_by;
+    },
+    rerender: renderReviewView,
+    context: 'commits',
+  });
+}
+
+function openViewBuilder(view, context) {
+  const viewContext = view?.view_context || context || 'summary';
   const allDealTypes = [...new Set(DEALS.map(d => d.deal_type).filter(Boolean))].sort();
-  const allStages = [...new Set(DEALS.map(d => d.stage).filter(Boolean))].sort();
+  // Use CRM_STAGES table if populated; otherwise fall back to what's in DEALS
+  const allStages = CRM_STAGES.length
+    ? CRM_STAGES.map(s => s.stage_name)
+    : [...new Set(DEALS.map(d => d.stage).filter(Boolean))].sort();
 
   const editId = view?.id || null;
   const name = view?.name || '';
   const selTypes = new Set(view?.deal_types || []);
   const selStages = new Set(view?.stages || []);
   const minProb = view?.min_probability ?? 70;
+  const curGroupBy = view?.group_by || 'deal';
   const visibleCols = new Set(view?.visible_columns?.length
     ? view.visible_columns
     : ['farming','hunting','total','target','trend','prevMiss','variance']);
@@ -1503,7 +1646,7 @@ function openViewBuilder(view) {
   const panel = document.getElementById('vb-panel');
   panel.innerHTML = `
     <div style="display:flex;align-items:center;margin-bottom:16px;">
-      <h3 style="margin:0;font-size:15px;">${editId ? 'Edit View' : 'New Pipeline View'}</h3>
+      <h3 style="margin:0;font-size:15px;">${editId ? 'Edit View' : (viewContext === 'commits' ? 'New Commits View' : 'New Summary View')}</h3>
       <button id="vb-close" style="margin-left:auto;background:none;border:none;font-size:18px;cursor:pointer;color:var(--text-muted);">✕</button>
     </div>
 
@@ -1533,10 +1676,19 @@ function openViewBuilder(view) {
         style="width:100px;padding:7px 10px;border:1px solid var(--border);border-radius:6px;background:var(--surface-1);color:var(--text);font-size:13px;outline:none;">
     </div>
 
+    ${viewContext === 'commits' ? `
+    <div style="margin-bottom:14px;">
+      <label style="font-size:12px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:8px;">GROUP BY</label>
+      <div style="display:flex;gap:6px;">
+        <button class="vb-grp-btn stage-capsule${curGroupBy === 'deal' ? ' active' : ''}" data-grp="deal">Deal</button>
+        <button class="vb-grp-btn stage-capsule${curGroupBy === 'account' ? ' active' : ''}" data-grp="account">Account</button>
+        <button class="vb-grp-btn stage-capsule${curGroupBy === 'bu' ? ' active' : ''}" data-grp="bu">Business Unit</button>
+      </div>
+    </div>` : `
     <div style="margin-bottom:20px;">
       <label style="font-size:12px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:8px;">COLUMNS TO SHOW</label>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:2px;">${colCheckboxesHtml}</div>
-    </div>
+    </div>`}
 
     <div style="display:flex;gap:8px;">
       <button id="vb-save" style="padding:8px 18px;border-radius:8px;border:none;background:var(--series-1,#3b82f6);color:#fff;font-size:13px;font-weight:600;cursor:pointer;">
@@ -1564,6 +1716,13 @@ function openViewBuilder(view) {
   panel.querySelector('#vb-stages-none').onclick = () =>
     panel.querySelectorAll('.vb-stage-cap').forEach(b => b.classList.remove('active'));
 
+  panel.querySelectorAll('.vb-grp-btn').forEach(btn => {
+    btn.onclick = () => {
+      panel.querySelectorAll('.vb-grp-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+    };
+  });
+
   panel.querySelector('#vb-save').onclick = async () => {
     const viewName = panel.querySelector('#vb-name').value.trim();
     if (!viewName) { alert('Please enter a view name.'); return; }
@@ -1572,8 +1731,10 @@ function openViewBuilder(view) {
     const stages = [...panel.querySelectorAll('.vb-stage-cap.active')].map(b => b.dataset.val);
     const min_probability = Math.max(0, Math.min(100, parseInt(panel.querySelector('#vb-prob').value) || 0));
     const visible_columns = [...panel.querySelectorAll('.vb-col-chk:checked')].map(b => b.dataset.col);
+    const group_by = panel.querySelector('.vb-grp-btn.active')?.dataset?.grp || 'deal';
 
-    const payload = { name: viewName, deal_types, stages, min_probability, visible_columns };
+    const payload = { name: viewName, deal_types, stages, min_probability, visible_columns,
+      view_context: viewContext, group_by };
 
     try {
       if (editId) {
@@ -1584,7 +1745,7 @@ function openViewBuilder(view) {
       }
       PIPELINE_VIEWS = await sb('pipeline_views?select=*&order=display_order.asc');
       overlay.style.display = 'none';
-      renderSummaryView();
+      if (viewContext === 'commits') renderReviewView(); else renderSummaryView();
     } catch (err) {
       alert('Failed to save view: ' + err.message);
     }
@@ -1596,8 +1757,9 @@ function openViewBuilder(view) {
       await sbPost(`pipeline_views?id=eq.${editId}`, null, 'DELETE');
       PIPELINE_VIEWS = await sb('pipeline_views?select=*&order=display_order.asc');
       if (activePipelineView?.id === editId) activePipelineView = null;
+      if (activeCommitView?.id === editId) activeCommitView = null;
       overlay.style.display = 'none';
-      renderSummaryView();
+      if (viewContext === 'commits') renderReviewView(); else renderSummaryView();
     } catch (err) {
       alert('Failed to delete view: ' + err.message);
     }
