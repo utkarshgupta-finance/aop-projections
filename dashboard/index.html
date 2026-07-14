@@ -472,6 +472,10 @@ async function main() {
     return;
   }
 
+  // Apply bu_override → business_unit for any deal where the override hasn't been
+  // propagated yet (e.g. override was set after the last sync).
+  DEALS = DEALS.map(d => d.bu_override ? { ...d, business_unit: d.bu_override } : d);
+
   MRR_DATES = [...new Set(MRR_SNAPSHOTS.map(s => s.snapshot_date))].sort();
   NRR_DATES = [...new Set(NRR_SNAPSHOTS.map(s => s.snapshot_date))].sort();
   const knownOrder = BU_ORDER;
@@ -531,6 +535,7 @@ async function main() {
         sb('hunting_pipeline_snapshots?select=*&order=synced_at.desc').catch(() => []),
         sb('pipeline_views?select=*&order=display_order.asc').catch(() => []),
       ]);
+      DEALS = DEALS.map(d => d.bu_override ? { ...d, business_unit: d.bu_override } : d);
       MRR_DATES = [...new Set(MRR_SNAPSHOTS.map(s => s.snapshot_date))].sort();
       NRR_DATES = [...new Set(NRR_SNAPSHOTS.map(s => s.snapshot_date))].sort();
 
