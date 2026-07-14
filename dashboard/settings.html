@@ -411,27 +411,36 @@ async function renderSettings() {
   // BU Override save
   if (overrideDeals.length > 0) {
     document.getElementById('save-overrides-btn').addEventListener('click', async () => {
+      const btn = document.getElementById('save-overrides-btn');
       const msg = document.getElementById('overrides-msg');
+      if (!msg) { alert('UI error: overrides-msg element not found'); return; }
       msg.textContent = '';
       msg.className = 'msg';
+      btn.disabled = true;
+      btn.textContent = 'Saving…';
       try {
         const selects = document.querySelectorAll('[data-override-id]');
+        console.log('[BU Override] saving', selects.length, 'deals');
         for (const sel of selects) {
           const dealId = sel.getAttribute('data-override-id');
           const patch = { bu_override: sel.value || null };
-          // Also update business_unit immediately when an override is set,
-          // so the dashboard reflects it without needing a sync first.
           if (sel.value) patch.business_unit = sel.value;
+          console.log('[BU Override] patching deal', dealId, patch);
           await authedFetch(`deals?deal_id=eq.${encodeURIComponent(dealId)}`, {
             method: 'PATCH',
             body: JSON.stringify(patch),
           });
         }
-        msg.textContent = 'Saved.';
+        msg.textContent = 'Saved ✓';
         msg.className = 'msg success';
+        btn.textContent = 'Saved ✓';
+        setTimeout(() => { btn.textContent = 'Save BU Overrides'; btn.disabled = false; }, 2000);
       } catch (err) {
-        msg.textContent = err.message;
+        console.error('[BU Override] save error:', err);
+        msg.textContent = err.message || String(err);
         msg.className = 'msg error';
+        btn.textContent = 'Save BU Overrides';
+        btn.disabled = false;
       }
     });
   }
