@@ -188,6 +188,10 @@
     <div id="modal-content"></div>
   </div>
 </div>
+<div id="vb-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:200;align-items:center;justify-content:center;">
+  <div id="vb-panel" style="background:var(--surface-1);border:1px solid var(--border);border-radius:12px;padding:24px;max-width:600px;width:90%;max-height:80vh;overflow-y:auto;">
+  </div>
+</div>
   <div class="wrap">
     <div class="topbar">
       <div>
@@ -1409,6 +1413,194 @@ function renderSummaryView() {
       currentViewMode = 'bu-detail';
       render();
     });
+  });
+}
+
+// ============================================================
+// PIPELINE VIEWS BAR
+// ============================================================
+function renderPipelineViewsBar() {
+  const bar = document.getElementById('pipeline-views-bar');
+  if (!bar) return;
+
+  const btnStyle = (active) => `
+    padding:5px 12px;border-radius:16px;border:1px solid var(--border);
+    background:${active ? 'var(--series-1)' : 'var(--surface-1)'};
+    color:${active ? '#fff' : 'var(--text)'};font-size:12px;cursor:pointer;white-space:nowrap;`;
+
+  const allBtn = `<button style="${btnStyle(!activePipelineView)}" id="pv-btn-all">All Deals</button>`;
+
+  const viewBtns = PIPELINE_VIEWS.map(v =>
+    `<button style="${btnStyle(activePipelineView?.id === v.id)}" class="pv-view-btn" data-id="${v.id}">${escapeHtml(v.name)}</button>`
+  ).join('');
+
+  const newBtn = `<button style="padding:5px 12px;border-radius:16px;border:1px dashed var(--border);background:transparent;color:var(--text-muted);font-size:12px;cursor:pointer;" id="pv-new-btn">+ New View</button>`;
+
+  bar.innerHTML = allBtn + viewBtns + newBtn;
+
+  bar.querySelector('#pv-btn-all').onclick = () => {
+    activePipelineView = null;
+    renderSummaryView();
+  };
+
+  bar.querySelectorAll('.pv-view-btn').forEach(btn => {
+    btn.onclick = () => {
+      const id = Number(btn.dataset.id);
+      activePipelineView = PIPELINE_VIEWS.find(v => v.id === id) || null;
+      renderSummaryView();
+    };
+    btn.ondblclick = () => {
+      const id = Number(btn.dataset.id);
+      const view = PIPELINE_VIEWS.find(v => v.id === id);
+      if (view) openViewBuilder(view);
+    };
+  });
+
+  bar.querySelector('#pv-new-btn').onclick = () => openViewBuilder(null);
+}
+
+function openViewBuilder(view) {
+  const allDealTypes = [...new Set(DEALS.map(d => d.deal_type).filter(Boolean))].sort();
+  const allStages = [...new Set(DEALS.map(d => d.stage).filter(Boolean))].sort();
+
+  const editId = view?.id || null;
+  const name = view?.name || '';
+  const selTypes = new Set(view?.deal_types || []);
+  const selStages = new Set(view?.stages || []);
+  const minProb = view?.min_probability ?? 70;
+  const visibleCols = new Set(view?.visible_columns?.length
+    ? view.visible_columns
+    : ['farming','hunting','total','target','trend','prevMiss','variance']);
+
+  const ALL_COLS = [
+    { key: 'trend', label: 'Trend Sparkline' },
+    { key: 'farming', label: 'Farming Commit' },
+    { key: 'hunting', label: 'Hunting Commit' },
+    { key: 'total', label: 'Total Commit' },
+    { key: 'target', label: 'Target' },
+    { key: 'prevMiss', label: 'Prev Month Carry' },
+    { key: 'variance', label: 'Variance' },
+  ];
+
+  const typeCapsulesHtml = allDealTypes.map(t => {
+    const active = selTypes.has(t);
+    return `<button class="vb-type-cap stage-capsule${active ? ' active' : ''}" data-val="${escapeHtml(t)}" style="margin:2px;">${escapeHtml(t)}</button>`;
+  }).join('');
+
+  const stageCapsulesHtml = allStages.map(s => {
+    const active = selStages.has(s);
+    return `<button class="vb-stage-cap stage-capsule${active ? ' active' : ''}" data-val="${escapeHtml(s)}" style="margin:2px;">${escapeHtml(s)}</button>`;
+  }).join('');
+
+  const colCheckboxesHtml = ALL_COLS.map(c =>
+    `<label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;padding:3px 0;">
+      <input type="checkbox" class="vb-col-chk" data-col="${c.key}" ${visibleCols.has(c.key) ? 'checked' : ''}>
+      ${escapeHtml(c.label)}
+    </label>`
+  ).join('');
+
+  const overlay = document.getElementById('vb-overlay');
+  const panel = document.getElementById('vb-panel');
+  panel.innerHTML = `
+    <div style="display:flex;align-items:center;margin-bottom:16px;">
+      <h3 style="margin:0;font-size:15px;">${editId ? 'Edit View' : 'New Pipeline View'}</h3>
+      <button id="vb-close" style="margin-left:auto;background:none;border:none;font-size:18px;cursor:pointer;color:var(--text-muted);">✕</button>
+    </div>
+
+    <div style="margin-bottom:14px;">
+      <label style="font-size:12px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:5px;">VIEW NAME</label>
+      <input id="vb-name" type="text" value="${escapeHtml(name)}" placeholder="e.g. MRR Commit"
+        style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:6px;background:var(--surface-1);color:var(--text);font-size:13px;box-sizing:border-box;outline:none;">
+    </div>
+
+    <div style="margin-bottom:14px;">
+      <label style="font-size:12px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:5px;">DEAL TYPES <span style="font-weight:400;color:var(--text-muted)">(empty = all)</span></label>
+      <div id="vb-types" style="display:flex;flex-wrap:wrap;gap:4px;">${typeCapsulesHtml}</div>
+    </div>
+
+    <div style="margin-bottom:14px;">
+      <label style="font-size:12px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:5px;">STAGES <span style="font-weight:400;color:var(--text-muted)">(empty = all)</span></label>
+      <div style="display:flex;gap:6px;margin-bottom:6px;">
+        <button id="vb-stages-all" class="stage-capsule" style="font-size:11px;padding:3px 8px;">Select All</button>
+        <button id="vb-stages-none" class="stage-capsule" style="font-size:11px;padding:3px 8px;">Clear All</button>
+      </div>
+      <div id="vb-stages" style="display:flex;flex-wrap:wrap;gap:4px;">${stageCapsulesHtml}</div>
+    </div>
+
+    <div style="margin-bottom:14px;">
+      <label style="font-size:12px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:5px;">MIN PROBABILITY (%)</label>
+      <input id="vb-prob" type="number" min="0" max="100" value="${minProb}"
+        style="width:100px;padding:7px 10px;border:1px solid var(--border);border-radius:6px;background:var(--surface-1);color:var(--text);font-size:13px;outline:none;">
+    </div>
+
+    <div style="margin-bottom:20px;">
+      <label style="font-size:12px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:8px;">COLUMNS TO SHOW</label>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:2px;">${colCheckboxesHtml}</div>
+    </div>
+
+    <div style="display:flex;gap:8px;">
+      <button id="vb-save" style="padding:8px 18px;border-radius:8px;border:none;background:var(--series-1,#3b82f6);color:#fff;font-size:13px;font-weight:600;cursor:pointer;">
+        ${editId ? 'Update View' : 'Save View'}
+      </button>
+      ${editId ? `<button id="vb-delete" style="padding:8px 18px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--bad,#ef4444);font-size:13px;cursor:pointer;">Delete</button>` : ''}
+      <button id="vb-cancel" style="margin-left:auto;padding:8px 18px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--text);font-size:13px;cursor:pointer;">Cancel</button>
+    </div>`;
+
+  overlay.style.display = 'flex';
+
+  panel.querySelector('#vb-close').onclick = () => { overlay.style.display = 'none'; };
+  panel.querySelector('#vb-cancel').onclick = () => { overlay.style.display = 'none'; };
+  overlay.onclick = e => { if (e.target === overlay) overlay.style.display = 'none'; };
+
+  panel.querySelectorAll('.vb-type-cap').forEach(btn => {
+    btn.onclick = () => { btn.classList.toggle('active'); };
+  });
+
+  panel.querySelectorAll('.vb-stage-cap').forEach(btn => {
+    btn.onclick = () => { btn.classList.toggle('active'); };
+  });
+  panel.querySelector('#vb-stages-all').onclick = () =>
+    panel.querySelectorAll('.vb-stage-cap').forEach(b => b.classList.add('active'));
+  panel.querySelector('#vb-stages-none').onclick = () =>
+    panel.querySelectorAll('.vb-stage-cap').forEach(b => b.classList.remove('active'));
+
+  panel.querySelector('#vb-save').onclick = async () => {
+    const viewName = panel.querySelector('#vb-name').value.trim();
+    if (!viewName) { alert('Please enter a view name.'); return; }
+
+    const deal_types = [...panel.querySelectorAll('.vb-type-cap.active')].map(b => b.dataset.val);
+    const stages = [...panel.querySelectorAll('.vb-stage-cap.active')].map(b => b.dataset.val);
+    const min_probability = Math.max(0, Math.min(100, parseInt(panel.querySelector('#vb-prob').value) || 0));
+    const visible_columns = [...panel.querySelectorAll('.vb-col-chk:checked')].map(b => b.dataset.col);
+
+    const payload = { name: viewName, deal_types, stages, min_probability, visible_columns };
+
+    try {
+      if (editId) {
+        await sbPost(`pipeline_views?id=eq.${editId}`, payload, 'PATCH');
+      } else {
+        payload.display_order = PIPELINE_VIEWS.length;
+        await sbPost('pipeline_views', payload, 'POST');
+      }
+      PIPELINE_VIEWS = await sb('pipeline_views?select=*&order=display_order.asc');
+      overlay.style.display = 'none';
+      renderSummaryView();
+    } catch (err) {
+      alert('Failed to save view: ' + err.message);
+    }
+  };
+
+  panel.querySelector('#vb-delete')?.addEventListener('click', async () => {
+    if (!confirm('Delete this view?')) return;
+    try {
+      await sbPost(`pipeline_views?id=eq.${editId}`, null, 'DELETE');
+      PIPELINE_VIEWS = await sb('pipeline_views?select=*&order=display_order.asc');
+      if (activePipelineView?.id === editId) activePipelineView = null;
+      overlay.style.display = 'none';
+      renderSummaryView();
+    } catch (err) {
+      alert('Failed to delete view: ' + err.message);
+    }
   });
 }
 
