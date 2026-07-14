@@ -992,7 +992,9 @@ function renderDealsTableWith({ dealsById, periodTab, snapshots, metric, tableId
   const minProb = commitView ? commitView.min_probability : 70;
   const matchesCommitView = d => {
     if (commitView?.deal_types?.length && !commitView.deal_types.includes(d.deal_type)) return false;
-    if (commitView?.stages?.length && !commitView.stages.includes(d.stage)) return false;
+    // Only apply stage filter when the deal actually has a stage value (hunting deals).
+    // Farming/existing deals have stage=null and should not be excluded by the stage filter.
+    if (commitView?.stages?.length && d.stage && !commitView.stages.includes(d.stage)) return false;
     return true;
   };
 
@@ -1554,12 +1556,17 @@ function _renderViewsBar({ barId, views, activeView, setActive, rerender, contex
   const bar = document.getElementById(barId);
   if (!bar) return;
 
-  const btnStyle = active => `padding:5px 12px;border-radius:16px;border:1px solid var(--border);background:${active ? 'var(--series-1)' : 'var(--surface-1)'};color:${active ? '#fff' : 'var(--text)'};font-size:12px;cursor:pointer;white-space:nowrap;`;
+  const btnStyle = active => `padding:5px 12px;border-radius:16px;border:1px solid var(--border);background:${active ? 'var(--series-1)' : 'var(--surface-1)'};color:${active ? '#fff' : 'var(--text-primary)'};font-size:12px;cursor:pointer;white-space:nowrap;`;
+  const editBtnStyle = `padding:2px 5px;border-radius:10px;border:none;background:rgba(255,255,255,0.25);color:inherit;font-size:10px;cursor:pointer;margin-left:4px;line-height:1;vertical-align:middle;opacity:0.8;`;
 
   const allBtn = `<button style="${btnStyle(!activeView)}" id="${barId}-all">All Deals</button>`;
-  const viewBtns = views.map(v =>
-    `<button style="${btnStyle(activeView?.id === v.id)}" class="${barId}-view-btn" data-id="${v.id}">${escapeHtml(v.name)}</button>`
-  ).join('');
+  const viewBtns = views.map(v => {
+    const active = activeView?.id === v.id;
+    return `<span style="display:inline-flex;align-items:center;border-radius:16px;border:1px solid var(--border);background:${active ? 'var(--series-1)' : 'var(--surface-1)'};overflow:hidden;">` +
+      `<button style="padding:5px 10px 5px 12px;border:none;background:transparent;color:${active ? '#fff' : 'var(--text-primary)'};font-size:12px;cursor:pointer;white-space:nowrap;" class="${barId}-view-btn" data-id="${v.id}">${escapeHtml(v.name)}</button>` +
+      `<button style="${editBtnStyle}${active ? '' : 'background:rgba(0,0,0,0.07);color:var(--text-muted);'}" class="${barId}-edit-btn" data-id="${v.id}" title="Edit view">✎</button>` +
+      `</span>`;
+  }).join('');
   const newBtn = `<button style="padding:5px 12px;border-radius:16px;border:1px dashed var(--border);background:transparent;color:var(--text-muted);font-size:12px;cursor:pointer;" id="${barId}-new">+ New View</button>`;
 
   bar.innerHTML = allBtn + viewBtns + newBtn;
@@ -1567,7 +1574,9 @@ function _renderViewsBar({ barId, views, activeView, setActive, rerender, contex
   bar.querySelector(`#${barId}-all`).onclick = () => { setActive(null); rerender(); };
   bar.querySelectorAll(`.${barId}-view-btn`).forEach(btn => {
     btn.onclick = () => { setActive(views.find(v => v.id === Number(btn.dataset.id)) || null); rerender(); };
-    btn.ondblclick = () => { const v = views.find(v => v.id === Number(btn.dataset.id)); if (v) openViewBuilder(v, context); };
+  });
+  bar.querySelectorAll(`.${barId}-edit-btn`).forEach(btn => {
+    btn.onclick = e => { e.stopPropagation(); const v = views.find(v => v.id === Number(btn.dataset.id)); if (v) openViewBuilder(v, context); };
   });
   bar.querySelector(`#${barId}-new`).onclick = () => openViewBuilder(null, context);
 }
