@@ -94,7 +94,7 @@ async function coql(token: string, query: string): Promise<any[]> {
   return data;
 }
 
-// Fetch main universe deals (probability >= 70) for the full quarter date range.
+// Fetch all universe deals (any probability) for the full quarter date range.
 async function fetchUniverseDeals(token: string, dayBefore: string, end: string) {
   const rows: any[] = [];
   let offset = 0;
@@ -104,7 +104,7 @@ async function fetchUniverseDeals(token: string, dayBefore: string, end: string)
       `select id, Deal_Name, Closing_Date, Probability, MRR_Amount, NRR_Amount, Currency, ` +
       `Deal_Type_New_or_Existing, Account_Name from Deals where ` +
       `(Closing_Date > '${dayBefore}' and Closing_Date <= '${end}') ` +
-      `and Probability >= 70 limit ${offset},${pageSize}`;
+      `limit ${offset},${pageSize}`;
     const page = await coql(token, query);
     rows.push(...page);
     if (page.length < pageSize) break;
@@ -323,9 +323,9 @@ Deno.serve(async (req: Request) => {
 
     const token = await getAccessToken();
 
-    // ---- Universe deals (prob >= 70, for MRR/NRR commit tracking) ----
+    // ---- Universe deals (all probabilities, for MRR/NRR commit tracking) ----
     const dealsRaw = await fetchUniverseDeals(token, dayBefore, end);
-    console.log(`Zoho raw deals (>=70%): ${dealsRaw.length}`);
+    console.log(`Zoho raw deals (all probabilities): ${dealsRaw.length}`);
 
     // ---- Account name lookup for deals with object-style Account_Name ----
     const accountIdsToLookup = new Set<string>();
@@ -358,6 +358,7 @@ Deno.serve(async (req: Request) => {
         mrrInr: mrr === 0 ? 0 : Math.round(mrr * rate * 100) / 100,
         nrrInr: nrr === 0 ? 0 : Math.round(nrr * rate * 100) / 100,
         probability: d.Probability, closingDate: d.Closing_Date,
+        currency: (d.Currency as string) || 'INR',
       });
     }
     console.log(`Universe: ${universe.length}`);
@@ -399,15 +400,41 @@ Deno.serve(async (req: Request) => {
       if (isFlagged) flagged.push({ id: d.id, name: d.name, tags: tagsByDeal.get(d.id) });
     }
 
+    // ---- Build hunting data map (stage, deal_owner, amounts) ----
+    const huntingDataById = new Map<string, {
+      stage: string; deal_owner: string; probability: number;
+      mrrInr: number; nrrInr: number; currency: string; accountName: string;
+    }>();
+    for (const d of huntingRaw) {
+      const cur  = (d.Currency as string) || 'INR';
+      const rate = CURRENCY_RATES[cur] ?? 1;
+      const mrr  = d.MRR_Amount ?? 0;
+      const nrr  = d.NRR_Amount ?? 0;
+      let acct = extractName(d.Account_Name);
+      if (!acct && d.Account_Name?.id) acct = accountNameMap.get(String(d.Account_Name.id)) ?? '';
+      huntingDataById.set(String(d.id), {
+        stage:      typeof d.Stage === 'string' ? d.Stage : extractName(d.Stage),
+        deal_owner: extractName(d.Owner),
+        probability: d.Probability ?? 0,
+        mrrInr:     mrr === 0 ? 0 : Math.round(mrr * rate * 100) / 100,
+        nrrInr:     nrr === 0 ? 0 : Math.round(nrr * rate * 100) / 100,
+        currency:   cur,
+        accountName: acct,
+      });
+    }
+
     // ---- Fetch existing deals (for bu_override and name history) ----
-    const dealIds = universe.map(d => d.id);
+    const universeIds = new Set(universe.map(d => d.id));
+    const huntingOnlyIds = huntingRaw.map(d => String(d.id)).filter(id => !universeIds.has(id));
+    const allDealIds = [...universe.map(d => d.id), ...huntingOnlyIds];
     const { data: existingDeals, error: fetchErr } = await supabase
       .from('deals')
       .select('deal_id, current_name, name_history, business_unit, bu_override')
-      .in('deal_id', dealIds);
+      .in('deal_id', allDealIds);
     if (fetchErr) throw fetchErr;
     const existingByDeal = new Map((existingDeals ?? []).map((r: any) => [r.deal_id, r]));
 
+    // Universe deals — includes hunting deals that have MRR or NRR values
     const dealRows = universe.map(d => {
       const existing    = existingByDeal.get(d.id);
       const nameHistory = existing?.name_history ?? [];
@@ -415,16 +442,54 @@ Deno.serve(async (req: Request) => {
       const buOverride  = existing?.bu_override ?? null;
       const businessUnit = buOverride
         ?? (d.businessUnit !== null ? d.businessUnit : (existing?.business_unit ?? 'UNMAPPED'));
+      const hd = huntingDataById.get(d.id);
       return {
         deal_id: d.id, deal_type: d.dealType, current_name: d.name,
         name_history: renamed ? [...nameHistory, existing.current_name] : nameHistory,
         business_unit: businessUnit, bu_override: buOverride,
         account_name: d.accountName,
-        closing_date: d.closingDate, updated_at: now.toISOString(),
+        closing_date: d.closingDate,
+        probability: d.probability,
+        mrr_inr: d.mrrInr,
+        nrr_inr: d.nrrInr,
+        currency: d.currency,
+        quarter: targetQuarter,
+        stage:      hd?.stage      ?? null,
+        deal_owner: hd?.deal_owner ?? null,
+        updated_at: now.toISOString(),
       };
     });
 
-    const { error: dealsErr } = await supabase.from('deals').upsert(dealRows, { onConflict: 'deal_id' });
+    // Hunting-only deals — deal_type='Hunting' with no MRR or NRR value in universe
+    const huntingOnlyRows = huntingOnlyIds.map(dealId => {
+      const d  = huntingRaw.find(r => String(r.id) === dealId)!;
+      const hd = huntingDataById.get(dealId)!;
+      const existing   = existingByDeal.get(dealId);
+      const nameHistory = existing?.name_history ?? [];
+      const renamed     = existing && existing.current_name !== (d.Deal_Name ?? '');
+      const buOverride  = existing?.bu_override ?? null;
+      const { bu: rawBU } = resolveBU(d.Deal_Name ?? '', tagsByDeal.get(dealId));
+      const businessUnit = buOverride
+        ?? (rawBU !== null ? rawBU : (existing?.business_unit ?? 'UNMAPPED'));
+      return {
+        deal_id: dealId, deal_type: 'Hunting', current_name: d.Deal_Name ?? '',
+        name_history: renamed ? [...nameHistory, existing!.current_name] : nameHistory,
+        business_unit: businessUnit, bu_override: buOverride,
+        account_name: hd.accountName,
+        closing_date: d.Closing_Date ?? null,
+        probability: hd.probability,
+        mrr_inr: hd.mrrInr,
+        nrr_inr: hd.nrrInr,
+        currency: hd.currency,
+        quarter: targetQuarter,
+        stage: hd.stage,
+        deal_owner: hd.deal_owner,
+        updated_at: now.toISOString(),
+      };
+    });
+
+    const allDealRows = [...dealRows, ...huntingOnlyRows];
+    const { error: dealsErr } = await supabase.from('deals').upsert(allDealRows, { onConflict: 'deal_id' });
     if (dealsErr) throw dealsErr;
 
     // ---- MRR / NRR snapshots ----
@@ -444,102 +509,49 @@ Deno.serve(async (req: Request) => {
       .upsert(nrrRows, { onConflict: 'deal_id,snapshot_date' });
     if (nrrErr) throw nrrErr;
 
-    // Fetch existing BU values for hunting deals — used as fallback if BU lookup still fails
+    // ---- Snapshot of current hunting pipeline state for movement tracking ----
     const huntingIds = huntingRaw.map(d => String(d.id));
-    const { data: existingHuntingData } = huntingIds.length > 0
-      ? await supabase.from('hunting_pipeline').select('deal_id, business_unit').in('deal_id', huntingIds)
-      : { data: [] };
-    const existingHuntingBU = new Map(
-      (existingHuntingData ?? []).map((r: any) => [r.deal_id, r.business_unit as string | null])
-    );
-
-    const huntingRows = huntingRaw.map(d => {
-      const currency = d.Currency as string;
-      const rate     = CURRENCY_RATES[currency] ?? 1;
-      const mrr      = d.MRR_Amount ?? 0;
-      const nrr      = d.NRR_Amount ?? 0;
-      let accountName = extractName(d.Account_Name);
-      if (!accountName && d.Account_Name?.id) {
-        accountName = accountNameMap.get(String(d.Account_Name.id)) ?? '';
-      }
-      const { bu } = resolveBU(d.Deal_Name ?? '', tagsByDeal.get(String(d.id)));
-      // Preserve existing non-UNMAPPED BU as fallback when lookup still fails
-      const existingBU = existingHuntingBU.get(String(d.id));
-      const finalBU = (bu && bu !== 'UNMAPPED') ? bu
-        : (existingBU && existingBU !== 'UNMAPPED') ? existingBU
-        : 'UNMAPPED';
+    const syncedAt = new Date().toISOString();
+    const snapshotRows = huntingRaw.map(d => {
+      const dealId = String(d.id);
+      const hd = huntingDataById.get(dealId)!;
+      const dealRow = allDealRows.find(r => r.deal_id === dealId);
       return {
-        deal_id:       String(d.id),
-        deal_name:     d.Deal_Name ?? '',
-        stage:         typeof d.Stage === 'string' ? d.Stage : extractName(d.Stage),
-        closing_date:  d.Closing_Date ?? null,
-        deal_owner:    extractName(d.Owner),
-        account_name:  accountName,
-        probability:   d.Probability ?? 0,
-        mrr_amount:    mrr,
-        nrr_amount:    nrr,
-        mrr_inr:       mrr === 0 ? 0 : Math.round(mrr * rate * 100) / 100,
-        nrr_inr:       nrr === 0 ? 0 : Math.round(nrr * rate * 100) / 100,
-        currency:      currency || 'INR',
-        quarter:       targetQuarter,
-        business_unit: finalBU,
-        updated_at:    now.toISOString(),
+        synced_at:    syncedAt,
+        deal_id:      dealId,
+        deal_name:    d.Deal_Name ?? '',
+        stage:        hd.stage,
+        closing_date: d.Closing_Date ?? null,
+        deal_owner:   hd.deal_owner,
+        account_name: hd.accountName,
+        probability:  hd.probability,
+        mrr_inr:      hd.mrrInr,
+        nrr_inr:      hd.nrrInr,
+        quarter:      targetQuarter,
+        business_unit: dealRow?.business_unit || 'UNMAPPED',
       };
     });
-
-    const { error: huntingErr } = await supabase.from('hunting_pipeline')
-      .upsert(huntingRows, { onConflict: 'deal_id' });
-    if (huntingErr) throw huntingErr;
-
-    // PostgREST upsert may skip newly-added columns due to schema cache lag.
-    // Use a dedicated SQL function to reliably write business_unit after the upsert.
-    const buMapForSql: Record<string, string> = {};
-    for (const row of huntingRows) {
-      if (row.business_unit) buMapForSql[row.deal_id] = row.business_unit;
-    }
-    if (Object.keys(buMapForSql).length > 0) {
-      const { error: buUpdateErr } = await supabase.rpc('bulk_update_hunting_bu', { bu_map: buMapForSql });
-      if (buUpdateErr) console.warn('bulk_update_hunting_bu error:', JSON.stringify(buUpdateErr));
-    }
-
-    // Also backfill from deals table for any hunting deals tracked there (prob >= 70).
-    await supabase.rpc('backfill_hunting_bu');
-
-    // Insert snapshot of current pipeline state for movement tracking
-    const syncedAt = new Date().toISOString();
-    const snapshotRows = huntingRows.map((r: any) => ({
-      synced_at: syncedAt,
-      deal_id: r.deal_id,
-      deal_name: r.deal_name,
-      stage: r.stage,
-      closing_date: r.closing_date,
-      deal_owner: r.deal_owner,
-      account_name: r.account_name,
-      probability: r.probability,
-      mrr_inr: r.mrr_inr,
-      nrr_inr: r.nrr_inr,
-      quarter: r.quarter,
-      business_unit: r.business_unit,
-    }));
     if (snapshotRows.length > 0) {
       const { error: snapErr } = await supabase.from('hunting_pipeline_snapshots').insert(snapshotRows);
       if (snapErr) console.warn('snapshot insert error:', JSON.stringify(snapErr));
     }
 
     // ---- Summary stats ----
-    const dealsWithBU = dealRows.filter(r => r.business_unit && r.business_unit !== 'UNMAPPED').length;
-    const huntingWithBU = huntingRows.filter(r => r.business_unit && r.business_unit !== 'UNMAPPED').length;
+    const dealsWithBU = allDealRows.filter(r => r.business_unit && r.business_unit !== 'UNMAPPED').length;
+    const huntingWithBU = huntingOnlyRows.filter(r => r.business_unit && r.business_unit !== 'UNMAPPED').length
+      + dealRows.filter(r => r.deal_type === 'Hunting' && r.business_unit && r.business_unit !== 'UNMAPPED').length;
     const huntingTagsResolved = huntingIds.filter(id => tagsByDeal.has(id)).length;
-    console.log(`Done: ${dealRows.length} deals, ${dealsWithBU} with BU, hunting=${huntingRows.length} (${huntingWithBU} with BU, ${huntingTagsResolved} tags resolved), bu_name_missing=${buNameMissing}`);
+    console.log(`Done: ${allDealRows.length} deals (${huntingOnlyRows.length} hunting-only), ${dealsWithBU} with BU, hunting=${huntingIds.length} (${huntingWithBU} with BU, ${huntingTagsResolved} tags resolved), bu_name_missing=${buNameMissing}`);
 
     return new Response(
       JSON.stringify({
         ok: true, snapshot_date: snapshotDate, target_quarter: targetQuarter,
-        deals_upserted: dealRows.length,
+        deals_upserted: allDealRows.length,
         deals_with_bu: dealsWithBU,
+        hunting_only_rows: huntingOnlyRows.length,
         bu_name_missing: buNameMissing,
         mrr_rows: mrrRows.length, nrr_rows: nrrRows.length,
-        hunting_upserted: huntingRows.length,
+        hunting_pipeline_rows: huntingIds.length,
         hunting_with_bu: huntingWithBU,
         hunting_tags_resolved: huntingTagsResolved,
         flagged: flagged.length, flagged_deals: flagged,

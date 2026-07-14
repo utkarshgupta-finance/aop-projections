@@ -181,6 +181,7 @@
   <div class="modal-box">
     <div class="modal-header">
       <p class="modal-title" id="modal-title"></p>
+      <span id="modal-export-area" style="margin-left:auto;margin-right:6px;"></span>
       <button class="modal-close" id="modal-close" aria-label="Close">✕</button>
     </div>
     <div id="modal-search-bar"></div>
@@ -388,6 +389,11 @@ function snapClosingInPeriod(closingDate, periodTab) {
   return periodTab.months.includes(month) && year === periodTab.year;
 }
 
+// True if snapshot row counts as "committed": closing_date in period AND probability >= 70.
+function snapIsCommitted(s, periodTab) {
+  return snapClosingInPeriod(s.closing_date, periodTab) && (s.probability ?? 100) >= 70;
+}
+
 // ---- Tab rendering ----
 function renderTabs() {
   const PERIOD_TABS = computePeriodTabs(currentQuarter);
@@ -585,7 +591,7 @@ function renderModalDealsTable() {
   const snapshotsByDeal = new Map();
   for (const s of snapshots) {
     if (!snapshotsByDeal.has(s.deal_id)) snapshotsByDeal.set(s.deal_id, new Map());
-    snapshotsByDeal.get(s.deal_id).set(s.snapshot_date, { amount: amountOf(s), closing_date: s.closing_date });
+    snapshotsByDeal.get(s.deal_id).set(s.snapshot_date, { amount: amountOf(s), closing_date: s.closing_date, probability: s.probability });
   }
 
   // Validate sort key
@@ -598,7 +604,7 @@ function renderModalDealsTable() {
     .filter(d => d.deal_type === dealType)
     .filter(d => (d.business_unit || 'UNMAPPED') === bu)
     .filter(d => snapshotsByDeal.has(d.deal_id) &&
-      [...snapshotsByDeal.get(d.deal_id).values()].some(e => snapClosingInPeriod(e.closing_date, periodTab)));
+      [...snapshotsByDeal.get(d.deal_id).values()].some(e => snapClosingInPeriod(e.closing_date, periodTab) && (e.probability ?? 100) >= 70));
 
   // Search filter
   if (modalSearch.trim()) {
@@ -716,6 +722,20 @@ function renderModalDealsTable() {
       renderModalDealsTable();
     });
   });
+
+  const modalExpEl = document.getElementById('modal-export-area');
+  if (modalExpEl) {
+    const expHeaders = ['Deal Name', 'Account', ...dates.map(d => colLabel(d)), ...(prevDate ? ['Change'] : [])];
+    const expRows = deals.map(d => {
+      const byDate = snapshotsByDeal.get(d.deal_id);
+      const dateVals = dates.map(date => { const v = snapAmt(byDate, date); return (v !== undefined && v !== null) ? v : ''; });
+      const changeVal = prevDate ? ((snapAmt(byDate, latestDate) ?? 0) - (snapAmt(byDate, prevDate) ?? 0)) : null;
+      return [fullNameChainText(d), d.account_name || '', ...dateVals, ...(prevDate ? [changeVal] : [])];
+    });
+    modalExpEl.innerHTML = `<button class="sync-btn" id="modal-xbtn">↓ Export</button>`;
+    document.getElementById('modal-xbtn').onclick = () =>
+      downloadXLSX(`${bu}_${dealType}_${metric}_${periodTab.label}`, expHeaders, expRows);
+  }
 }
 
 function render() {
@@ -759,6 +779,7 @@ function renderReviewView() {
         <input class="search-input" id="deal-search" type="text" placeholder="Search deal id, name, BU, type..." value="${escapeHtml(searchText)}">
         <select class="filter-select" id="bu-filter"><option value="">All business units</option></select>
         <span class="result-count" id="result-count"></span>
+        <span id="deals-table-export"></span>
       </div>
       <div id="deals-table"></div>
     </div>
@@ -768,6 +789,7 @@ function renderReviewView() {
         <input class="search-input" id="nrr-deal-search" type="text" placeholder="Search deal id, name, BU, type..." value="${escapeHtml(searchText)}">
         <select class="filter-select" id="nrr-bu-filter"><option value="">All business units</option></select>
         <span class="result-count" id="nrr-result-count"></span>
+        <span id="nrr-deals-table-export"></span>
       </div>
       <div id="nrr-deals-table"></div>
     </div>`;
@@ -920,7 +942,7 @@ function renderDealsTableWith({ dealsById, periodTab, snapshots, metric, tableId
   const snapshotsByDeal = new Map();
   for (const s of snapshots) {
     if (!snapshotsByDeal.has(s.deal_id)) snapshotsByDeal.set(s.deal_id, new Map());
-    snapshotsByDeal.get(s.deal_id).set(s.snapshot_date, { amount: amountOfRow(s), closing_date: s.closing_date });
+    snapshotsByDeal.get(s.deal_id).set(s.snapshot_date, { amount: amountOfRow(s), closing_date: s.closing_date, probability: s.probability });
   }
 
   // Helper: effective amount respecting snapshot closing_date vs current period
@@ -928,13 +950,14 @@ function renderDealsTableWith({ dealsById, periodTab, snapshots, metric, tableId
     const e = byDate?.get(date);
     if (e === undefined) return undefined;
     if (!snapClosingInPeriod(e.closing_date, periodTab)) return null;
+    if ((e.probability ?? 100) < 70) return null;
     return e.amount;
   };
 
   let tabDeals = DEALS.filter(d => currentTypeTab === 'combined' || d.deal_type === currentTypeTab)
     .filter(d => !currentBU || (d.business_unit || 'UNMAPPED') === currentBU)
     .filter(d => snapshotsByDeal.has(d.deal_id) &&
-      [...snapshotsByDeal.get(d.deal_id).values()].some(e => snapClosingInPeriod(e.closing_date, periodTab)));
+      [...snapshotsByDeal.get(d.deal_id).values()].some(e => snapClosingInPeriod(e.closing_date, periodTab) && (e.probability ?? 100) >= 70));
 
   const buOptions = [...new Set(tabDeals.map(d => d.business_unit || 'UNMAPPED'))].sort();
   const buFilterEl = document.getElementById(buFilterId);
@@ -975,6 +998,24 @@ function renderDealsTableWith({ dealsById, periodTab, snapshots, metric, tableId
   tabDeals = tabDeals.sort(comparator);
   const rcEl = document.getElementById(resultCountId);
   if (rcEl) rcEl.textContent = `${tabDeals.length} deal${tabDeals.length === 1 ? '' : 's'}`;
+
+  const expEl = document.getElementById(`${tableId}-export`);
+  if (expEl) {
+    const expHeaders = ['Deal ID', 'Deal Name', 'Account', 'Business Unit', 'Type',
+      ...dates.map(d => reviewExpanded ? d : `Latest (${d})`)];
+    const expRows = tabDeals.map(deal => {
+      const byDate = snapshotsByDeal.get(deal.deal_id);
+      return [
+        deal.deal_id, fullNameChainText(deal), deal.account_name || '',
+        deal.business_unit || 'UNMAPPED', deal.deal_type || '',
+        ...dates.map(date => { const v = snapAmt(byDate, date); return (v !== undefined && v !== null) ? v : ''; }),
+      ];
+    });
+    const xId = `${tableId}-xbtn`;
+    expEl.innerHTML = `<button class="sync-btn" id="${xId}">↓ Export</button>`;
+    document.getElementById(xId).onclick = () =>
+      downloadXLSX(`${metric}_${currentPeriodTab}_${latestDate || 'data'}`, expHeaders, expRows);
+  }
 
   const dealsTable = document.getElementById(tableId);
   if (!dealsTable) return;
@@ -1102,7 +1143,7 @@ function renderSummaryView() {
         if (!tabDates.length) continue;
         const lastDate = tabDates[tabDates.length - 1];
         const commit = snapshots
-          .filter(s => s.snapshot_date === lastDate && dealsById.get(s.deal_id)?.business_unit === bu && snapClosingInPeriod(s.closing_date, tab))
+          .filter(s => s.snapshot_date === lastDate && dealsById.get(s.deal_id)?.business_unit === bu && snapIsCommitted(s, tab))
           .reduce((a, s) => a + Number(metric === 'MRR' ? s.mrr_amount : s.nrr_amount), 0);
         const target = targetFor(bu, tab, metric);
         if (target !== undefined) {
@@ -1136,7 +1177,7 @@ function renderSummaryView() {
       const byBU = new Map();
       for (const s of snapshots) {
         if (s.snapshot_date !== date) continue;
-        if (!snapClosingInPeriod(s.closing_date, periodTab)) continue;
+        if (!snapIsCommitted(s, periodTab)) continue;
         const deal = dealsById.get(s.deal_id);
         if (!deal) continue;
         const bu = deal.business_unit || 'UNMAPPED';
@@ -1145,13 +1186,15 @@ function renderSummaryView() {
       sparkMap.set(date, byBU);
     }
 
+    const dealAmount = d => Number(metric === 'MRR' ? d.mrr_inr : d.nrr_inr);
     return buList.map(bu => {
-      const farming = snapshots
-        .filter(s => s.snapshot_date === latestDate && dealsById.get(s.deal_id)?.business_unit === bu && dealsById.get(s.deal_id)?.deal_type === 'Farming' && snapClosingInPeriod(s.closing_date, periodTab))
-        .reduce((a, s) => a + amountOf(s), 0);
-      const hunting = snapshots
-        .filter(s => s.snapshot_date === latestDate && dealsById.get(s.deal_id)?.business_unit === bu && dealsById.get(s.deal_id)?.deal_type === 'Hunting' && snapClosingInPeriod(s.closing_date, periodTab))
-        .reduce((a, s) => a + amountOf(s), 0);
+      const committedDeals = DEALS.filter(d =>
+        d.business_unit === bu &&
+        snapClosingInPeriod(d.closing_date, periodTab) &&
+        (d.probability ?? 100) >= 70
+      );
+      const farming = committedDeals.filter(d => d.deal_type === 'Farming').reduce((a, d) => a + dealAmount(d), 0);
+      const hunting = committedDeals.filter(d => d.deal_type === 'Hunting').reduce((a, d) => a + dealAmount(d), 0);
       const total   = farming + hunting;
       const target  = targetFor(bu, periodTab, metric);
       const variance = target !== undefined ? total - target : null;
@@ -1224,7 +1267,7 @@ function renderSummaryView() {
         <th class="num" data-sort="variance" style="cursor:pointer;">${varColLabel}${sArrow('variance')}</th>
       </tr></thead>
       <tbody>${totalRow}${bodyRows}</tbody>
-    </table></div><p style="font-size:11px;color:var(--text-muted);margin:8px 0 0;">Based on snapshot: ${latestDate}${hasPrevMiss ? ' · Adj. Variance = (Actual − Target) + Prev Month Carry' : ''}</p>`;
+    </table></div><p style="font-size:11px;color:var(--text-muted);margin:8px 0 0;">Current committed pipeline (probability ≥ 70%)${latestDate ? ` · Trend as of ${latestDate}` : ''}${hasPrevMiss ? ' · Adj. Variance = (Actual − Target) + Prev Month Carry' : ''}</p>`;
   }
 
   let mrrRows = buildSummaryRows('MRR', MRR_SNAPSHOTS, latestMRR);
@@ -1274,13 +1317,35 @@ function renderSummaryView() {
 
   document.getElementById('summary-tables').innerHTML = `
     <div class="card">
-      <p class="summary-section-title">MRR Summary · ${escapeHtml(periodTab.label)}</p>
+      <div style="display:flex;align-items:baseline;gap:8px;padding-bottom:8px;border-bottom:1px solid var(--border);margin-bottom:12px;">
+        <span style="font-size:13px;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.04em;">MRR Summary · ${escapeHtml(periodTab.label)}</span>
+        <button id="mrr-sum-xbtn" class="sync-btn" style="margin-left:auto;">↓ Export</button>
+      </div>
       ${summaryTableHtml('MRR', mrrRows, latestMRR)}
     </div>
     <div class="card">
-      <p class="summary-section-title">NRR Summary · ${escapeHtml(periodTab.label)}</p>
+      <div style="display:flex;align-items:baseline;gap:8px;padding-bottom:8px;border-bottom:1px solid var(--border);margin-bottom:12px;">
+        <span style="font-size:13px;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.04em;">NRR Summary · ${escapeHtml(periodTab.label)}</span>
+        <button id="nrr-sum-xbtn" class="sync-btn" style="margin-left:auto;">↓ Export</button>
+      </div>
       ${summaryTableHtml('NRR', nrrRows, latestNRR)}
     </div>`;
+
+  const buildSumExp = (metric, rows) => {
+    const hasPrevMiss = rows.some(r => r.prevMiss !== null);
+    const headers = ['Business Unit', `Farming ${metric}`, `Hunting ${metric}`, 'Total', 'Target',
+      ...(hasPrevMiss ? ['Prev Month Carry'] : []), 'Variance'];
+    const expRows = rows.map(r => [
+      r.bu, r.farming || 0, r.hunting || 0, r.total || 0, r.target ?? '',
+      ...(hasPrevMiss ? [r.prevMiss ?? ''] : []),
+      adjVar(r.variance, r.prevMiss) ?? '',
+    ]);
+    return { headers, expRows };
+  };
+  const { headers: mH, expRows: mR } = buildSumExp('MRR', mrrRows);
+  document.getElementById('mrr-sum-xbtn').onclick = () => downloadXLSX(`MRR_summary_${latestMRR || 'data'}`, mH, mR);
+  const { headers: nH, expRows: nR } = buildSumExp('NRR', nrrRows);
+  document.getElementById('nrr-sum-xbtn').onclick = () => downloadXLSX(`NRR_summary_${latestNRR || 'data'}`, nH, nR);
 
   document.querySelectorAll('.drilldown-cell').forEach(cell => {
     cell.addEventListener('click', () => {
@@ -1494,7 +1559,17 @@ ${rowsHtml}`;
     <td class="num">${fmtINR(Math.round(grandAdjNRR))}</td>
   </tr>`;
 
-  wrap.innerHTML = `<div class="table-scroll"><table>
+  const huntExpHeaders = ['Deal Name', 'Business Unit', 'Stage', 'Probability%', 'Exp MRR', 'Adj MRR', 'Exp NRR', 'Adj NRR', 'Closing Date'];
+  const huntExpRows = deals.map(d => [
+    d.deal_name || d.deal_id, d.business_unit || '', d.stage || '',
+    d.probability || 0,
+    d.mrr_inr || 0, Math.round((d.mrr_inr || 0) * (d.probability || 0) / 100),
+    d.nrr_inr || 0, Math.round((d.nrr_inr || 0) * (d.probability || 0) / 100),
+    d.closing_date || '',
+  ]);
+  wrap.innerHTML = `<div style="display:flex;justify-content:flex-end;margin-bottom:8px;">
+    <button class="sync-btn" id="hunt-sum-xbtn">↓ Export</button>
+  </div><div class="table-scroll"><table>
     <thead><tr>
       <th>Deal Name</th>
       <th>Business Unit</th>
@@ -1507,6 +1582,8 @@ ${rowsHtml}`;
     </tr></thead>
     <tbody>${grandTotalRow}${monthGroupsHtml}</tbody>
   </table></div>`;
+  document.getElementById('hunt-sum-xbtn').onclick = () =>
+    downloadXLSX(`Hunting_${q.label}_${currentQuarter}`, huntExpHeaders, huntExpRows);
 }
 
 // ============================================================
@@ -1600,10 +1677,23 @@ function renderHuntingDetailView(deals, dealsById, q) {
   const dropped = rows.filter(r => r.type === 'dropped').length;
   const changed = rows.filter(r => r.type === 'changed').length;
 
+  const detExpHeaders = ['Change', 'Deal Name', 'Business Unit', 'Stage', 'Details'];
+  const detExpRows = rows.map(r => {
+    const d = r.deal;
+    const detail = r.type === 'added'
+      ? `MRR ${d.mrr_inr || 0} · NRR ${d.nrr_inr || 0} · ${d.probability}% · ${d.stage || ''}`
+      : r.type === 'dropped'
+      ? `was: MRR ${d.mrr_inr || 0} · NRR ${d.nrr_inr || 0} · ${d.probability}% · ${d.stage || ''}`
+      : r.changes.map(c => `${c.field}: ${c.from} → ${c.to}`).join('; ');
+    return [r.type, d.deal_name || d.deal_id, d.business_unit || '', d.stage || '', detail];
+  });
   wrap.innerHTML = `
-    <div style="margin-bottom:8px;font-size:12px;color:var(--text-muted);">
-      Comparing <strong>${fmtTs(prevTime)}</strong> → <strong>${fmtTs(latestTime)}</strong> ·
-      <span class="var-pos">${added} added</span> · <span class="var-neg">${dropped} dropped</span> · ${changed} changed
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+      <div style="font-size:12px;color:var(--text-muted);">
+        Comparing <strong>${fmtTs(prevTime)}</strong> → <strong>${fmtTs(latestTime)}</strong> ·
+        <span class="var-pos">${added} added</span> · <span class="var-neg">${dropped} dropped</span> · ${changed} changed
+      </div>
+      <button class="sync-btn" id="hunt-det-xbtn" style="margin-left:auto;">↓ Export</button>
     </div>
     <div class="table-scroll"><table>
       <thead><tr>
@@ -1615,6 +1705,8 @@ function renderHuntingDetailView(deals, dealsById, q) {
       </tr></thead>
       <tbody>${rowsHtml}</tbody>
     </table></div>`;
+  document.getElementById('hunt-det-xbtn').onclick = () =>
+    downloadXLSX(`Hunting_movement_${currentQuarter}`, detExpHeaders, detExpRows);
 }
 
 // ============================================================
@@ -1634,9 +1726,10 @@ function renderBUDetailView() {
   const buDeals = DEALS.filter(d => (d.business_unit || 'UNMAPPED') === bu);
   const buDealIds = new Set(buDeals.map(d => d.deal_id));
 
-  // Commit = sum of latest snapshots whose closing_date is in this period
-  const mrrCommit = MRR_SNAPSHOTS.filter(s => s.snapshot_date === latestMRR && buDealIds.has(s.deal_id) && snapClosingInPeriod(s.closing_date, periodTab)).reduce((a, s) => a + amountMRR(s), 0);
-  const nrrCommit = NRR_SNAPSHOTS.filter(s => s.snapshot_date === latestNRR && buDealIds.has(s.deal_id) && snapClosingInPeriod(s.closing_date, periodTab)).reduce((a, s) => a + amountNRR(s), 0);
+  // Commit = deals in this period with probability >= 70%
+  const committedBUDeals = buDeals.filter(d => snapClosingInPeriod(d.closing_date, periodTab) && (d.probability ?? 100) >= 70);
+  const mrrCommit = committedBUDeals.reduce((a, d) => a + Number(d.mrr_inr), 0);
+  const nrrCommit = committedBUDeals.reduce((a, d) => a + Number(d.nrr_inr), 0);
   const mrrTarget = targetFor(bu, periodTab, 'MRR');
   const nrrTarget = targetFor(bu, periodTab, 'NRR');
   const mrrVar = mrrTarget !== undefined ? mrrCommit - mrrTarget : null;
@@ -1723,7 +1816,7 @@ function renderBUDetailView() {
     const snapshotsByDeal = new Map();
     for (const s of snapshots) {
       if (!snapshotsByDeal.has(s.deal_id)) snapshotsByDeal.set(s.deal_id, new Map());
-      snapshotsByDeal.get(s.deal_id).set(s.snapshot_date, { amount: amountOf(s), closing_date: s.closing_date });
+      snapshotsByDeal.get(s.deal_id).set(s.snapshot_date, { amount: amountOf(s), closing_date: s.closing_date, probability: s.probability });
     }
 
     const snapAmt = (byDate, date) => {
@@ -1794,7 +1887,17 @@ function renderBUDetailView() {
       totalVarCell = `<td class="num ${tv > 0 ? 'var-pos' : tv < 0 ? 'var-neg' : ''}">${tv > 0 ? '+' : ''}${fmtINR(tv)}</td>`;
     }
 
-    el.innerHTML = `<div class="table-scroll"><table>
+    const buExpHeaders = ['Deal Name', 'Account', 'Type', ...dates.map(d => colLabel(d)), ...(prevDate ? ['Change'] : [])];
+    const buExpRows = deals.map(d => {
+      const byDate = snapshotsByDeal.get(d.deal_id);
+      const dateVals = dates.map(date => { const v = snapAmt(byDate, date); return (v !== undefined && v !== null) ? v : ''; });
+      const chg = prevDate ? ((snapAmt(byDate, latestDate) ?? 0) - (snapAmt(byDate, prevDate) ?? 0)) : null;
+      return [fullNameChainText(d), d.account_name || '', d.deal_type || '', ...dateVals, ...(prevDate ? [chg] : [])];
+    });
+    const buXId = `${containerId}-xbtn`;
+    el.innerHTML = `<div style="display:flex;justify-content:flex-end;margin-bottom:8px;">
+      <button class="sync-btn" id="${buXId}">↓ Export</button>
+    </div><div class="table-scroll"><table>
       <thead><tr>
         <th>Deal Name</th><th>Account</th><th>Type</th>
         ${dateHeaders}${varHeader}
@@ -1804,6 +1907,8 @@ function renderBUDetailView() {
         ${rows}
       </tbody>
     </table></div>`;
+    document.getElementById(buXId).onclick = () =>
+      downloadXLSX(`${bu}_${metric}_${currentPeriodTab}`, buExpHeaders, buExpRows);
   }
 
   // ── Hunting pipeline for this BU ──────────────────────────
@@ -1912,6 +2017,22 @@ function renderBUDetailView() {
   }
 
   renderBUTimeline();
+}
+
+function downloadXLSX(filename, headers, rows) {
+  const ex = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const cell = v => {
+    if (v === null || v === undefined || v === '') return '<Cell><Data ss:Type="String"></Data></Cell>';
+    if (typeof v === 'number') return `<Cell><Data ss:Type="Number">${v}</Data></Cell>`;
+    return `<Cell><Data ss:Type="String">${ex(String(v))}</Data></Cell>`;
+  };
+  const xmlRow = cols => `<Row>${cols.map(cell).join('')}</Row>`;
+  const xml = `<?xml version="1.0" encoding="UTF-8"?><?mso-application progid="Excel.Sheet"?><Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"><Styles><Style ss:ID="n"><NumberFormat ss:Format="#,##0"/></Style></Styles><Worksheet ss:Name="Data"><Table>${xmlRow(headers)}${rows.map(xmlRow).join('')}</Table></Worksheet></Workbook>`;
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([xml], { type: 'application/vnd.ms-excel;charset=utf-8' }));
+  a.download = filename.replace(/[/\\:*?"<>|]/g, '_') + '.xls';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
 }
 
 main();
