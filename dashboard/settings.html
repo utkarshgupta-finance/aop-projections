@@ -418,12 +418,16 @@ async function renderSettings() {
         const selects = document.querySelectorAll('[data-override-id]');
         for (const sel of selects) {
           const dealId = sel.getAttribute('data-override-id');
+          const patch = { bu_override: sel.value || null };
+          // Also update business_unit immediately when an override is set,
+          // so the dashboard reflects it without needing a sync first.
+          if (sel.value) patch.business_unit = sel.value;
           await authedFetch(`deals?deal_id=eq.${encodeURIComponent(dealId)}`, {
             method: 'PATCH',
-            body: JSON.stringify({ bu_override: sel.value || null }),
+            body: JSON.stringify(patch),
           });
         }
-        msg.textContent = 'Saved. Run a sync to apply overrides to the dashboard.';
+        msg.textContent = 'Saved.';
         msg.className = 'msg success';
       } catch (err) {
         msg.textContent = err.message;
