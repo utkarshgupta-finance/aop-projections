@@ -1410,7 +1410,7 @@ function renderSummaryView() {
       const sparkColor = av === null ? colorVar(r.bu) : av >= 0 ? 'var(--good)' : 'var(--bad)';
       const sparkTip = r.sparkline.map(p => `${p.date}: ${fmtINR(p.v)}`).join('\n');
       return `<tr>
-      <td data-bu-nav="${escapeHtml(r.bu)}" title="View ${escapeHtml(r.bu)} detail"><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${colorVar(r.bu)};margin-right:8px;vertical-align:middle;"></span>${escapeHtml(r.bu)}<span style="margin-left:6px;font-size:10px;color:var(--text-muted);">↗</span></td>
+      <td data-bu-nav="${escapeHtml(r.bu)}" title="View ${escapeHtml(r.bu)} detail" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${colorVar(r.bu)};margin-right:8px;vertical-align:middle;"></span>${escapeHtml(r.bu)}<span style="margin-left:6px;font-size:10px;color:var(--text-muted);">↗</span></td>
       ${showCol('trend') ? `<td class="${sparkCls}" style="padding:4px 8px;" title="${escapeHtml(sparkTip)}">${sparklineSvg(r.sparkline, sparkColor)}</td>` : ''}
       ${showFarming ? `<td class="num drilldown-cell" data-bu="${escapeHtml(r.bu)}" data-type="Farming" data-metric="${metric}">${r.farming ? fmtINR(r.farming) : '<span class="muted">-</span>'}</td>` : ''}
       ${showHunting ? `<td class="num drilldown-cell" data-bu="${escapeHtml(r.bu)}" data-type="Hunting" data-metric="${metric}">${r.hunting ? fmtINR(r.hunting) : '<span class="muted">-</span>'}</td>` : ''}
@@ -1436,16 +1436,26 @@ function renderSummaryView() {
     const varColLabel = hasPrevMiss ? 'Adj. Variance' : 'Variance';
     const fLabel = `Farming ${metric} (${fCfg.mode}, ≥${fCfg.probability}%)`;
     const hLabel = `Hunting ${metric} (${hCfg.mode}, ≥${hCfg.probability}%)`;
-    return `<div class="table-scroll"><table>
+    return `<div class="table-scroll"><table style="table-layout:fixed;width:100%;">
+      <colgroup>
+        <col style="width:180px;">
+        ${showCol('trend') ? '<col style="width:100px;">' : ''}
+        ${showFarming ? '<col style="width:160px;">' : ''}
+        ${showHunting ? '<col style="width:160px;">' : ''}
+        ${showCol('total') ? '<col style="width:140px;">' : ''}
+        ${showCol('target') ? '<col style="width:120px;">' : ''}
+        ${hasPrevMiss && showCol('prevMiss') ? '<col style="width:130px;">' : ''}
+        ${showCol('variance') ? '<col style="width:130px;">' : ''}
+      </colgroup>
       <thead><tr>
-        <th data-sort="bu" style="cursor:pointer;">Business Unit${sArrow('bu')}</th>
-        ${showCol('trend') ? '<th>Commit Trend</th>' : ''}
-        ${showFarming ? `<th class="num" data-sort="farming" style="cursor:pointer;">${fLabel}${sArrow('farming')}</th>` : ''}
-        ${showHunting ? `<th class="num" data-sort="hunting" style="cursor:pointer;">${hLabel}${sArrow('hunting')}</th>` : ''}
-        ${showCol('total') ? `<th class="num" data-sort="total" style="cursor:pointer;">Total ${metric}${sArrow('total')}</th>` : ''}
-        ${showCol('target') ? `<th class="num" data-sort="target" style="cursor:pointer;">Target${sArrow('target')}</th>` : ''}
-        ${hasPrevMiss && showCol('prevMiss') ? `<th class="num" data-sort="prevMiss" style="cursor:pointer;">Prev Month Carry${sArrow('prevMiss')}</th>` : ''}
-        ${showCol('variance') ? `<th class="num" data-sort="variance" style="cursor:pointer;">${varColLabel}${sArrow('variance')}</th>` : ''}
+        <th data-sort="bu" style="cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Business Unit${sArrow('bu')}</th>
+        ${showCol('trend') ? '<th style="white-space:nowrap;">Commit Trend</th>' : ''}
+        ${showFarming ? `<th class="num" data-sort="farming" style="cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${fLabel}">${fLabel}${sArrow('farming')}</th>` : ''}
+        ${showHunting ? `<th class="num" data-sort="hunting" style="cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${hLabel}">${hLabel}${sArrow('hunting')}</th>` : ''}
+        ${showCol('total') ? `<th class="num" data-sort="total" style="cursor:pointer;white-space:nowrap;">Total ${metric}${sArrow('total')}</th>` : ''}
+        ${showCol('target') ? `<th class="num" data-sort="target" style="cursor:pointer;white-space:nowrap;">Target${sArrow('target')}</th>` : ''}
+        ${hasPrevMiss && showCol('prevMiss') ? `<th class="num" data-sort="prevMiss" style="cursor:pointer;white-space:nowrap;">Prev Month Carry${sArrow('prevMiss')}</th>` : ''}
+        ${showCol('variance') ? `<th class="num" data-sort="variance" style="cursor:pointer;white-space:nowrap;">${varColLabel}${sArrow('variance')}</th>` : ''}
       </tr></thead>
       <tbody>${totalRow}${bodyRows}</tbody>
     </table></div><p style="font-size:11px;color:var(--text-muted);margin:8px 0 0;">${activePipelineView?.closing_date_start || activePipelineView?.closing_date_end ? `Closing: ${activePipelineView.closing_date_start || '…'} → ${activePipelineView.closing_date_end || '…'}` : `Closing in ${periodTab.label}`}${latestDate ? ` · As of ${latestDate}` : ''}${hasPrevMiss ? ' · Adj. Variance = (Actual − Target) + Prev Month Carry' : ''}</p>`;
