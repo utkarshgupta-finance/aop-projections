@@ -101,8 +101,8 @@ async function fetchUniverseDeals(token: string, dayBefore: string, end: string)
   const pageSize = 200;
   for (;;) {
     const query =
-      `select id, Deal_Name, Closing_Date, Probability, MRR_Amount, NRR_Amount, Currency, ` +
-      `Deal_Type_New_or_Existing, Account_Name from Deals where ` +
+      `select id, Deal_Name, Stage, Closing_Date, Probability, MRR_Amount, NRR_Amount, Currency, ` +
+      `Deal_Type_New_or_Existing, Account_Name, Owner from Deals where ` +
       `(Closing_Date > '${dayBefore}' and Closing_Date <= '${end}') ` +
       `limit ${offset},${pageSize}`;
     const page = await coql(token, query);
@@ -355,6 +355,8 @@ Deno.serve(async (req: Request) => {
       universe.push({
         id: String(d.id), name: d.Deal_Name, dealType: d.Deal_Type_New_or_Existing,
         accountName,
+        stage: typeof d.Stage === 'string' ? d.Stage : extractName(d.Stage),
+        dealOwner: extractName(d.Owner),
         mrrInr: mrr === 0 ? 0 : Math.round(mrr * rate * 100) / 100,
         nrrInr: nrr === 0 ? 0 : Math.round(nrr * rate * 100) / 100,
         probability: d.Probability, closingDate: d.Closing_Date,
@@ -454,8 +456,8 @@ Deno.serve(async (req: Request) => {
         nrr_inr: d.nrrInr,
         currency: d.currency,
         quarter: targetQuarter,
-        stage:      hd?.stage      ?? null,
-        deal_owner: hd?.deal_owner ?? null,
+        stage:      hd?.stage      ?? d.stage      ?? null,
+        deal_owner: hd?.deal_owner ?? d.dealOwner ?? null,
         updated_at: now.toISOString(),
       };
     });
