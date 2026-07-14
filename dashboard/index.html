@@ -1431,6 +1431,8 @@ function renderSummaryView() {
     const varColLabel = hasPrevMiss ? 'Adj. Variance' : 'Variance';
     const prevCarryColLabel = 'Prev Month Carry';
     const minProbLabel = activePipelineView ? activePipelineView.min_probability : 70;
+    const mrrModeLabel = activePipelineView?.mrr_mode || 'expected';
+    const nrrModeLabel = activePipelineView?.nrr_mode || 'expected';
     return `<div class="table-scroll"><table>
       <thead><tr>
         <th data-sort="bu" style="cursor:pointer;">Business Unit${sArrow('bu')}</th>
@@ -1443,7 +1445,7 @@ function renderSummaryView() {
         ${showCol('variance') ? `<th class="num" data-sort="variance" style="cursor:pointer;">${varColLabel}${sArrow('variance')}</th>` : ''}
       </tr></thead>
       <tbody>${totalRow}${bodyRows}</tbody>
-    </table></div><p style="font-size:11px;color:var(--text-muted);margin:8px 0 0;">Current committed pipeline (probability ≥ ${minProbLabel}%) · ${metric} amounts: ${metric === 'MRR' ? mrrMode : nrrMode}${latestDate ? ` · Trend as of ${latestDate}` : ''}${hasPrevMiss ? ' · Adj. Variance = (Actual − Target) + Prev Month Carry' : ''}</p>`;
+    </table></div><p style="font-size:11px;color:var(--text-muted);margin:8px 0 0;">Current committed pipeline (probability ≥ ${minProbLabel}%) · ${metric} amounts: ${metric === 'MRR' ? mrrModeLabel : nrrModeLabel}${latestDate ? ` · Trend as of ${latestDate}` : ''}${hasPrevMiss ? ' · Adj. Variance = (Actual − Target) + Prev Month Carry' : ''}</p>`;
   }
 
   let mrrRows = buildSummaryRows('MRR', MRR_SNAPSHOTS, latestMRR);
