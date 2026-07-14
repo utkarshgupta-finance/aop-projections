@@ -770,6 +770,10 @@ function render() {
   document.querySelectorAll('#period-tabs .tab-btn').forEach(b => b.classList.toggle('active', b.dataset.period === currentPeriodTab));
   document.querySelectorAll('#type-tabs .tab-btn').forEach(b => b.classList.toggle('active', b.dataset.type === currentTypeTab));
   document.querySelectorAll('#bu-tabs .tab-btn').forEach(b => b.classList.toggle('active', b.dataset.bu === currentBU));
+  // Hide period/type global tabs when in Commits view — views handle filtering there
+  const inCommits = currentViewMode === 'review';
+  document.getElementById('period-group').style.display = inCommits ? 'none' : '';
+  document.getElementById('type-group').style.display   = inCommits ? 'none' : '';
 
   if (currentViewMode === 'summary') { renderSummaryView(); return; }
   if (currentViewMode === 'bu-detail') { renderBUDetailView(); return; }
@@ -781,9 +785,7 @@ function render() {
 // COMMITS VIEW (formerly Review)
 // ============================================================
 function renderReviewView() {
-  const PERIOD_TABS = computePeriodTabs(currentQuarter);
   const content   = document.getElementById('content');
-  const periodTab = PERIOD_TABS.find(p => p.key === currentPeriodTab) || PERIOD_TABS[PERIOD_TABS.length - 1];
   const dealsById = new Map(DEALS.map(d => [d.deal_id, d]));
 
   const mrrLatest = MRR_DATES[MRR_DATES.length - 1];
@@ -831,7 +833,7 @@ function renderReviewView() {
 
   renderCommitViewsBar();
 
-  tableCtx = { dealsById, periodTab, latestDate: mrrLatest, snapshots: MRR_SNAPSHOTS, metric: 'MRR',
+  tableCtx = { dealsById, latestDate: mrrLatest, snapshots: MRR_SNAPSHOTS, metric: 'MRR',
     groupBy: commitGroupBy, commitView: activeCommitView };
   renderDealsTable();
   renderNRRDealsTable();
@@ -933,10 +935,10 @@ function renderBUView(buRows, maxAbs, showTargets, periodTab) {
 let tableCtx = {};
 
 function renderNRRDealsTable() {
-  const { dealsById, periodTab, groupBy, commitView } = tableCtx;
+  const { dealsById, groupBy, commitView } = tableCtx;
   if (!dealsById) return;
   renderDealsTableWith({
-    dealsById, periodTab, snapshots: NRR_SNAPSHOTS, metric: 'NRR',
+    dealsById, snapshots: NRR_SNAPSHOTS, metric: 'NRR',
     tableId: 'nrr-deals-table', buFilterId: 'nrr-bu-filter',
     resultCountId: 'nrr-result-count', buFilter: nrrBuFilter,
     groupBy: groupBy || 'deal', commitView,
@@ -944,38 +946,22 @@ function renderNRRDealsTable() {
 }
 
 function renderDealsTable() {
-  const { dealsById, periodTab, snapshots, metric, groupBy, commitView } = tableCtx;
-  renderDealsTableWith({ dealsById, periodTab, snapshots, metric,
+  const { dealsById, snapshots, metric, groupBy, commitView } = tableCtx;
+  renderDealsTableWith({ dealsById, snapshots, metric,
     tableId: 'deals-table', buFilterId: 'bu-filter',
     resultCountId: 'result-count', buFilter: tableBuFilter,
     groupBy: groupBy || 'deal', commitView,
   });
 }
 
-function renderDealsTableWith({ dealsById, periodTab, snapshots, metric, tableId, buFilterId, resultCountId, buFilter, groupBy = 'deal', commitView = null }) {
+function renderDealsTableWith({ dealsById, snapshots, metric, tableId, buFilterId, resultCountId, buFilter, groupBy = 'deal', commitView = null }) {
   const allDates = metric === 'MRR' ? MRR_DATES : NRR_DATES;
   const amountOfRow = s => Number(metric === 'MRR' ? s.mrr_amount : s.nrr_amount);
 
-  // All sync dates within this period (every individual sync date, not just one per month)
-  const allQuarterMonths = computePeriodTabs(currentQuarter).find(t => isFullQuarterTab(t))?.months || periodTab.months;
-  let periodDates;
-  if (isFullQuarterTab(periodTab)) {
-    periodDates = allDates.filter(d => {
-      const m = Number(d.slice(5,7)), y = Number(d.slice(0,4));
-      return y === periodTab.year && allQuarterMonths.includes(m);
-    });
-  } else {
-    const curMonth = periodTab.months[0];
-    const priorLastDates = allQuarterMonths.filter(m => m < curMonth).map(pm => {
-      return [...allDates].reverse().find(d => Number(d.slice(5,7)) === pm && Number(d.slice(0,4)) === periodTab.year);
-    }).filter(Boolean);
-    const curDates = allDates.filter(d => Number(d.slice(5,7)) === curMonth && Number(d.slice(0,4)) === periodTab.year);
-    periodDates = [...priorLastDates, ...curDates];
-  }
-
-  const latestDate = periodDates[periodDates.length - 1];
-
-  // In compact mode show only the latest date; expanded shows all
+  // Show all available snapshot dates (up to 12 most recent); expanded shows all
+  const MAX_COLS = 12;
+  const periodDates = allDates.slice(-MAX_COLS);
+  const latestDate  = periodDates[periodDates.length - 1];
   const dates = reviewExpanded ? periodDates : (latestDate ? [latestDate] : []);
 
   if (sortKey !== '__latest' && !periodDates.includes(sortKey) &&
@@ -989,29 +975,30 @@ function renderDealsTableWith({ dealsById, periodTab, snapshots, metric, tableId
     snapshotsByDeal.get(s.deal_id).set(s.snapshot_date, { amount: amountOfRow(s), closing_date: s.closing_date, probability: s.probability });
   }
 
-  const minProb = commitView ? commitView.min_probability : 70;
+  const minProb = commitView ? commitView.min_probability : 0;
   const matchesCommitView = d => {
     if (commitView?.deal_types?.length && !commitView.deal_types.includes(d.deal_type)) return false;
-    // Only apply stage filter when the deal actually has a stage value (hunting deals).
-    // Farming/existing deals have stage=null and should not be excluded by the stage filter.
+    // Stage filter only applies to deals that have a stage value
     if (commitView?.stages?.length && d.stage && !commitView.stages.includes(d.stage)) return false;
+    // Closing date range filter on the deal's current closing_date
+    if (commitView?.closing_date_start && (!d.closing_date || d.closing_date < commitView.closing_date_start)) return false;
+    if (commitView?.closing_date_end   && (!d.closing_date || d.closing_date > commitView.closing_date_end))   return false;
     return true;
   };
 
-  // Helper: effective amount respecting snapshot closing_date vs current period
+  // Snapshot amount: just check probability (no period closing_date check — deals are pre-filtered)
   const snapAmt = (byDate, date) => {
     const e = byDate?.get(date);
     if (e === undefined) return undefined;
-    if (!snapClosingInPeriod(e.closing_date, periodTab)) return null;
     if ((e.probability ?? 100) < minProb) return null;
     return e.amount;
   };
 
-  let tabDeals = DEALS.filter(d => currentTypeTab === 'combined' || d.deal_type === currentTypeTab)
+  let tabDeals = DEALS
     .filter(d => !currentBU || (d.business_unit || 'UNMAPPED') === currentBU)
     .filter(d => matchesCommitView(d))
     .filter(d => snapshotsByDeal.has(d.deal_id) &&
-      [...snapshotsByDeal.get(d.deal_id).values()].some(e => snapClosingInPeriod(e.closing_date, periodTab) && (e.probability ?? 100) >= minProb));
+      [...snapshotsByDeal.get(d.deal_id).values()].some(e => (e.probability ?? 100) >= minProb));
 
   const buOptions = [...new Set(tabDeals.map(d => d.business_unit || 'UNMAPPED'))].sort();
   const buFilterEl = document.getElementById(buFilterId);
@@ -1098,7 +1085,7 @@ function renderDealsTableWith({ dealsById, periodTab, snapshots, metric, tableId
       });
       expEl.innerHTML = `<button class="sync-btn" id="${xId}">↓ Export</button>`;
       document.getElementById(xId).onclick = () =>
-        downloadXLSX(`${metric}_${groupBy}_${currentPeriodTab}`, expHeaders, expRows);
+        downloadXLSX(`${metric}_${groupBy}_${latestDate || 'data'}`, expHeaders, expRows);
     }
 
     const dealsTable = document.getElementById(tableId);
@@ -1169,7 +1156,7 @@ function renderDealsTableWith({ dealsById, periodTab, snapshots, metric, tableId
     const xId = `${tableId}-xbtn`;
     expEl.innerHTML = `<button class="sync-btn" id="${xId}">↓ Export</button>`;
     document.getElementById(xId).onclick = () =>
-      downloadXLSX(`${metric}_${currentPeriodTab}_${latestDate || 'data'}`, expHeaders, expRows);
+      downloadXLSX(`${metric}_${latestDate || 'data'}`, expHeaders, expRows);
   }
 
   const dealsTable = document.getElementById(tableId);
@@ -1618,8 +1605,10 @@ function openViewBuilder(view, context) {
   const name = view?.name || '';
   const selTypes = new Set(view?.deal_types || []);
   const selStages = new Set(view?.stages || []);
-  const minProb = view?.min_probability ?? 70;
+  const minProb = view?.min_probability ?? 0;
   const curGroupBy = view?.group_by || 'deal';
+  const closingStart = view?.closing_date_start || '';
+  const closingEnd   = view?.closing_date_end   || '';
   const visibleCols = new Set(view?.visible_columns?.length
     ? view.visible_columns
     : ['farming','hunting','total','target','trend','prevMiss','variance']);
@@ -1687,6 +1676,16 @@ function openViewBuilder(view, context) {
 
     ${viewContext === 'commits' ? `
     <div style="margin-bottom:14px;">
+      <label style="font-size:12px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:6px;">CLOSING DATE RANGE <span style="font-weight:400;">(empty = all)</span></label>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <input type="date" id="vb-date-start" value="${closingStart}"
+          style="padding:6px 8px;border:1px solid var(--border);border-radius:6px;background:var(--surface-1);color:var(--text-primary);font-size:13px;outline:none;">
+        <span style="color:var(--text-muted);font-size:13px;">to</span>
+        <input type="date" id="vb-date-end" value="${closingEnd}"
+          style="padding:6px 8px;border:1px solid var(--border);border-radius:6px;background:var(--surface-1);color:var(--text-primary);font-size:13px;outline:none;">
+      </div>
+    </div>
+    <div style="margin-bottom:14px;">
       <label style="font-size:12px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:8px;">GROUP BY</label>
       <div style="display:flex;gap:6px;">
         <button class="vb-grp-btn stage-capsule${curGroupBy === 'deal' ? ' active' : ''}" data-grp="deal">Deal</button>
@@ -1741,9 +1740,11 @@ function openViewBuilder(view, context) {
     const min_probability = Math.max(0, Math.min(100, parseInt(panel.querySelector('#vb-prob').value) || 0));
     const visible_columns = [...panel.querySelectorAll('.vb-col-chk:checked')].map(b => b.dataset.col);
     const group_by = panel.querySelector('.vb-grp-btn.active')?.dataset?.grp || 'deal';
+    const closing_date_start = panel.querySelector('#vb-date-start')?.value || null;
+    const closing_date_end   = panel.querySelector('#vb-date-end')?.value   || null;
 
     const payload = { name: viewName, deal_types, stages, min_probability, visible_columns,
-      view_context: viewContext, group_by };
+      view_context: viewContext, group_by, closing_date_start, closing_date_end };
 
     try {
       if (editId) {
