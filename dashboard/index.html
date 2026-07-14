@@ -1305,22 +1305,22 @@ function renderSummaryView() {
   }
 
   function buildSummaryRows(metric, snapshots, latestDate) {
+    const hasUnmapped = DEALS.some(d => !d.business_unit);
     const buList = [...new Set([
       ...targetBUList(metric),
       ...BU_ORDER.filter(bu => DEALS.some(d => d.business_unit === bu)),
+      ...(hasUnmapped ? ['UNMAPPED'] : []),
     ])].filter((v, i, a) => a.indexOf(v) === i);
 
     const prevMissMap = computePrevMissMap(metric, snapshots);
     const amountOf = s => Number(metric === 'MRR' ? s.mrr_amount : s.nrr_amount);
 
-    // Precompute sparkline: all snapshot dates within the period, totals per BU
     const allDates = metric === 'MRR' ? MRR_DATES : NRR_DATES;
     const sparkDates = allDates.filter(d => {
       const m = Number(d.slice(5,7)), y = Number(d.slice(0,4));
       return periodTab.months.includes(m) && y === periodTab.year;
     });
-    // date → bu → total map
-    const sparkMap = new Map(); // date → Map<bu, total>
+    const sparkMap = new Map();
     for (const date of sparkDates) {
       const byBU = new Map();
       for (const s of snapshots) {
@@ -1334,49 +1334,55 @@ function renderSummaryView() {
       sparkMap.set(date, byBU);
     }
 
-    // View filter: applies probability, deal_types, stages, and closing_date range from the active view
+    // Per-column settings from active view
+    const vcs = activePipelineView?.column_settings || {};
+    const fCfg = { visible: true, probability: 70, mode: 'expected', ...(vcs.farming || {}) };
+    const hCfg = { visible: true, probability: 70, mode: 'expected', ...(vcs.hunting || {}) };
+
+    // Base filter: stages + closing_date (no deal_type, no probability — those are per-column)
     const viewHasDates = !!(activePipelineView?.closing_date_start || activePipelineView?.closing_date_end);
-    const applyViewFilter = d => {
-      const minP = activePipelineView ? (activePipelineView.min_probability ?? 0) : 70;
-      if ((d.probability ?? 100) < minP) return false;
-      if (activePipelineView?.deal_types?.length && !activePipelineView.deal_types.includes(d.deal_type)) return false;
-      // Stage filter only on deals that have a stage value
+    const passBase = d => {
       if (activePipelineView?.stages?.length && d.stage && !activePipelineView.stages.includes(d.stage)) return false;
-      // Closing date filter from view (overrides period tab when present)
       if (activePipelineView?.closing_date_start && (!d.closing_date || d.closing_date < activePipelineView.closing_date_start)) return false;
       if (activePipelineView?.closing_date_end   && (!d.closing_date || d.closing_date > activePipelineView.closing_date_end))   return false;
       return true;
     };
-    const mrrMode = activePipelineView?.mrr_mode || 'expected';
-    const nrrMode = activePipelineView?.nrr_mode || 'expected';
-    const dealAmount = d => {
+    const inPeriod = d => viewHasDates || snapClosingInPeriod(d.closing_date, periodTab);
+
+    const dealAmt = (d, cfg) => {
       const base = Number(metric === 'MRR' ? d.mrr_inr : d.nrr_inr);
-      const mode = metric === 'MRR' ? mrrMode : nrrMode;
-      return mode === 'adjusted' ? base * (d.probability ?? 100) / 100 : base;
+      return cfg.mode === 'adjusted' ? base * (d.probability ?? 100) / 100 : base;
     };
+
     return buList.map(bu => {
-      const committedDeals = DEALS.filter(d =>
-        d.business_unit === bu &&
-        // Use view's date range when set; otherwise fall back to period tab
-        (viewHasDates || snapClosingInPeriod(d.closing_date, periodTab)) &&
-        applyViewFilter(d)
-      );
-      const total    = committedDeals.reduce((a, d) => a + dealAmount(d), 0);
-      const target   = targetFor(bu, periodTab, metric);
+      const buDeals = DEALS.filter(d => (d.business_unit || 'UNMAPPED') === bu && inPeriod(d) && passBase(d));
+      const farmingDeals = buDeals.filter(d => d.deal_type === 'Farming' && (d.probability ?? 100) >= fCfg.probability);
+      const huntingDeals = buDeals.filter(d => d.deal_type === 'Hunting' && (d.probability ?? 100) >= hCfg.probability);
+      const otherDeals   = buDeals.filter(d => d.deal_type !== 'Farming' && d.deal_type !== 'Hunting' && (d.probability ?? 100) >= 70);
+      const farming = farmingDeals.reduce((a, d) => a + dealAmt(d, fCfg), 0);
+      const hunting = huntingDeals.reduce((a, d) => a + dealAmt(d, hCfg), 0);
+      const other   = otherDeals.reduce((a, d) => a + dealAmt(d, { mode: 'expected' }), 0);
+      const total   = farming + hunting + other;
+      const target  = targetFor(bu, periodTab, metric);
       const variance = target !== undefined ? total - target : null;
       const prevMiss = prevMissMap.get(bu) ?? null;
       const sparkline = sparkDates.map(date => ({ date, v: sparkMap.get(date)?.get(bu) || 0 }));
-      return { bu, total, target, variance, prevMiss, sparkline };
+      return { bu, farming, hunting, total, target, variance, prevMiss, sparkline };
     });
   }
 
   function summaryTableHtml(metric, rows, latestDate) {
     if (!latestDate) return '<p class="muted">No snapshot data yet.</p>';
-    const visibleCols = new Set(activePipelineView?.visible_columns?.length
-      ? activePipelineView.visible_columns
-      : ['total','target','trend','prevMiss','variance']);
-    const showCol = key => visibleCols.has(key);
 
+    const vcs = activePipelineView?.column_settings || {};
+    const fCfg = { visible: true, probability: 70, mode: 'expected', ...(vcs.farming || {}) };
+    const hCfg = { visible: true, probability: 70, mode: 'expected', ...(vcs.hunting || {}) };
+    const showFarming = fCfg.visible;
+    const showHunting = hCfg.visible;
+    const showCol = key => vcs[key]?.visible !== false; // simple cols default to visible
+
+    const totFarming  = rows.reduce((a, r) => a + r.farming, 0);
+    const totHunting  = rows.reduce((a, r) => a + r.hunting, 0);
     const totTotal    = rows.reduce((a, r) => a + r.total, 0);
     const totTarget   = rows.reduce((a, r) => a + (r.target ?? 0), 0);
     const totVariance = totTarget ? totTotal - totTarget : null;
@@ -1401,6 +1407,8 @@ function renderSummaryView() {
       return `<tr>
       <td data-bu-nav="${escapeHtml(r.bu)}" title="View ${escapeHtml(r.bu)} detail"><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${colorVar(r.bu)};margin-right:8px;vertical-align:middle;"></span>${escapeHtml(r.bu)}<span style="margin-left:6px;font-size:10px;color:var(--text-muted);">↗</span></td>
       ${showCol('trend') ? `<td class="${sparkCls}" style="padding:4px 8px;" title="${escapeHtml(sparkTip)}">${sparklineSvg(r.sparkline, sparkColor)}</td>` : ''}
+      ${showFarming ? `<td class="num drilldown-cell" data-bu="${escapeHtml(r.bu)}" data-type="Farming" data-metric="${metric}">${r.farming ? fmtINR(r.farming) : '<span class="muted">-</span>'}</td>` : ''}
+      ${showHunting ? `<td class="num drilldown-cell" data-bu="${escapeHtml(r.bu)}" data-type="Hunting" data-metric="${metric}">${r.hunting ? fmtINR(r.hunting) : '<span class="muted">-</span>'}</td>` : ''}
       ${showCol('total') ? `<td class="num">${r.total ? fmtINR(r.total) : '<span class="muted">-</span>'}</td>` : ''}
       ${showCol('target') ? `<td class="num">${r.target !== undefined ? fmtINR(r.target) : '<span class="muted">-</span>'}</td>` : ''}
       ${hasPrevMiss && showCol('prevMiss') ? prevCarryCell(r.prevMiss) : ''}
@@ -1412,6 +1420,8 @@ function renderSummaryView() {
     const totalRow = `<tr class="total-row">
       <td>Total</td>
       ${showCol('trend') ? '<td></td>' : ''}
+      ${showFarming ? `<td class="num">${fmtINR(totFarming)}</td>` : ''}
+      ${showHunting ? `<td class="num">${fmtINR(totHunting)}</td>` : ''}
       ${showCol('total') ? `<td class="num">${fmtINR(totTotal)}</td>` : ''}
       ${showCol('target') ? `<td class="num">${totTarget ? fmtINR(totTarget) : '<span class="muted">-</span>'}</td>` : ''}
       ${hasPrevMiss && showCol('prevMiss') ? prevCarryCell(totPrevMiss) : ''}
@@ -1419,22 +1429,21 @@ function renderSummaryView() {
     </tr>`;
 
     const varColLabel = hasPrevMiss ? 'Adj. Variance' : 'Variance';
-    const prevCarryColLabel = 'Prev Month Carry';
-    const minProbLabel = activePipelineView ? (activePipelineView.min_probability ?? 0) : 70;
-    const mrrModeLabel = activePipelineView?.mrr_mode || 'expected';
-    const nrrModeLabel = activePipelineView?.nrr_mode || 'expected';
-    const amtMode = metric === 'MRR' ? mrrModeLabel : nrrModeLabel;
+    const fLabel = `Farming ${metric} (${fCfg.mode}, ≥${fCfg.probability}%)`;
+    const hLabel = `Hunting ${metric} (${hCfg.mode}, ≥${hCfg.probability}%)`;
     return `<div class="table-scroll"><table>
       <thead><tr>
         <th data-sort="bu" style="cursor:pointer;">Business Unit${sArrow('bu')}</th>
         ${showCol('trend') ? '<th>Commit Trend</th>' : ''}
-        ${showCol('total') ? `<th class="num" data-sort="total" style="cursor:pointer;">${metric} Commit (${amtMode})${sArrow('total')}</th>` : ''}
+        ${showFarming ? `<th class="num" data-sort="farming" style="cursor:pointer;">${fLabel}${sArrow('farming')}</th>` : ''}
+        ${showHunting ? `<th class="num" data-sort="hunting" style="cursor:pointer;">${hLabel}${sArrow('hunting')}</th>` : ''}
+        ${showCol('total') ? `<th class="num" data-sort="total" style="cursor:pointer;">Total ${metric}${sArrow('total')}</th>` : ''}
         ${showCol('target') ? `<th class="num" data-sort="target" style="cursor:pointer;">Target${sArrow('target')}</th>` : ''}
-        ${hasPrevMiss && showCol('prevMiss') ? `<th class="num" data-sort="prevMiss" style="cursor:pointer;">${prevCarryColLabel}${sArrow('prevMiss')}</th>` : ''}
+        ${hasPrevMiss && showCol('prevMiss') ? `<th class="num" data-sort="prevMiss" style="cursor:pointer;">Prev Month Carry${sArrow('prevMiss')}</th>` : ''}
         ${showCol('variance') ? `<th class="num" data-sort="variance" style="cursor:pointer;">${varColLabel}${sArrow('variance')}</th>` : ''}
       </tr></thead>
       <tbody>${totalRow}${bodyRows}</tbody>
-    </table></div><p style="font-size:11px;color:var(--text-muted);margin:8px 0 0;">Pipeline with probability ≥ ${minProbLabel}%${activePipelineView?.deal_types?.length ? ` · Types: ${activePipelineView.deal_types.join(', ')}` : ''}${activePipelineView?.closing_date_start || activePipelineView?.closing_date_end ? ` · Closing: ${activePipelineView.closing_date_start || '…'} → ${activePipelineView.closing_date_end || '…'}` : ` · Closing in ${periodTab.label}`}${latestDate ? ` · As of ${latestDate}` : ''}${hasPrevMiss ? ' · Adj. Variance = (Actual − Target) + Prev Month Carry' : ''}</p>`;
+    </table></div><p style="font-size:11px;color:var(--text-muted);margin:8px 0 0;">${activePipelineView?.closing_date_start || activePipelineView?.closing_date_end ? `Closing: ${activePipelineView.closing_date_start || '…'} → ${activePipelineView.closing_date_end || '…'}` : `Closing in ${periodTab.label}`}${latestDate ? ` · As of ${latestDate}` : ''}${hasPrevMiss ? ' · Adj. Variance = (Actual − Target) + Prev Month Carry' : ''}</p>`;
   }
 
   let mrrRows = buildSummaryRows('MRR', MRR_SNAPSHOTS, latestMRR);
@@ -1611,25 +1620,28 @@ function openViewBuilder(view, context) {
 
   const editId = view?.id || null;
   const name = view?.name || '';
-  const selTypes = new Set(view?.deal_types || []);
   const selStages = new Set(view?.stages || []);
-  const minProb = view?.min_probability ?? 0;
   const curGroupBy = view?.group_by || 'deal';
   const closingStart = view?.closing_date_start || '';
   const closingEnd   = view?.closing_date_end   || '';
   const curMrrMode = view?.mrr_mode || 'expected';
   const curNrrMode = view?.nrr_mode || 'expected';
-  const visibleCols = new Set(view?.visible_columns?.length
-    ? view.visible_columns
-    : ['total','target','trend','prevMiss','variance']);
 
-  const ALL_COLS = [
-    { key: 'trend', label: 'Trend Sparkline' },
-    { key: 'total', label: 'Commit Amount' },
-    { key: 'target', label: 'Target' },
+  // Per-column settings for summary context
+  const cs = view?.column_settings || {};
+  const fCfg = { visible: true, probability: 70, mode: 'expected', ...(cs.farming || {}) };
+  const hCfg = { visible: true, probability: 70, mode: 'expected', ...(cs.hunting || {}) };
+  const simpleColDefs = [
+    { key: 'trend',    label: 'Trend Sparkline' },
+    { key: 'total',    label: 'Total (all types)' },
+    { key: 'target',   label: 'Target' },
     { key: 'prevMiss', label: 'Prev Month Carry' },
     { key: 'variance', label: 'Variance' },
   ];
+
+  // Commits context: deal types + prob (kept as view-level filter)
+  const selTypes = new Set(view?.deal_types || []);
+  const minProb = view?.min_probability ?? 0;
 
   const typeCapsulesHtml = allDealTypes.map(t => {
     const active = selTypes.has(t);
@@ -1641,12 +1653,65 @@ function openViewBuilder(view, context) {
     return `<button class="vb-stage-cap stage-capsule${active ? ' active' : ''}" data-val="${escapeHtml(s)}" style="margin:2px;">${escapeHtml(s)}</button>`;
   }).join('');
 
-  const colCheckboxesHtml = ALL_COLS.map(c =>
-    `<label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;padding:3px 0;">
-      <input type="checkbox" class="vb-col-chk" data-col="${c.key}" ${visibleCols.has(c.key) ? 'checked' : ''}>
-      ${escapeHtml(c.label)}
-    </label>`
-  ).join('');
+  const summaryColsHtml = `
+    <div style="margin-bottom:14px;">
+      <label style="font-size:12px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:8px;">COLUMNS</label>
+
+      <div style="border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:8px;">
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;cursor:pointer;margin-bottom:8px;">
+          <input type="checkbox" id="vb-farming-vis" ${fCfg.visible ? 'checked' : ''}> Farming Commit
+        </label>
+        <div style="display:flex;align-items:center;flex-wrap:wrap;gap:14px;padding-left:20px;">
+          <div>
+            <div style="font-size:11px;color:var(--text-muted);margin-bottom:3px;">Min Probability</div>
+            <div style="display:flex;align-items:center;gap:4px;">
+              <input type="number" id="vb-farming-prob" min="0" max="100" value="${fCfg.probability}"
+                style="width:60px;padding:4px 6px;border:1px solid var(--border);border-radius:5px;background:var(--surface-1);color:var(--text);font-size:12px;outline:none;">
+              <span style="font-size:12px;color:var(--text-muted);">%</span>
+            </div>
+          </div>
+          <div>
+            <div style="font-size:11px;color:var(--text-muted);margin-bottom:3px;">Amounts</div>
+            <div style="display:flex;gap:4px;">
+              <button class="vb-farming-mode stage-capsule${fCfg.mode === 'expected' ? ' active' : ''}" data-mode="expected" style="font-size:11px;padding:3px 8px;">Expected</button>
+              <button class="vb-farming-mode stage-capsule${fCfg.mode === 'adjusted' ? ' active' : ''}" data-mode="adjusted" style="font-size:11px;padding:3px 8px;">Adjusted</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div style="border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:8px;">
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;cursor:pointer;margin-bottom:8px;">
+          <input type="checkbox" id="vb-hunting-vis" ${hCfg.visible ? 'checked' : ''}> Hunting Commit
+        </label>
+        <div style="display:flex;align-items:center;flex-wrap:wrap;gap:14px;padding-left:20px;">
+          <div>
+            <div style="font-size:11px;color:var(--text-muted);margin-bottom:3px;">Min Probability</div>
+            <div style="display:flex;align-items:center;gap:4px;">
+              <input type="number" id="vb-hunting-prob" min="0" max="100" value="${hCfg.probability}"
+                style="width:60px;padding:4px 6px;border:1px solid var(--border);border-radius:5px;background:var(--surface-1);color:var(--text);font-size:12px;outline:none;">
+              <span style="font-size:12px;color:var(--text-muted);">%</span>
+            </div>
+          </div>
+          <div>
+            <div style="font-size:11px;color:var(--text-muted);margin-bottom:3px;">Amounts</div>
+            <div style="display:flex;gap:4px;">
+              <button class="vb-hunting-mode stage-capsule${hCfg.mode === 'expected' ? ' active' : ''}" data-mode="expected" style="font-size:11px;padding:3px 8px;">Expected</button>
+              <button class="vb-hunting-mode stage-capsule${hCfg.mode === 'adjusted' ? ' active' : ''}" data-mode="adjusted" style="font-size:11px;padding:3px 8px;">Adjusted</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:3px;padding-top:4px;">
+        ${simpleColDefs.map(c =>
+          `<label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;padding:3px 0;">
+            <input type="checkbox" class="vb-simple-col" data-col="${c.key}" ${cs[c.key]?.visible !== false ? 'checked' : ''}>
+            ${escapeHtml(c.label)}
+          </label>`
+        ).join('')}
+      </div>
+    </div>`;
 
   const overlay = document.getElementById('vb-overlay');
   const panel = document.getElementById('vb-panel');
@@ -1662,10 +1727,11 @@ function openViewBuilder(view, context) {
         style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:6px;background:var(--surface-1);color:var(--text);font-size:13px;box-sizing:border-box;outline:none;">
     </div>
 
+    ${viewContext === 'commits' ? `
     <div style="margin-bottom:14px;">
       <label style="font-size:12px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:5px;">DEAL TYPES <span style="font-weight:400;color:var(--text-muted)">(empty = all)</span></label>
       <div id="vb-types" style="display:flex;flex-wrap:wrap;gap:4px;">${typeCapsulesHtml}</div>
-    </div>
+    </div>` : ''}
 
     <div style="margin-bottom:14px;">
       <label style="font-size:12px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:5px;">STAGES <span style="font-weight:400;color:var(--text-muted)">(empty = all)</span></label>
@@ -1676,12 +1742,12 @@ function openViewBuilder(view, context) {
       <div id="vb-stages" style="display:flex;flex-wrap:wrap;gap:4px;">${stageCapsulesHtml}</div>
     </div>
 
+    ${viewContext === 'commits' ? `
     <div style="margin-bottom:14px;">
       <label style="font-size:12px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:5px;">MIN PROBABILITY (%)</label>
       <input id="vb-prob" type="number" min="0" max="100" value="${minProb}"
         style="width:100px;padding:7px 10px;border:1px solid var(--border);border-radius:6px;background:var(--surface-1);color:var(--text);font-size:13px;outline:none;">
     </div>
-
     <div style="margin-bottom:14px;">
       <label style="font-size:12px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:8px;">MRR &amp; NRR AMOUNTS</label>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
@@ -1702,8 +1768,6 @@ function openViewBuilder(view, context) {
       </div>
       <p style="font-size:11px;color:var(--text-muted);margin:6px 0 0;">Expected = full deal value &nbsp;·&nbsp; Adjusted = value × probability %</p>
     </div>
-
-    ${viewContext === 'commits' ? `
     <div style="margin-bottom:14px;">
       <label style="font-size:12px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:6px;">CLOSING DATE RANGE <span style="font-weight:400;">(empty = all)</span></label>
       <div style="display:flex;align-items:center;gap:8px;">
@@ -1721,11 +1785,7 @@ function openViewBuilder(view, context) {
         <button class="vb-grp-btn stage-capsule${curGroupBy === 'account' ? ' active' : ''}" data-grp="account">Account</button>
         <button class="vb-grp-btn stage-capsule${curGroupBy === 'bu' ? ' active' : ''}" data-grp="bu">Business Unit</button>
       </div>
-    </div>` : `
-    <div style="margin-bottom:20px;">
-      <label style="font-size:12px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:8px;">COLUMNS TO SHOW</label>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:2px;">${colCheckboxesHtml}</div>
-    </div>`}
+    </div>` : summaryColsHtml}
 
     <div style="display:flex;gap:8px;">
       <button id="vb-save" style="padding:8px 18px;border-radius:8px;border:none;background:var(--series-1,#3b82f6);color:#fff;font-size:13px;font-weight:600;cursor:pointer;">
@@ -1760,36 +1820,59 @@ function openViewBuilder(view, context) {
     };
   });
 
+  // Commits context: MRR/NRR mode toggles
   panel.querySelectorAll('.vb-mrr-btn').forEach(btn => {
-    btn.onclick = () => {
-      panel.querySelectorAll('.vb-mrr-btn').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-    };
+    btn.onclick = () => { panel.querySelectorAll('.vb-mrr-btn').forEach(b => b.classList.remove('active')); btn.classList.add('active'); };
+  });
+  panel.querySelectorAll('.vb-nrr-btn').forEach(btn => {
+    btn.onclick = () => { panel.querySelectorAll('.vb-nrr-btn').forEach(b => b.classList.remove('active')); btn.classList.add('active'); };
   });
 
-  panel.querySelectorAll('.vb-nrr-btn').forEach(btn => {
-    btn.onclick = () => {
-      panel.querySelectorAll('.vb-nrr-btn').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-    };
+  // Summary context: per-column mode toggles
+  panel.querySelectorAll('.vb-farming-mode').forEach(btn => {
+    btn.onclick = () => { panel.querySelectorAll('.vb-farming-mode').forEach(b => b.classList.remove('active')); btn.classList.add('active'); };
+  });
+  panel.querySelectorAll('.vb-hunting-mode').forEach(btn => {
+    btn.onclick = () => { panel.querySelectorAll('.vb-hunting-mode').forEach(b => b.classList.remove('active')); btn.classList.add('active'); };
   });
 
   panel.querySelector('#vb-save').onclick = async () => {
     const viewName = panel.querySelector('#vb-name').value.trim();
     if (!viewName) { alert('Please enter a view name.'); return; }
 
-    const deal_types = [...panel.querySelectorAll('.vb-type-cap.active')].map(b => b.dataset.val);
     const stages = [...panel.querySelectorAll('.vb-stage-cap.active')].map(b => b.dataset.val);
-    const min_probability = Math.max(0, Math.min(100, parseInt(panel.querySelector('#vb-prob').value) || 0));
-    const visible_columns = [...panel.querySelectorAll('.vb-col-chk:checked')].map(b => b.dataset.col);
-    const group_by = panel.querySelector('.vb-grp-btn.active')?.dataset?.grp || 'deal';
-    const closing_date_start = panel.querySelector('#vb-date-start')?.value || null;
-    const closing_date_end   = panel.querySelector('#vb-date-end')?.value   || null;
-    const mrr_mode = panel.querySelector('.vb-mrr-btn.active')?.dataset?.mrr || 'expected';
-    const nrr_mode = panel.querySelector('.vb-nrr-btn.active')?.dataset?.nrr || 'expected';
 
-    const payload = { name: viewName, deal_types, stages, min_probability, visible_columns,
-      view_context: viewContext, group_by, closing_date_start, closing_date_end, mrr_mode, nrr_mode };
+    let column_settings = null;
+    let deal_types = [], min_probability = 0, visible_columns = [], group_by = 'deal';
+    let closing_date_start = null, closing_date_end = null, mrr_mode = 'expected', nrr_mode = 'expected';
+
+    if (viewContext === 'summary') {
+      const farmingVis  = panel.querySelector('#vb-farming-vis')?.checked ?? true;
+      const farmingProb = Math.max(0, Math.min(100, parseInt(panel.querySelector('#vb-farming-prob')?.value) || 70));
+      const farmingMode = panel.querySelector('.vb-farming-mode.active')?.dataset?.mode || 'expected';
+      const huntingVis  = panel.querySelector('#vb-hunting-vis')?.checked ?? true;
+      const huntingProb = Math.max(0, Math.min(100, parseInt(panel.querySelector('#vb-hunting-prob')?.value) || 70));
+      const huntingMode = panel.querySelector('.vb-hunting-mode.active')?.dataset?.mode || 'expected';
+      const simpleSettings = {};
+      panel.querySelectorAll('.vb-simple-col').forEach(cb => { simpleSettings[cb.dataset.col] = { visible: cb.checked }; });
+      column_settings = {
+        farming: { visible: farmingVis, probability: farmingProb, mode: farmingMode },
+        hunting: { visible: huntingVis, probability: huntingProb, mode: huntingMode },
+        ...simpleSettings,
+      };
+    } else {
+      deal_types = [...panel.querySelectorAll('.vb-type-cap.active')].map(b => b.dataset.val);
+      min_probability = Math.max(0, Math.min(100, parseInt(panel.querySelector('#vb-prob').value) || 0));
+      group_by = panel.querySelector('.vb-grp-btn.active')?.dataset?.grp || 'deal';
+      closing_date_start = panel.querySelector('#vb-date-start')?.value || null;
+      closing_date_end   = panel.querySelector('#vb-date-end')?.value   || null;
+      mrr_mode = panel.querySelector('.vb-mrr-btn.active')?.dataset?.mrr || 'expected';
+      nrr_mode = panel.querySelector('.vb-nrr-btn.active')?.dataset?.nrr || 'expected';
+    }
+
+    const payload = { name: viewName, stages, view_context: viewContext,
+      deal_types, min_probability, visible_columns, group_by,
+      closing_date_start, closing_date_end, mrr_mode, nrr_mode, column_settings };
 
     try {
       if (editId) {
