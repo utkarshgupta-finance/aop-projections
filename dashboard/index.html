@@ -313,6 +313,28 @@ async function sb(path) {
   return res.json();
 }
 
+// Fetches all rows by paginating with Range headers (avoids the 1000-row default cap).
+async function sbAll(path, pageSize = 1000) {
+  const rows = [];
+  let from = 0;
+  while (true) {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
+      headers: {
+        apikey: SUPABASE_KEY,
+        Authorization: `Bearer ${SUPABASE_KEY}`,
+        Range: `${from}-${from + pageSize - 1}`,
+        'Range-Unit': 'items',
+      },
+    });
+    if (!res.ok) throw new Error(`Supabase ${path}: ${res.status} ${await res.text()}`);
+    const page = await res.json();
+    rows.push(...page);
+    if (page.length < pageSize) break;
+    from += pageSize;
+  }
+  return rows;
+}
+
 async function sbPost(path, body, method = 'POST') {
   const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
     method,
@@ -454,9 +476,9 @@ async function main() {
   const content = document.getElementById('content');
   try {
     [DEALS, MRR_SNAPSHOTS, NRR_SNAPSHOTS, BU_TARGETS, TARGET_SETTINGS, NRR_TARGETS, NRR_TARGET_SETTINGS, BASELINE, HUNTING_PIPELINE, HUNTING_SNAPSHOTS, PIPELINE_VIEWS, CRM_STAGES] = await Promise.all([
-      sb('deals?select=*'),
-      sb('mrr_snapshots?select=*&order=snapshot_date.asc'),
-      sb('nrr_snapshots?select=*&order=snapshot_date.asc'),
+      sbAll('deals?select=*'),
+      sbAll('mrr_snapshots?select=*&order=snapshot_date.asc'),
+      sbAll('nrr_snapshots?select=*&order=snapshot_date.asc'),
       sb('bu_targets?select=*'),
       sb('target_settings?select=*'),
       sb('nrr_targets?select=*'),
@@ -524,9 +546,9 @@ async function main() {
       if (!res.ok || !data.ok) throw new Error(data.error || `HTTP ${res.status}`);
 
       [DEALS, MRR_SNAPSHOTS, NRR_SNAPSHOTS, BU_TARGETS, TARGET_SETTINGS, NRR_TARGETS, BASELINE, HUNTING_PIPELINE, HUNTING_SNAPSHOTS, PIPELINE_VIEWS] = await Promise.all([
-        sb('deals?select=*'),
-        sb('mrr_snapshots?select=*&order=snapshot_date.asc'),
-        sb('nrr_snapshots?select=*&order=snapshot_date.asc'),
+        sbAll('deals?select=*'),
+        sbAll('mrr_snapshots?select=*&order=snapshot_date.asc'),
+        sbAll('nrr_snapshots?select=*&order=snapshot_date.asc'),
         sb('bu_targets?select=*'),
         sb('target_settings?select=*'),
         sb('nrr_targets?select=*'),
@@ -1005,6 +1027,22 @@ function renderDealsTableWith({ dealsById, snapshots, metric, tableId, buFilterI
     return e.amount;
   };
 
+  // Most recent snapshot amount for a deal, regardless of exact date.
+  // Used for sorting/display when a deal has no snapshot on the global latestDate.
+  const latestSnapAmt = (byDate) => {
+    if (!byDate) return undefined;
+    const v = snapAmt(byDate, latestDate);
+    if (v !== undefined) return v;
+    // Fall back to deal's own most recent snapshot date
+    let bestDate = null, bestAmt = undefined;
+    for (const [d, e] of byDate.entries()) {
+      if ((e.probability ?? 100) >= minProb && (bestDate === null || d > bestDate)) {
+        bestDate = d; bestAmt = e.amount;
+      }
+    }
+    return bestAmt;
+  };
+
   let tabDeals = DEALS
     .filter(d => !currentBU || (d.business_unit || 'UNMAPPED') === currentBU)
     .filter(d => matchesCommitView(d))
@@ -1033,7 +1071,7 @@ function renderDealsTableWith({ dealsById, snapshots, metric, tableId, buFilterI
   const comparator = (a, b) => {
     const byDateA = snapshotsByDeal.get(a.deal_id), byDateB = snapshotsByDeal.get(b.deal_id);
     let va, vb;
-    if (sortKey === '__latest')         { va = snapAmt(byDateA, latestDate); vb = snapAmt(byDateB, latestDate); }
+    if (sortKey === '__latest')         { va = latestSnapAmt(byDateA); vb = latestSnapAmt(byDateB); }
     else if (periodDates.includes(sortKey)) { va = snapAmt(byDateA, sortKey); vb = snapAmt(byDateB, sortKey); }
     else if (sortKey === 'deal_id')     { va = a.deal_id; vb = b.deal_id; }
     else if (sortKey === 'deal_name')   { va = a.current_name; vb = b.current_name; }
@@ -1190,7 +1228,11 @@ function renderDealsTableWith({ dealsById, snapshots, metric, tableId, buFilterI
     const buCell = bu === 'UNMAPPED' ? `<span class="badge">UNMAPPED</span>` : escapeHtml(bu);
     const byDate = snapshotsByDeal.get(deal.deal_id);
     const dateCells = dates.map((date, i) => {
-      const v = snapAmt(byDate, date);
+      const isLatestCol = date === latestDate;
+      let v = snapAmt(byDate, date);
+      // In compact mode the "Latest" column shows the deal's most recent snapshot
+      // even if it wasn't taken on the exact global latestDate.
+      if (v === undefined && isLatestCol && !reviewExpanded) v = latestSnapAmt(byDate);
       const dateIdx = periodDates.indexOf(date);
       // Last known (non-missing) value before this date — used to colour missing cells
       let lastKnownV = undefined;
