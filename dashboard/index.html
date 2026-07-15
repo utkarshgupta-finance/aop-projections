@@ -1005,6 +1005,22 @@ function renderDealsTableWith({ dealsById, snapshots, metric, tableId, buFilterI
     return e.amount;
   };
 
+  // Most recent snapshot amount for a deal, regardless of exact date.
+  // Used for sorting/display when a deal has no snapshot on the global latestDate.
+  const latestSnapAmt = (byDate) => {
+    if (!byDate) return undefined;
+    const v = snapAmt(byDate, latestDate);
+    if (v !== undefined) return v;
+    // Fall back to deal's own most recent snapshot date
+    let bestDate = null, bestAmt = undefined;
+    for (const [d, e] of byDate.entries()) {
+      if ((e.probability ?? 100) >= minProb && (bestDate === null || d > bestDate)) {
+        bestDate = d; bestAmt = e.amount;
+      }
+    }
+    return bestAmt;
+  };
+
   let tabDeals = DEALS
     .filter(d => !currentBU || (d.business_unit || 'UNMAPPED') === currentBU)
     .filter(d => matchesCommitView(d))
@@ -1033,7 +1049,7 @@ function renderDealsTableWith({ dealsById, snapshots, metric, tableId, buFilterI
   const comparator = (a, b) => {
     const byDateA = snapshotsByDeal.get(a.deal_id), byDateB = snapshotsByDeal.get(b.deal_id);
     let va, vb;
-    if (sortKey === '__latest')         { va = snapAmt(byDateA, latestDate); vb = snapAmt(byDateB, latestDate); }
+    if (sortKey === '__latest')         { va = latestSnapAmt(byDateA); vb = latestSnapAmt(byDateB); }
     else if (periodDates.includes(sortKey)) { va = snapAmt(byDateA, sortKey); vb = snapAmt(byDateB, sortKey); }
     else if (sortKey === 'deal_id')     { va = a.deal_id; vb = b.deal_id; }
     else if (sortKey === 'deal_name')   { va = a.current_name; vb = b.current_name; }
@@ -1190,7 +1206,11 @@ function renderDealsTableWith({ dealsById, snapshots, metric, tableId, buFilterI
     const buCell = bu === 'UNMAPPED' ? `<span class="badge">UNMAPPED</span>` : escapeHtml(bu);
     const byDate = snapshotsByDeal.get(deal.deal_id);
     const dateCells = dates.map((date, i) => {
-      const v = snapAmt(byDate, date);
+      const isLatestCol = date === latestDate;
+      let v = snapAmt(byDate, date);
+      // In compact mode the "Latest" column shows the deal's most recent snapshot
+      // even if it wasn't taken on the exact global latestDate.
+      if (v === undefined && isLatestCol && !reviewExpanded) v = latestSnapAmt(byDate);
       const dateIdx = periodDates.indexOf(date);
       // Last known (non-missing) value before this date — used to colour missing cells
       let lastKnownV = undefined;
