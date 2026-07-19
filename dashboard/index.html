@@ -800,7 +800,7 @@ function render() {
   // Hide period/type global tabs when in Commits view — views handle filtering there
   const inCommits = currentViewMode === 'review';
   document.getElementById('period-group').style.display = inCommits ? 'none' : '';
-  document.getElementById('type-group').style.display   = inCommits ? 'none' : '';
+  document.getElementById('type-group').style.display   = (inCommits || currentViewMode === 'summary') ? 'none' : '';
 
   if (currentViewMode === 'summary') { renderSummaryView(); return; }
   if (currentViewMode === 'bu-detail') { renderBUDetailView(); return; }

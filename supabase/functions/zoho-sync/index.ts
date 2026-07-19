@@ -426,13 +426,12 @@ Deno.serve(async (req: Request) => {
     }
 
     // ---- Fetch existing deals (for bu_override and name history) ----
+    // Fetch ALL deals without a .in() filter to avoid URL length limits with large deal sets.
     const universeIds = new Set(universe.map(d => d.id));
     const huntingOnlyIds = huntingRaw.map(d => String(d.id)).filter(id => !universeIds.has(id));
-    const allDealIds = [...universe.map(d => d.id), ...huntingOnlyIds];
     const { data: existingDeals, error: fetchErr } = await supabase
       .from('deals')
-      .select('deal_id, current_name, name_history, business_unit, bu_override')
-      .in('deal_id', allDealIds);
+      .select('deal_id, current_name, name_history, business_unit, bu_override');
     if (fetchErr) throw fetchErr;
     const existingByDeal = new Map((existingDeals ?? []).map((r: any) => [r.deal_id, r]));
 
