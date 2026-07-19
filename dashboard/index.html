@@ -652,11 +652,30 @@ function renderModalDealsTable() {
     modalSortKey = '__latest';
   }
 
+  // Probability threshold from the active view's per-type column settings
+  const vcs = activePipelineView?.column_settings || {};
+  const typeCfg = dealType === 'Farming'
+    ? { probability: 70, ...(vcs.farming || {}) }
+    : { probability: 70, ...(vcs.hunting || {}) };
+  const minDrillProb = typeCfg.probability;
+
   let deals = DEALS
     .filter(d => d.deal_type === dealType)
     .filter(d => (d.business_unit || 'UNMAPPED') === bu)
-    .filter(d => snapshotsByDeal.has(d.deal_id) &&
-      [...snapshotsByDeal.get(d.deal_id).values()].some(e => snapClosingInPeriod(e.closing_date, periodTab) && (e.probability ?? 100) >= 70));
+    .filter(d => {
+      const byDate = snapshotsByDeal.get(d.deal_id);
+      if (!byDate) return false;
+      // Use the latest in-period snapshot's probability (matches summary logic)
+      let latestInPeriodDate = null, latestInPeriodProb = null;
+      for (const [date, e] of byDate.entries()) {
+        if (!snapClosingInPeriod(e.closing_date, periodTab)) continue;
+        if (latestInPeriodDate === null || date > latestInPeriodDate) {
+          latestInPeriodDate = date;
+          latestInPeriodProb = e.probability ?? 100;
+        }
+      }
+      return latestInPeriodDate !== null && latestInPeriodProb >= minDrillProb;
+    });
 
   // Search filter
   if (modalSearch.trim()) {
@@ -1396,18 +1415,19 @@ function renderSummaryView() {
     };
     const inPeriod = d => viewHasDates || snapClosingInPeriod(d.closing_date, periodTab);
 
-    // Build latest snapshot per deal (matching period + min prob), so summary amounts
-    // match the commit view which also uses snapshot amounts rather than d.mrr_inr.
+    // Build snapshot map using only the latest global snapshot date, so summary amounts
+    // match the drilldown total (which also sums only the latest-date column).
+    // A deal not present on latestDate is no longer in the current commit.
     const latestSnapByDeal = new Map();
     for (const s of snapshots) {
+      if (s.snapshot_date !== latestDate) continue;
       const snapInPeriod = viewHasDates
         ? (!activePipelineView?.closing_date_start || (s.closing_date && s.closing_date >= activePipelineView.closing_date_start))
           && (!activePipelineView?.closing_date_end || (s.closing_date && s.closing_date <= activePipelineView.closing_date_end))
         : snapClosingInPeriod(s.closing_date, periodTab);
       if (!snapInPeriod) continue;
       if ((s.probability ?? 100) < 70) continue;
-      const prev = latestSnapByDeal.get(s.deal_id);
-      if (!prev || s.snapshot_date > prev.snapshot_date) latestSnapByDeal.set(s.deal_id, s);
+      latestSnapByDeal.set(s.deal_id, s);
     }
 
     const dealAmt = (d, cfg) => {
