@@ -218,3 +218,32 @@ var MONTHS = { jan:1, feb:2, mar:3, apr:4, may:5, jun:6, jul:7, aug:8, sep:9, oc
 function monthIndex(abbr) {
   return MONTHS[abbr.toLowerCase().slice(0, 3)] || 0;
 }
+
+// ─── Debug helper — run once to see what CMRR header cells actually contain ──
+// Run this from Apps Script editor: Extensions → Apps Script → debugCmrrHeaders → Run
+
+function debugCmrrHeaders() {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('CMRR');
+  if (!sheet) { SpreadsheetApp.getUi().alert('Sheet "CMRR" not found'); return; }
+  var range = sheet.getDataRange();
+  var displayRow = range.getDisplayValues()[2];
+  var valueRow   = range.getValues()[2];
+  var msg = 'CMRR row-3 headers, cols AD–AP (indices 29–41):\n\n';
+  for (var c = 29; c <= 41; c++) {
+    msg += 'Col ' + c + ': display=[' + displayRow[c] + ']  raw=[' + valueRow[c] + ']\n';
+  }
+  SpreadsheetApp.getUi().alert('CMRR Header Debug', msg, SpreadsheetApp.getUi().ButtonSet.OK);
+}
+
+function debugNrrHeaders() {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('NRR Consolidated');
+  if (!sheet) { SpreadsheetApp.getUi().alert('Sheet "NRR Consolidated" not found'); return; }
+  var range = sheet.getDataRange();
+  var displayRow = range.getDisplayValues()[2];
+  var valueRow   = range.getValues()[2];
+  var msg = 'NRR Consolidated row-3 headers, cols P–AA (indices 15–26):\n\n';
+  for (var c = 15; c <= 26; c++) {
+    msg += 'Col ' + c + ': display=[' + displayRow[c] + ']  raw=[' + valueRow[c] + ']\n';
+  }
+  SpreadsheetApp.getUi().alert('NRR Header Debug', msg, SpreadsheetApp.getUi().ButtonSet.OK);
+}
