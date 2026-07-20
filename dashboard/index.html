@@ -278,7 +278,7 @@
   </div>
   <!-- NRR Invoice Detail Modal -->
   <div id="nrr-invoice-modal" style="display:none;position:fixed;inset:0;z-index:9000;background:rgba(0,0,0,0.45);align-items:center;justify-content:center;">
-    <div style="background:var(--surface-1);border:1px solid var(--border);border-radius:12px;padding:24px;width:min(1000px,95vw);max-height:92vh;display:flex;flex-direction:column;box-shadow:0 8px 32px rgba(0,0,0,0.25);">
+    <div style="background:var(--surface-1);border:1px solid var(--border);border-radius:12px;padding:24px;width:min(1300px,97vw);max-height:95vh;display:flex;flex-direction:column;box-shadow:0 8px 32px rgba(0,0,0,0.25);">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
         <div>
           <div id="nrr-modal-title" style="font-weight:600;font-size:15px;"></div>
@@ -286,8 +286,8 @@
         </div>
         <button id="nrr-modal-close" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--text-muted);padding:4px 8px;line-height:1;">×</button>
       </div>
-      <div style="overflow:auto;flex:1;">
-        <table id="nrr-modal-table" style="width:100%;border-collapse:collapse;font-size:13px;">
+      <div style="overflow-x:hidden;overflow-y:auto;flex:1;">
+        <table id="nrr-modal-table" style="width:100%;border-collapse:collapse;font-size:13px;table-layout:fixed;">
           <thead>
             <tr style="border-bottom:2px solid var(--border);">
               <th style="text-align:left;padding:6px 10px;color:var(--text-muted);font-weight:500;">Inv No.</th>
@@ -1039,7 +1039,7 @@ async function showNrrInvoiceModal(acct, bu, month) {
       return `<tr style="border-bottom:1px solid var(--gridline);">
         ${acctCell}
         <td style="padding:7px 10px;">${escapeHtml(r.inv_no ?? '')}</td>
-        <td style="padding:7px 10px;color:var(--text-secondary);">${escapeHtml(r.memo ?? '')}</td>
+        <td style="padding:7px 10px;color:var(--text-secondary);white-space:normal;word-break:break-word;">${escapeHtml(r.memo ?? '')}</td>
         <td style="padding:7px 10px;color:var(--text-secondary);">${escapeHtml(r.revenue_type ?? '')}</td>
         <td style="padding:7px 10px;text-align:right;">${fmtINR(Number(r.amount ?? 0))}</td>
       </tr>`;
@@ -1047,12 +1047,13 @@ async function showNrrInvoiceModal(acct, bu, month) {
     // Update thead to add Account column for BU-level view
     const thead = document.querySelector('#nrr-modal-table thead tr');
     if (thead) {
-      const acctTh = isBuLevel ? `<th style="text-align:left;padding:6px 10px;color:var(--text-muted);font-weight:500;">Account</th>` : '';
+      const acctTh = isBuLevel ? `<th style="text-align:left;padding:6px 10px;color:var(--text-muted);font-weight:500;width:18%;">Account</th>` : '';
+      const memoW = isBuLevel ? '30%' : '38%';
       thead.innerHTML = `${acctTh}
-        <th style="text-align:left;padding:6px 10px;color:var(--text-muted);font-weight:500;">Inv No.</th>
-        <th style="text-align:left;padding:6px 10px;color:var(--text-muted);font-weight:500;">Memo</th>
-        <th style="text-align:left;padding:6px 10px;color:var(--text-muted);font-weight:500;">Revenue Type</th>
-        <th style="text-align:right;padding:6px 10px;color:var(--text-muted);font-weight:500;">Amount</th>`;
+        <th style="text-align:left;padding:6px 10px;color:var(--text-muted);font-weight:500;width:12%;">Inv No.</th>
+        <th style="text-align:left;padding:6px 10px;color:var(--text-muted);font-weight:500;width:${memoW};">Memo</th>
+        <th style="text-align:left;padding:6px 10px;color:var(--text-muted);font-weight:500;width:20%;">Revenue Type</th>
+        <th style="text-align:right;padding:6px 10px;color:var(--text-muted);font-weight:500;width:12%;">Amount</th>`;
     }
     const colspan = isBuLevel ? 5 : 4;
     body.innerHTML = trs + `<tr style="border-top:2px solid var(--border);font-weight:600;">
