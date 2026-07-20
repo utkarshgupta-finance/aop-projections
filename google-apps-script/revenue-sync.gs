@@ -61,6 +61,8 @@ function readCmrrRows() {
 
   for (var r = 3; r < data.length; r++) { // row 4+ (0-indexed = 3+)
     var row = data[r];
+    // Skip subtotal/group/blank rows — only process rows with a numeric row-counter in col A
+    if (toNumber(row[0]) <= 0) continue;
     // Use col D (Customer Name) as primary; fall back to col B (Regrouped Nomenclature)
     var accountName = trim(row[3]) || trim(row[1]);
     var bu          = trim(row[44]); // col AS = BU2
