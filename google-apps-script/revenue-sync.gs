@@ -1,0 +1,228 @@
+// Revenue Sync — pushes CMRR (MRR) and NRR Consolidated data to Supabase.
+// Setup: paste your SHEETS_SYNC_API_KEY in the SUPABASE_API_KEY constant below,
+// then reload the sheet to see the "Revenue Sync" menu.
+
+var SUPABASE_ENDPOINT = 'https://qnulyenilttpalbkmpvm.supabase.co/functions/v1/sheets-sync';
+var SUPABASE_API_KEY  = 'YOUR_SHEETS_SYNC_API_KEY'; // ← replace with your key
+
+// ─── Menu ────────────────────────────────────────────────────────────────────
+
+function onOpen() {
+  SpreadsheetApp.getUi()
+    .createMenu('Revenue Sync')
+    .addItem('Push MRR + NRR to Supabase', 'syncRevenue')
+    .addToUi();
+}
+
+// ─── Main entry point ────────────────────────────────────────────────────────
+
+function syncRevenue() {
+  var ui = SpreadsheetApp.getUi();
+  try {
+    var rows = [];
+    rows = rows.concat(readCmrrRows());
+    rows = rows.concat(readNrrRows(rows));  // pass cmrr rows so we can merge
+
+    if (rows.length === 0) {
+      ui.alert('Revenue Sync', 'No data rows found — nothing pushed.', ui.ButtonSet.OK);
+      return;
+    }
+
+    var result = pushToSupabase(rows);
+    ui.alert('Revenue Sync ✓',
+      'Successfully pushed ' + result.rows_upserted + ' rows to Supabase.',
+      ui.ButtonSet.OK);
+  } catch (e) {
+    ui.alert('Revenue Sync — Error', String(e), ui.ButtonSet.OK);
+  }
+}
+
+// ─── CMRR sheet reader ───────────────────────────────────────────────────────
+// Row 3 = header. Col B (idx 1) = Regrouped Nomenclature, Col D (idx 3) = Customer Name.
+// Cols AD–AP (idx 29–41) = MRR months. Col AR (idx 43) = BU.
+
+function readCmrrRows() {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('CMRR');
+  if (!sheet) throw new Error('Sheet "CMRR" not found');
+
+  var data = sheet.getDataRange().getValues();
+  var headerRow = data[2]; // row 3 (0-indexed = 2)
+
+  // Discover month positions from header row (cols AD–AP = indices 29–41)
+  var mrrMonths = [];
+  for (var c = 29; c <= 41; c++) {
+    var hdr = headerRow[c];
+    if (!hdr) continue;
+    var monthStr = formatMonthHeader(hdr);
+    if (monthStr) mrrMonths.push({ col: c, month: monthStr });
+  }
+
+  var byKey = {}; // key = account_name|business_unit|month
+
+  for (var r = 3; r < data.length; r++) { // row 4+ (0-indexed = 3+)
+    var row = data[r];
+    // Use col D (Customer Name) as primary; fall back to col B (Regrouped Nomenclature)
+    var accountName = trim(row[3]) || trim(row[1]);
+    var bu          = trim(row[43]);
+    if (!accountName || !bu) continue;
+
+    for (var m = 0; m < mrrMonths.length; m++) {
+      var amt = toNumber(row[mrrMonths[m].col]);
+      if (amt === 0) continue;
+      var key = accountName + '|' + bu + '|' + mrrMonths[m].month;
+      if (!byKey[key]) {
+        byKey[key] = { account_name: accountName, business_unit: bu, month: mrrMonths[m].month, mrr_amount: 0, nrr_amount: null };
+      }
+      byKey[key].mrr_amount += amt;
+    }
+  }
+
+  return Object.values(byKey);
+}
+
+// ─── NRR Consolidated sheet reader ──────────────────────────────────────────
+// Row 3 = header. Col F (idx 5) = Customer Name, Cols P–AA (idx 15–26) = NRR months.
+// Col AS (idx 44) = BU. Multiple rows per account — sum them.
+
+function readNrrRows(cmrrRows) {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('NRR Consolidated');
+  if (!sheet) throw new Error('Sheet "NRR Consolidated" not found');
+
+  var data = sheet.getDataRange().getValues();
+  var headerRow = data[2]; // row 3
+
+  // Discover month positions from header row (cols P–AA = indices 15–26)
+  var nrrMonths = [];
+  for (var c = 15; c <= 26; c++) {
+    var hdr = headerRow[c];
+    if (!hdr) continue;
+    var monthStr = formatMonthHeader(hdr);
+    if (monthStr) nrrMonths.push({ col: c, month: monthStr });
+  }
+
+  // Build a map keyed by account_name|bu|month for merge
+  var byKey = {};
+
+  // Pre-seed from cmrrRows so we can merge into existing entries
+  for (var i = 0; i < cmrrRows.length; i++) {
+    var cr = cmrrRows[i];
+    var key = cr.account_name + '|' + cr.business_unit + '|' + cr.month;
+    byKey[key] = cr; // reference — we'll mutate nrr_amount below
+  }
+
+  for (var r = 3; r < data.length; r++) {
+    var row = data[r];
+    var accountName = trim(row[5]);
+    var bu          = trim(row[44]);
+    if (!accountName || !bu) continue;
+
+    for (var m = 0; m < nrrMonths.length; m++) {
+      var amt = toNumber(row[nrrMonths[m].col]);
+      if (amt === 0) continue;
+      var key = accountName + '|' + bu + '|' + nrrMonths[m].month;
+      if (!byKey[key]) {
+        byKey[key] = { account_name: accountName, business_unit: bu, month: nrrMonths[m].month, mrr_amount: null, nrr_amount: 0 };
+      }
+      if (byKey[key].nrr_amount === null) byKey[key].nrr_amount = 0;
+      byKey[key].nrr_amount += amt;
+    }
+  }
+
+  // Return only rows that have NRR (cmrrRows are returned by readCmrrRows already)
+  return Object.values(byKey).filter(function(r) { return r.nrr_amount !== null && r.nrr_amount !== 0; });
+}
+
+// ─── Push to Supabase ────────────────────────────────────────────────────────
+
+function pushToSupabase(rows) {
+  // De-duplicate: cmrrRows + nrrRows may overlap; merge by key
+  var merged = {};
+  for (var i = 0; i < rows.length; i++) {
+    var r = rows[i];
+    var key = r.account_name + '|' + r.business_unit + '|' + r.month;
+    if (!merged[key]) {
+      merged[key] = { account_name: r.account_name, business_unit: r.business_unit, month: r.month, mrr_amount: null, nrr_amount: null };
+    }
+    if (r.mrr_amount !== null && r.mrr_amount !== 0) merged[key].mrr_amount = (merged[key].mrr_amount || 0) + r.mrr_amount;
+    if (r.nrr_amount !== null && r.nrr_amount !== 0) merged[key].nrr_amount = (merged[key].nrr_amount || 0) + r.nrr_amount;
+  }
+
+  var finalRows = Object.values(merged);
+
+  // Push in batches of 500 to stay within request size limits
+  var BATCH = 500;
+  var totalUpserted = 0;
+  for (var start = 0; start < finalRows.length; start += BATCH) {
+    var batch = finalRows.slice(start, start + BATCH);
+    var resp = UrlFetchApp.fetch(SUPABASE_ENDPOINT, {
+      method: 'post',
+      contentType: 'application/json',
+      headers: { 'Authorization': 'Bearer ' + SUPABASE_API_KEY },
+      payload: JSON.stringify({ rows: batch }),
+      muteHttpExceptions: true,
+    });
+    var code = resp.getResponseCode();
+    var body = JSON.parse(resp.getContentText());
+    if (code !== 200 || !body.ok) {
+      throw new Error('Supabase error (HTTP ' + code + '): ' + (body.error || resp.getContentText()));
+    }
+    totalUpserted += body.rows_upserted;
+  }
+  return { rows_upserted: totalUpserted };
+}
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+function trim(v) {
+  if (v === null || v === undefined) return '';
+  return String(v).trim();
+}
+
+function toNumber(v) {
+  if (v === null || v === undefined || v === '') return 0;
+  var n = Number(v);
+  return isNaN(n) ? 0 : n;
+}
+
+// Convert a header cell value (Date object or string like "Mar-26", "Mar 2026") to "YYYY-MM-01"
+function formatMonthHeader(hdr) {
+  if (!hdr) return null;
+
+  // Google Sheets often returns Date objects for date-formatted cells
+  if (hdr instanceof Date) {
+    var y = hdr.getFullYear();
+    var mo = String(hdr.getMonth() + 1).padStart(2, '0');
+    return y + '-' + mo + '-01';
+  }
+
+  var s = String(hdr).trim();
+
+  // "YYYY-MM" or "YYYY-MM-DD"
+  var ymMatch = s.match(/^(\d{4})-(\d{2})(-\d{2})?$/);
+  if (ymMatch) return ymMatch[1] + '-' + ymMatch[2] + '-01';
+
+  // "MMM-YY" e.g. "Mar-26"
+  var myyMatch = s.match(/^([A-Za-z]{3})-(\d{2})$/);
+  if (myyMatch) {
+    var mo2 = monthIndex(myyMatch[1]);
+    if (mo2 > 0) {
+      var yr = parseInt(myyMatch[2], 10);
+      yr = yr < 50 ? 2000 + yr : 1900 + yr;
+      return yr + '-' + String(mo2).padStart(2, '0') + '-01';
+    }
+  }
+
+  // "MMM YYYY" or "MMMM YYYY" e.g. "March 2026"
+  var myyyyMatch = s.match(/^([A-Za-z]+)\s+(\d{4})$/);
+  if (myyyyMatch) {
+    var mo3 = monthIndex(myyyyMatch[1]);
+    if (mo3 > 0) return myyyyMatch[2] + '-' + String(mo3).padStart(2, '0') + '-01';
+  }
+
+  return null;
+}
+
+var MONTHS = { jan:1, feb:2, mar:3, apr:4, may:5, jun:6, jul:7, aug:8, sep:9, oct:10, nov:11, dec:12 };
+function monthIndex(abbr) {
+  return MONTHS[abbr.toLowerCase().slice(0, 3)] || 0;
+}
