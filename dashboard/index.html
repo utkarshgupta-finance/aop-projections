@@ -202,6 +202,10 @@
   .rev-metric-badge.nrr { background: rgba(27,175,120,0.12); color: var(--series-2); }
   .rev-table th.rev-q-col, .rev-table td.rev-q-col { border-left: 2px solid var(--border); background: rgba(0,0,0,0.025); font-style: italic; }
   @media (prefers-color-scheme: dark) { .rev-table th.rev-q-col, .rev-table td.rev-q-col { background: rgba(255,255,255,0.03); } }
+  .rev-netnew-row td { font-size: 11px; padding-top: 2px; padding-bottom: 6px; border-bottom: 2px solid var(--gridline); background: rgba(0,0,0,0.01); }
+  .rev-netnew-label { color: var(--text-muted); font-weight: 500; text-transform: uppercase; letter-spacing: 0.04em; font-size: 10px; }
+  .rev-netnew-cell { font-size: 11px; }
+  @media (prefers-color-scheme: dark) { .rev-netnew-row td { background: rgba(255,255,255,0.015); } }
   .setup-box { background: var(--surface-1); border: 1px solid var(--border); border-radius: 10px; padding: 20px 24px; margin-bottom: 20px; }
   .setup-box pre { background: var(--page); border: 1px solid var(--border); border-radius: 6px; padding: 12px 14px; font-size: 12px; overflow-x: auto; white-space: pre-wrap; word-break: break-all; margin: 8px 0 0; }
   @media (max-width: 720px) {
@@ -633,20 +637,8 @@ function renderRevenuePage() {
   // Returns array of {key, label, months:[...], isGroup:bool}
   function buildCols() {
     if (revenuePeriod === 'monthly') {
-      // individual months + quarterly subtotal after each quarter
-      const qMap = new Map();
-      for (const m of months) {
-        const k = monthToQ(m);
-        if (!qMap.has(k)) qMap.set(k, []);
-        qMap.get(k).push(m);
-      }
-      const cols = [];
-      for (const [qKey, qMs] of qMap) {
-        for (const m of qMs) cols.push({ key: m, label: fmtMonth(m), months: [m], isGroup: false });
-        const [yr, q] = qKey.split('-Q');
-        cols.push({ key: qKey, label: `Q${q} ${yr}`, months: qMs, isGroup: true });
-      }
-      return cols;
+      // individual months only, no quarterly subtotals
+      return months.map(m => ({ key: m, label: fmtMonth(m), months: [m], isGroup: false }));
     }
     if (revenuePeriod === 'quarterly') {
       const qMap = new Map();
@@ -718,13 +710,41 @@ function renderRevenuePage() {
   const cols = buildCols();
 
   // Grand totals per col
-  function grandTotal(col) {
-    const ms = col.type === 'month' ? [col.key] : col.months;
+  const grandTotals = cols.map(col => {
     let t = 0;
-    for (const r of REVENUE_ACTUALS) { if (ms.includes(r.month)) t += revenueAmtOf(r); }
+    for (const r of REVENUE_ACTUALS) { if (col.months.includes(r.month)) t += revenueAmtOf(r); }
     return t;
+  });
+
+  const isMonthly = revenuePeriod === 'monthly';
+
+  // Format MRR cell with MoM green/red highlight
+  function fmtMrrCell(v, prev) {
+    if (!isMonthly || prev === null) return `<td class="num">${fmtCell(v)}</td>`;
+    const cls = v >= prev ? 'rev-pos' : 'rev-neg';
+    return `<td class="num"><span class="${cls}">${fmtINR(v)}</span></td>`;
   }
-  const grandTotals = cols.map(grandTotal);
+  // Format Net New cell (delta)
+  function fmtNetNewCell(v, prev) {
+    if (!isMonthly || prev === null) return `<td class="num rev-netnew-cell"><span class="rev-zero">—</span></td>`;
+    const delta = v - prev;
+    const cls = delta >= 0 ? 'rev-pos' : 'rev-neg';
+    return `<td class="num rev-netnew-cell"><span class="${cls}">${delta >= 0 ? '+' : ''}${fmtINR(delta)}</span></td>`;
+  }
+
+  // Build a pair of rows (MRR + Net New) for an entity
+  function entityRows(labelCell, vals, extraStyle) {
+    const mrrCells = cols.map((c, i) => {
+      const prev = isMonthly && i > 0 ? vals[i-1] : null;
+      return fmtMrrCell(vals[i], prev);
+    }).join('');
+    const netCells = cols.map((c, i) => {
+      const prev = isMonthly && i > 0 ? vals[i-1] : null;
+      return fmtNetNewCell(vals[i], prev);
+    }).join('');
+    return `<tr${extraStyle||''}><td>${labelCell}</td>${mrrCells}</tr>
+            <tr class="rev-netnew-row"${extraStyle||''}><td class="rev-netnew-label">Net New</td>${netCells}</tr>`;
+  }
 
   // Two rows of toggles: period grouping + row grouping
   const PERIODS = [
@@ -757,10 +777,7 @@ function renderRevenuePage() {
     ${cols.map(c => `<th class="num" ${thStyle(c)}>${c.label}</th>`).join('')}
   </tr></thead>`;
 
-  const totalRow = `<tr class="rev-total-row">
-    <td>Total</td>
-    ${cols.map((c, i) => `<td class="num"${tdQStyle(c)}>${fmtCell(grandTotals[i])}</td>`).join('')}
-  </tr>`;
+  const totalRow = entityRows('<strong>Total MRR</strong>', grandTotals, ' class="rev-total-row"');
 
   let tableBody = '';
 
@@ -779,79 +796,102 @@ function renderRevenuePage() {
       const buVals = cols.map(buColVal);
 
       const dot = `<span style="display:inline-block;width:9px;height:9px;border-radius:2px;background:${colorVar(bu)};margin-right:8px;vertical-align:middle;flex-shrink:0;"></span>`;
-      tableBody += `<tr class="rev-bu-row" data-rev-bu="${escapeHtml(bu)}">
-        <td>${dot}<span class="rev-expand-icon ${isExpanded ? 'open' : ''}">▶</span>${escapeHtml(bu)}</td>
-        ${cols.map((c, i) => {
-          const prev = !c.isGroup && revenuePeriod==='monthly' && i > 0 && !cols[i-1].isGroup ? buVals[i-1] : null;
-          return `<td class="num"${tdQStyle(c)}>${prev===null ? fmtCell(buVals[i]) : `<span class="${buVals[i]>=prev?'rev-pos':'rev-neg'}">${fmtINR(buVals[i])}</span>`}</td>`;
-        }).join('')}
-      </tr>`;
+      const buLabel = `${dot}<span class="rev-expand-icon ${isExpanded ? 'open' : ''}">▶</span>${escapeHtml(bu)}`;
+      tableBody += entityRows(buLabel, buVals, ` class="rev-bu-row" data-rev-bu="${escapeHtml(bu)}"`);
 
       if (isExpanded) {
         const accounts = [...buIdx.keys()].sort();
         for (const acct of accounts) {
           const mMap = buIdx.get(acct);
-          function acctColVal(col) {
-            const ms = col.type === 'month' ? [col.key] : col.months;
-            return ms.reduce((t, m) => { const r = mMap.get(m); return t + (r ? revenueAmtOf(r) : 0); }, 0);
-          }
-          const acctVals = cols.map(acctColVal);
-          tableBody += `<tr class="rev-account-row">
-            <td style="padding-left:40px;">${escapeHtml(acct)}</td>
-            ${cols.map((c, i) => {
-              const prev = !c.isGroup && revenuePeriod==='monthly' && i > 0 && !cols[i-1].isGroup ? acctVals[i-1] : null;
-              return `<td class="num"${tdQStyle(c)}>${prev===null ? fmtCell(acctVals[i]) : `<span class="${acctVals[i]>=prev?'rev-pos':'rev-neg'}">${fmtINR(acctVals[i])}</span>`}</td>`;
-            }).join('')}
-          </tr>`;
+          const acctVals = cols.map(col => col.months.reduce((t, m) => { const r = mMap.get(m); return t + (r ? revenueAmtOf(r) : 0); }, 0));
+          tableBody += entityRows(`<span style="padding-left:28px;">${escapeHtml(acct)}</span>`, acctVals, ' class="rev-account-row"');
         }
       }
     }
   } else {
     // Customer view: flat list, all accounts, sorted by name, BU as a column
     // Collect all account+BU combos
-    const custMap = new Map(); // "acct|bu" → { acct, bu, monthMap }
+    // Build customer map — store both account_name (col D) and a zoho_name field if available
+    const custMap = new Map();
     for (const r of REVENUE_ACTUALS) {
       if (!months.includes(r.month)) continue;
       const k = r.account_name + '|' + r.business_unit;
-      if (!custMap.has(k)) custMap.set(k, { acct: r.account_name, bu: r.business_unit, mMap: new Map() });
+      if (!custMap.has(k)) custMap.set(k, {
+        acct: r.account_name,
+        zoho: r.zoho_name || '',   // secondary name column if present
+        bu: r.business_unit,
+        mMap: new Map()
+      });
       custMap.get(k).mMap.set(r.month, r);
     }
-    const custList = [...custMap.values()].sort((a, b) => a.acct.localeCompare(b.acct));
+    const allCustList = [...custMap.values()].sort((a, b) => a.acct.localeCompare(b.acct));
 
-    // Customer view header has an extra BU column
     const custThead = `<thead><tr>
-      <th style="min-width:200px;">Customer</th>
+      <th style="min-width:200px;">Customer Name</th>
+      <th style="min-width:160px;">Zoho / Alt Name</th>
       <th style="min-width:120px;">Business Unit</th>
       ${cols.map(c => `<th class="num" ${thStyle(c)}>${c.label}</th>`).join('')}
     </tr></thead>`;
 
     const custTotalRow = `<tr class="rev-total-row">
-      <td>Total</td><td></td>
+      <td colspan="3">Total MRR</td>
       ${cols.map((c, i) => `<td class="num"${tdQStyle(c)}>${fmtCell(grandTotals[i])}</td>`).join('')}
     </tr>`;
 
-    let custRows = '';
-    for (const { acct, bu, mMap } of custList) {
-      function custColVal(col) {
-        const ms = col.type === 'month' ? [col.key] : col.months;
-        return ms.reduce((t, m) => { const r = mMap.get(m); return t + (r ? revenueAmtOf(r) : 0); }, 0);
+    const buOptions = ['', ...buList].map(b =>
+      `<option value="${escapeHtml(b)}"${b===''?'selected':''}>${b===''?'All BUs':escapeHtml(b)}</option>`
+    ).join('');
+
+    const searchBar = `<div style="display:flex;gap:8px;margin-bottom:10px;align-items:center;flex-wrap:wrap;">
+      <input id="rev-cust-search" type="text" placeholder="Search customer…"
+        style="flex:1;min-width:180px;padding:6px 10px;border:1px solid var(--border);border-radius:6px;background:var(--surface-1);color:var(--text-primary);font-size:13px;">
+      <select id="rev-cust-bu" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;background:var(--surface-1);color:var(--text-primary);font-size:13px;">
+        ${buOptions}
+      </select>
+    </div>`;
+
+    function buildCustRows(q, buFilter) {
+      const ql = q.toLowerCase();
+      let rows = '';
+      for (const { acct, zoho, bu, mMap } of allCustList) {
+        if (buFilter && bu !== buFilter) continue;
+        if (ql && !acct.toLowerCase().includes(ql) && !zoho.toLowerCase().includes(ql)) continue;
+        const custVals = cols.map(col => col.months.reduce((t, m) => { const r = mMap.get(m); return t + (r ? revenueAmtOf(r) : 0); }, 0));
+        const mrrCells = cols.map((c, i) => {
+          const prev = isMonthly && i > 0 ? custVals[i-1] : null;
+          return fmtMrrCell(custVals[i], prev);
+        }).join('');
+        const netCells = cols.map((c, i) => {
+          const prev = isMonthly && i > 0 ? custVals[i-1] : null;
+          return fmtNetNewCell(custVals[i], prev);
+        }).join('');
+        const dot = `<span style="display:inline-block;width:7px;height:7px;border-radius:2px;background:${colorVar(bu)};margin-right:6px;vertical-align:middle;"></span>`;
+        rows += `<tr class="rev-account-row">
+          <td>${escapeHtml(acct)}</td>
+          <td style="color:var(--text-muted);font-size:12px;">${zoho ? escapeHtml(zoho) : '<span style="color:var(--text-muted)">—</span>'}</td>
+          <td style="color:var(--text-secondary);font-size:12px;">${dot}${escapeHtml(bu)}</td>
+          ${mrrCells}
+        </tr>
+        <tr class="rev-netnew-row">
+          <td class="rev-netnew-label" colspan="3">Net New</td>
+          ${netCells}
+        </tr>`;
       }
-      const custVals = cols.map(custColVal);
-      const dot = `<span style="display:inline-block;width:7px;height:7px;border-radius:2px;background:${colorVar(bu)};margin-right:6px;vertical-align:middle;"></span>`;
-      custRows += `<tr class="rev-account-row">
-        <td>${escapeHtml(acct)}</td>
-        <td style="color:var(--text-secondary);font-size:12px;">${dot}${escapeHtml(bu)}</td>
-        ${cols.map((c, i) => {
-          const prev = !c.isGroup && revenuePeriod==='monthly' && i > 0 && !cols[i-1].isGroup ? custVals[i-1] : null;
-          return `<td class="num"${tdQStyle(c)}>${prev===null ? fmtCell(custVals[i]) : `<span class="${custVals[i]>=prev?'rev-pos':'rev-neg'}">${fmtINR(custVals[i])}</span>`}</td>`;
-        }).join('')}
-      </tr>`;
+      return rows;
     }
 
-    const html2 = `${viewToggle}<div class="card"><div class="rev-table-wrap"><table class="rev-table">
-      ${custThead}<tbody>${custTotalRow}${custRows}</tbody></table></div></div>`;
+    const html2 = `${viewToggle}${searchBar}<div class="card"><div class="rev-table-wrap"><table class="rev-table" id="rev-cust-table">
+      ${custThead}<tbody id="rev-cust-body">${custTotalRow}${buildCustRows('', '')}</tbody></table></div></div>`;
     el.innerHTML = html2;
     wireRevToggles(el);
+
+    function refreshCustTable() {
+      const q = el.querySelector('#rev-cust-search').value;
+      const bu = el.querySelector('#rev-cust-bu').value;
+      el.querySelector('#rev-cust-body').innerHTML = custTotalRow + buildCustRows(q, bu);
+    }
+    el.querySelector('#rev-cust-search').addEventListener('input', refreshCustTable);
+    el.querySelector('#rev-cust-bu').addEventListener('change', refreshCustTable);
     return;
   }
 
