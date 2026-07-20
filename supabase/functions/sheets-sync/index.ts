@@ -6,14 +6,12 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Simple bearer-token auth — set SHEETS_SYNC_API_KEY in Supabase secrets.
-// Google Apps Script sends: Authorization: Bearer <key>
 const SHEETS_SYNC_API_KEY = Deno.env.get('SHEETS_SYNC_API_KEY') ?? '';
 
 interface RevenueRow {
   account_name:  string;
   business_unit: string;
-  month:         string;  // YYYY-MM-DD (first of month) or YYYY-MM
+  month:         string;
   mrr_amount?:   number | null;
   nrr_amount?:   number | null;
   currency?:     string;
@@ -31,11 +29,9 @@ interface InvoiceRow {
 }
 
 function normaliseMonth(raw: string): string {
-  // Accept "2026-07", "2026-07-01", "Jul 2026", "July 2026"
   const ym = raw.trim();
   if (/^\d{4}-\d{2}$/.test(ym)) return `${ym}-01`;
   if (/^\d{4}-\d{2}-\d{2}$/.test(ym)) return ym.slice(0, 7) + '-01';
-  // Try to parse "Jul 2026" / "July 2026"
   const parsed = new Date(`1 ${ym}`);
   if (!isNaN(parsed.getTime())) {
     const y = parsed.getFullYear();
@@ -50,7 +46,6 @@ Deno.serve(async (req: Request) => {
     return new Response(null, { headers: corsHeaders });
   }
 
-  // Auth check
   const authHeader = req.headers.get('Authorization') ?? '';
   const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : '';
   if (!SHEETS_SYNC_API_KEY || token !== SHEETS_SYNC_API_KEY) {
@@ -62,7 +57,7 @@ Deno.serve(async (req: Request) => {
 
   try {
     const body = await req.json();
-    const rawRows: RevenueRow[] = body.rows;
+    const rawRows: RevenueRow[] = body.rows ?? [];
     const rawInvoiceRows: InvoiceRow[] = body.invoice_rows ?? [];
 
     const supabase = createClient(
@@ -90,13 +85,22 @@ Deno.serve(async (req: Request) => {
         };
       });
 
-      const { error } = await supabase
+      // Delete all existing rows for the months being synced, then insert fresh.
+      // This ensures a push always fully overrides the prior data for those months.
+      const monthsToSync = [...new Set(rows.map(r => r.month))];
+      const { error: delErr } = await supabase
         .from('revenue_actuals')
-        .upsert(rows, { onConflict: 'account_name,business_unit,month' });
+        .delete()
+        .in('month', monthsToSync);
+      if (delErr) throw delErr;
 
-      if (error) throw error;
+      const { error: insErr } = await supabase
+        .from('revenue_actuals')
+        .insert(rows);
+      if (insErr) throw insErr;
+
       revenueUpserted = rows.length;
-      console.log(`sheets-sync: upserted ${rows.length} revenue rows`);
+      console.log(`sheets-sync: replaced ${monthsToSync.length} months, inserted ${rows.length} revenue rows`);
     }
 
     // ── NRR invoice details ──────────────────────────────────────────────────
@@ -120,13 +124,21 @@ Deno.serve(async (req: Request) => {
         };
       });
 
-      const { error } = await supabase
+      // Same delete-then-insert approach for clean override
+      const invMonths = [...new Set(invoiceRows.map(r => r.month))];
+      const { error: delErr } = await supabase
         .from('nrr_invoice_details')
-        .upsert(invoiceRows, { onConflict: 'account_name,business_unit,inv_no,month' });
+        .delete()
+        .in('month', invMonths);
+      if (delErr) throw delErr;
 
-      if (error) throw error;
+      const { error: insErr } = await supabase
+        .from('nrr_invoice_details')
+        .insert(invoiceRows);
+      if (insErr) throw insErr;
+
       invoiceUpserted = invoiceRows.length;
-      console.log(`sheets-sync: upserted ${invoiceRows.length} invoice rows`);
+      console.log(`sheets-sync: replaced invoice months, inserted ${invoiceRows.length} invoice rows`);
     }
 
     return new Response(

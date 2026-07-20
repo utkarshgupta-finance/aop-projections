@@ -811,8 +811,9 @@ function renderRevenuePage() {
       return `<td class="num"><span class="${cls}">${delta >= 0 ? '+' : ''}${fmtINR(delta)}</span></td>`;
     }
     const isNRRCell = revenueMetric === 'NRR' && isMonthly && nrrCtx && v !== 0;
+    // acct '__BU__' = BU-level row (show all invoices for that BU)
     const clickAttr = isNRRCell
-      ? ` data-nrr-click="1" data-nrr-acct="${escapeHtml(nrrCtx.acct)}" data-nrr-bu="${escapeHtml(nrrCtx.bu)}" data-nrr-month="${escapeHtml(nrrCtx.col.months[0])}" style="cursor:pointer;"`
+      ? ` data-nrr-click="1" data-nrr-acct="${escapeHtml(nrrCtx.acct)}" data-nrr-bu="${escapeHtml(nrrCtx.bu)}" data-nrr-month="${escapeHtml(nrrCtx.col.months[0])}" style="cursor:pointer;" title="Click to see invoice details"`
       : '';
     if (prev === null || v === prev) return `<td class="num"${clickAttr}>${fmtCell(v)}</td>`;
     const cls = v > prev ? 'rev-pos' : 'rev-neg';
@@ -881,7 +882,8 @@ function renderRevenuePage() {
 
       const dot = `<span style="display:inline-block;width:9px;height:9px;border-radius:2px;background:${colorVar(bu)};margin-right:8px;vertical-align:middle;flex-shrink:0;"></span>`;
       const buLabel = `${dot}<span class="rev-expand-icon ${isExpanded ? 'open' : ''}">▶</span>${escapeHtml(bu)}`;
-      tableBody += entityRows(buLabel, buVals, ` class="rev-bu-row" data-rev-bu="${escapeHtml(bu)}"`);
+      // Pass null acct so account rows inside don't get confused; bu-level NRR uses special sentinel
+      tableBody += entityRows(buLabel, buVals, ` class="rev-bu-row" data-rev-bu="${escapeHtml(bu)}"`, '__BU__', bu);
 
       if (isExpanded) {
         const accounts = [...buIdx.keys()].sort();
@@ -995,13 +997,24 @@ function wireNrrCellClicks(el) {
   el.querySelectorAll('[data-nrr-click]').forEach(td => {
     td.addEventListener('click', async e => {
       e.stopPropagation();
-      const acct  = td.dataset.nrrAcct;
-      const bu    = td.dataset.nrrBu;
-      const month = td.dataset.nrrMonth; // YYYY-MM-01
-      await showNrrInvoiceModal(acct, bu, month);
+      await showNrrInvoiceModal(td.dataset.nrrAcct, td.dataset.nrrBu, td.dataset.nrrMonth);
     });
   });
 }
+
+const _nrrFmtMonth = m => {
+  const [yr, mo] = m.split('-');
+  return ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][parseInt(mo,10)-1] + ' ' + yr;
+};
+
+// Wire modal close buttons once (script runs after DOM is ready since it's at end of body)
+(function() {
+  const modal = document.getElementById('nrr-invoice-modal');
+  if (modal) {
+    document.getElementById('nrr-modal-close').addEventListener('click', () => { modal.style.display = 'none'; });
+    modal.addEventListener('click', e => { if (e.target === modal) modal.style.display = 'none'; });
+  }
+})();
 
 async function showNrrInvoiceModal(acct, bu, month) {
   const modal = document.getElementById('nrr-invoice-modal');
@@ -1009,43 +1022,55 @@ async function showNrrInvoiceModal(acct, bu, month) {
   const title = document.getElementById('nrr-modal-title');
   const sub   = document.getElementById('nrr-modal-subtitle');
 
-  title.textContent = acct;
-  sub.textContent   = `${bu} · ${fmtMonth(month)}`;
+  const isBuLevel = acct === '__BU__';
+  title.textContent = isBuLevel ? bu : acct;
+  sub.textContent   = (isBuLevel ? 'All accounts · ' : `${bu} · `) + _nrrFmtMonth(month);
   body.innerHTML    = `<tr><td colspan="4" style="padding:16px;color:var(--text-muted);text-align:center;">Loading…</td></tr>`;
   modal.style.display = 'flex';
 
   try {
-    const qs = `account_name=eq.${encodeURIComponent(acct)}&business_unit=eq.${encodeURIComponent(bu)}&month=eq.${encodeURIComponent(month)}&order=inv_no.asc`;
+    let qs;
+    if (isBuLevel) {
+      qs = `business_unit=eq.${encodeURIComponent(bu)}&month=eq.${encodeURIComponent(month)}&order=account_name.asc,inv_no.asc`;
+    } else {
+      qs = `account_name=eq.${encodeURIComponent(acct)}&business_unit=eq.${encodeURIComponent(bu)}&month=eq.${encodeURIComponent(month)}&order=inv_no.asc`;
+    }
     const rows = await sb(`nrr_invoice_details?${qs}`);
     if (!rows.length) {
-      body.innerHTML = `<tr><td colspan="4" style="padding:16px;color:var(--text-muted);text-align:center;">No invoice details found.</td></tr>`;
+      body.innerHTML = `<tr><td colspan="4" style="padding:16px;color:var(--text-muted);text-align:center;">No invoice details found — run "Push MRR + NRR to Supabase" from your Google Sheet to populate.</td></tr>`;
       return;
     }
     let total = 0;
     const trs = rows.map(r => {
       total += Number(r.amount ?? 0);
+      const acctCell = isBuLevel ? `<td style="padding:7px 10px;font-size:11px;color:var(--text-muted);">${escapeHtml(r.account_name ?? '')}</td>` : '';
       return `<tr style="border-bottom:1px solid var(--gridline);">
+        ${acctCell}
         <td style="padding:7px 10px;">${escapeHtml(r.inv_no ?? '')}</td>
         <td style="padding:7px 10px;color:var(--text-secondary);">${escapeHtml(r.memo ?? '')}</td>
         <td style="padding:7px 10px;color:var(--text-secondary);">${escapeHtml(r.revenue_type ?? '')}</td>
         <td style="padding:7px 10px;text-align:right;">${fmtINR(Number(r.amount ?? 0))}</td>
       </tr>`;
     }).join('');
+    // Update thead to add Account column for BU-level view
+    const thead = document.querySelector('#nrr-modal-table thead tr');
+    if (thead) {
+      const acctTh = isBuLevel ? `<th style="text-align:left;padding:6px 10px;color:var(--text-muted);font-weight:500;">Account</th>` : '';
+      thead.innerHTML = `${acctTh}
+        <th style="text-align:left;padding:6px 10px;color:var(--text-muted);font-weight:500;">Inv No.</th>
+        <th style="text-align:left;padding:6px 10px;color:var(--text-muted);font-weight:500;">Memo</th>
+        <th style="text-align:left;padding:6px 10px;color:var(--text-muted);font-weight:500;">Revenue Type</th>
+        <th style="text-align:right;padding:6px 10px;color:var(--text-muted);font-weight:500;">Amount</th>`;
+    }
+    const colspan = isBuLevel ? 5 : 4;
     body.innerHTML = trs + `<tr style="border-top:2px solid var(--border);font-weight:600;">
-      <td colspan="3" style="padding:8px 10px;">Total</td>
+      <td colspan="${colspan - 1}" style="padding:8px 10px;">Total</td>
       <td style="padding:8px 10px;text-align:right;">${fmtINR(total)}</td>
     </tr>`;
   } catch (err) {
     body.innerHTML = `<tr><td colspan="4" style="padding:16px;color:var(--rev-neg);text-align:center;">Error: ${escapeHtml(String(err))}</td></tr>`;
   }
 }
-
-// Wire modal close on load (once)
-document.addEventListener('DOMContentLoaded', () => {
-  const modal = document.getElementById('nrr-invoice-modal');
-  document.getElementById('nrr-modal-close').addEventListener('click', () => { modal.style.display = 'none'; });
-  modal.addEventListener('click', e => { if (e.target === modal) modal.style.display = 'none'; });
-});
 
 function revenueSetupHtml() {
   const endpoint = `${SUPABASE_URL}/functions/v1/sheets-sync`;
