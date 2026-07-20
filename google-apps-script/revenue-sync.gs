@@ -149,7 +149,9 @@ function readNrrInvoiceRows() {
     if (monthStr) nrrMonths.push({ col: c, month: monthStr });
   }
 
-  var rows = [];
+  // Use a map to deduplicate by (account|bu|inv_no|month) — same invoice
+  // can appear on multiple rows in the sheet; sum the amounts.
+  var byKey = {};
   for (var r = 3; r < data.length; r++) {
     var row = data[r];
     var accountName = trim(row[5]);  // col F = Customer Name
@@ -163,19 +165,23 @@ function readNrrInvoiceRows() {
     for (var m = 0; m < nrrMonths.length; m++) {
       var amt = toNumber(row[nrrMonths[m].col]);
       if (amt === 0) continue;
-      rows.push({
-        account_name:  accountName,
-        business_unit: bu,
-        month:         nrrMonths[m].month,
-        inv_no:        invNo,
-        memo:          memo || null,
-        revenue_type:  revenueType || null,
-        amount:        amt,
-      });
+      var key = accountName + '|' + bu + '|' + invNo + '|' + nrrMonths[m].month;
+      if (!byKey[key]) {
+        byKey[key] = {
+          account_name:  accountName,
+          business_unit: bu,
+          month:         nrrMonths[m].month,
+          inv_no:        invNo,
+          memo:          memo || null,
+          revenue_type:  revenueType || null,
+          amount:        0,
+        };
+      }
+      byKey[key].amount += amt;
     }
   }
 
-  return rows;
+  return Object.values(byKey);
 }
 
 // ─── Push to Supabase ────────────────────────────────────────────────────────
@@ -215,16 +221,16 @@ function pushToSupabase(rows, invoiceRows) {
     totalUpserted = body.rows_upserted;
   }
 
-  // Push invoice rows in batches of 500
-  var BATCH = 500;
+  // Send ALL invoice rows in one request — same reason as revenue rows:
+  // edge function does delete-then-insert and batching would cause each batch
+  // to wipe the previous batch's rows for the same months.
   var totalInvoiceUpserted = 0;
-  for (var istart = 0; istart < invoiceRows.length; istart += BATCH) {
-    var ibatch = invoiceRows.slice(istart, istart + BATCH);
+  if (invoiceRows.length > 0) {
     var iresp = UrlFetchApp.fetch(SUPABASE_ENDPOINT, {
       method: 'post',
       contentType: 'application/json',
       headers: { 'Authorization': 'Bearer ' + SUPABASE_API_KEY },
-      payload: JSON.stringify({ rows: [], invoice_rows: ibatch }),
+      payload: JSON.stringify({ rows: [], invoice_rows: invoiceRows }),
       muteHttpExceptions: true,
     });
     var icode = iresp.getResponseCode();
@@ -232,7 +238,7 @@ function pushToSupabase(rows, invoiceRows) {
     if (icode !== 200 || !ibody.ok) {
       throw new Error('Supabase invoice error (HTTP ' + icode + '): ' + (ibody.error || iresp.getContentText()));
     }
-    totalInvoiceUpserted += ibody.invoice_rows_upserted;
+    totalInvoiceUpserted = ibody.invoice_rows_upserted;
   }
 
   return { rows_upserted: totalUpserted, invoice_rows_upserted: totalInvoiceUpserted };
