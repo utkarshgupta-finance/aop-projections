@@ -45,8 +45,9 @@ function readCmrrRows() {
   var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('CMRR');
   if (!sheet) throw new Error('Sheet "CMRR" not found');
 
-  var data = sheet.getDataRange().getValues();
-  var headerRow = data[2]; // row 3 (0-indexed = 2)
+  var range = sheet.getDataRange();
+  var data = range.getValues();
+  var headerRow = range.getDisplayValues()[2]; // display text avoids Date timezone issues
 
   // Discover month positions from header row (cols AD–AP = indices 29–41)
   var mrrMonths = [];
@@ -90,8 +91,9 @@ function readNrrRows() {
   var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('NRR Consolidated');
   if (!sheet) throw new Error('Sheet "NRR Consolidated" not found');
 
-  var data = sheet.getDataRange().getValues();
-  var headerRow = data[2]; // row 3
+  var range = sheet.getDataRange();
+  var data = range.getValues();
+  var headerRow = range.getDisplayValues()[2]; // display text avoids Date timezone issues
 
   var nrrMonths = [];
   for (var c = 15; c <= 26; c++) {
@@ -174,23 +176,22 @@ function toNumber(v) {
   return isNaN(n) ? 0 : n;
 }
 
-// Convert a header cell value (Date object or string like "Mar-26", "Mar 2026") to "YYYY-MM-01"
+// Convert a header string like "Mar-2026", "Mar-26", "March 2026" to "YYYY-MM-01"
 function formatMonthHeader(hdr) {
   if (!hdr) return null;
-
-  // Add IST offset (+5:30) to UTC date before extracting month
-  if (hdr instanceof Date) {
-    var ist = new Date(hdr.getTime() + 5.5 * 60 * 60 * 1000);
-    var y = ist.getUTCFullYear();
-    var mo = String(ist.getUTCMonth() + 1).padStart(2, '0');
-    return y + '-' + mo + '-01';
-  }
 
   var s = String(hdr).trim();
 
   // "YYYY-MM" or "YYYY-MM-DD"
   var ymMatch = s.match(/^(\d{4})-(\d{2})(-\d{2})?$/);
   if (ymMatch) return ymMatch[1] + '-' + ymMatch[2] + '-01';
+
+  // "MMM-YYYY" e.g. "Mar-2026"  ← primary format in CMRR sheet
+  var myyyyhyphen = s.match(/^([A-Za-z]{3,})-(\d{4})$/);
+  if (myyyyhyphen) {
+    var mo4 = monthIndex(myyyyhyphen[1]);
+    if (mo4 > 0) return myyyyhyphen[2] + '-' + String(mo4).padStart(2, '0') + '-01';
+  }
 
   // "MMM-YY" e.g. "Mar-26"
   var myyMatch = s.match(/^([A-Za-z]{3})-(\d{2})$/);
