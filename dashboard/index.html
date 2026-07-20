@@ -199,7 +199,9 @@
   .rev-zero { color: var(--text-muted); }
   .rev-metric-badge { display: inline-block; font-size: 10px; font-weight: 600; padding: 2px 6px; border-radius: 4px; margin-left: 4px; vertical-align: middle; }
   .rev-metric-badge.mrr { background: rgba(42,120,214,0.12); color: var(--series-1); }
-  .rev-metric-badge.nrr { background: rgba(27,175,122,0.12); color: var(--series-2); }
+  .rev-metric-badge.nrr { background: rgba(27,175,120,0.12); color: var(--series-2); }
+  .rev-table th.rev-q-col, .rev-table td.rev-q-col { border-left: 2px solid var(--border); background: rgba(0,0,0,0.025); font-style: italic; }
+  @media (prefers-color-scheme: dark) { .rev-table th.rev-q-col, .rev-table td.rev-q-col { background: rgba(255,255,255,0.03); } }
   .setup-box { background: var(--surface-1); border: 1px solid var(--border); border-radius: 10px; padding: 20px 24px; margin-bottom: 20px; }
   .setup-box pre { background: var(--page); border: 1px solid var(--border); border-radius: 6px; padding: 12px 14px; font-size: 12px; overflow-x: auto; white-space: pre-wrap; word-break: break-all; margin: 8px 0 0; }
   @media (max-width: 720px) {
@@ -381,6 +383,7 @@ let REVENUE_ACTUALS   = [];
 let currentPage       = 'revenue'; // 'revenue' | 'projections'
 let revenueMetric     = 'MRR';     // 'MRR' | 'NRR' | 'Combined'
 let revenueExpandedBU = null;      // BU name currently expanded, or null
+let revenueView       = 'bu';      // 'bu' | 'customer'
 const adjVar = (variance, prevMiss) =>
   (variance !== null && prevMiss !== null) ? variance + prevMiss : variance;
 
@@ -599,8 +602,42 @@ function renderRevenuePage() {
 
   // Derive sorted unique months
   const allMonths = [...new Set(REVENUE_ACTUALS.map(r => r.month))].sort();
-  // Show up to last 12 months
-  const months = allMonths.slice(-12);
+  const months = allMonths;
+
+  // Build quarter groups from months present in data
+  // Each quarter: { label, months: [...YYYY-MM-01 strings] }
+  function monthToQ(m) {
+    const mo = parseInt(m.split('-')[1], 10);
+    const yr = m.split('-')[0];
+    const q = Math.ceil(mo / 3);
+    return yr + '-Q' + q;
+  }
+  const qMap = new Map(); // qKey → [months in order]
+  for (const m of months) {
+    const k = monthToQ(m);
+    if (!qMap.has(k)) qMap.set(k, []);
+    qMap.get(k).push(m);
+  }
+  const quarters = [...qMap.entries()]; // [[qKey, [m1,m2,m3]], ...]
+
+  // Helper: build column header list = months interleaved with quarterly totals
+  // Returns array of {type:'month'|'quarter', key, label}
+  function buildCols() {
+    const cols = [];
+    for (const [qKey, qMonths] of quarters) {
+      for (const m of qMonths) {
+        cols.push({ type: 'month', key: m, label: fmtMonth(m) });
+      }
+      const [yr, q] = qKey.split('-Q');
+      cols.push({ type: 'quarter', key: qKey, label: `Q${q} ${yr}`, months: qMonths });
+    }
+    return cols;
+  }
+
+  // sum revenue for a set of months from a map (account→month→row) or flat rows
+  function sumCols(colMonths, getMRFn) {
+    return colMonths.reduce((t, m) => t + getMRFn(m), 0);
+  }
 
   // All BUs in BU_ORDER first, then any others from data
   const buSet = new Set(REVENUE_ACTUALS.map(r => r.business_unit));
@@ -622,53 +659,152 @@ function renderRevenuePage() {
   const fmtMonth = m => { const [yr, mo] = m.split('-'); return MONTH_ABBR[parseInt(mo, 10) - 1] + ' ' + yr; };
   const fmtCell  = v => v === 0 ? `<span class="rev-zero">-</span>` : v > 0 ? fmtINR(v) : `<span class="rev-neg">${fmtINR(v)}</span>`;
 
-  // Grand total per month
-  const grandTotals = months.map(m => {
-    let t = 0;
-    for (const r of REVENUE_ACTUALS) { if (r.month === m) t += revenueAmtOf(r); }
-    return t;
-  });
-
-  let html = `<div class="card"><div class="rev-table-wrap"><table class="rev-table">
-    <thead><tr>
-      <th style="min-width:180px;">Business Unit / Account</th>
-      ${months.map(m => `<th class="num">${fmtMonth(m)}</th>`).join('')}
-    </tr></thead>
-    <tbody>
-    <tr class="rev-total-row">
-      <td>Total</td>
-      ${grandTotals.map(v => `<td class="num">${fmtCell(v)}</td>`).join('')}
-    </tr>`;
-
-  for (const bu of buList) {
-    const buIdx = idx.get(bu);
-    if (!buIdx) continue;
-    const isExpanded = revenueExpandedBU === bu;
-    const buTotals = months.map(m => {
-      let t = 0;
-      for (const [, mMap] of buIdx) { const r = mMap.get(m); if (r) t += revenueAmtOf(r); }
-      return t;
-    });
-    const dot = `<span style="display:inline-block;width:9px;height:9px;border-radius:2px;background:${colorVar(bu)};margin-right:8px;vertical-align:middle;flex-shrink:0;"></span>`;
-    html += `<tr class="rev-bu-row" data-rev-bu="${escapeHtml(bu)}">
-      <td>${dot}<span class="rev-expand-icon ${isExpanded ? 'open' : ''}">▶</span>${escapeHtml(bu)}</td>
-      ${buTotals.map(v => `<td class="num">${fmtCell(v)}</td>`).join('')}
-    </tr>`;
-
-    if (isExpanded) {
-      const accounts = [...buIdx.keys()].sort();
-      for (const acct of accounts) {
-        const mMap = buIdx.get(acct);
-        html += `<tr class="rev-account-row">
-          <td style="padding-left:40px;">${escapeHtml(acct)}</td>
-          ${months.map(m => { const r = mMap.get(m); const v = r ? revenueAmtOf(r) : 0; return `<td class="num">${fmtCell(v)}</td>`; }).join('')}
-        </tr>`;
-      }
-    }
+  // Mom delta cell: green if >= prev, red if <, dash if no prev
+  function fmtDeltaCell(v, prev) {
+    if (prev === null || prev === undefined) return `<td class="num">${fmtCell(v)}</td>`;
+    if (prev === 0 && v === 0) return `<td class="num"><span class="rev-zero">-</span></td>`;
+    const cls = v >= prev ? 'rev-pos' : 'rev-neg';
+    return `<td class="num"><span class="${cls}">${fmtINR(v)}</span></td>`;
   }
 
-  html += `</tbody></table></div></div>`;
+  const cols = buildCols();
+
+  // Grand totals per col
+  function grandTotal(col) {
+    const ms = col.type === 'month' ? [col.key] : col.months;
+    let t = 0;
+    for (const r of REVENUE_ACTUALS) { if (ms.includes(r.month)) t += revenueAmtOf(r); }
+    return t;
+  }
+  const grandTotals = cols.map(grandTotal);
+
+  // View toggle + table
+  const viewToggle = `<div style="display:flex;gap:6px;margin-bottom:12px;">
+    <button class="tab-btn ${revenueView==='bu'?'active':''}" id="rev-view-bu">By BU</button>
+    <button class="tab-btn ${revenueView==='customer'?'active':''}" id="rev-view-customer">All Customers</button>
+  </div>`;
+
+  function thStyle(col) {
+    return col.type === 'quarter'
+      ? 'style="background:var(--surface-2,var(--surface-1));border-left:2px solid var(--border);font-size:10px;"'
+      : '';
+  }
+  function tdQStyle(col) {
+    return col.type === 'quarter'
+      ? ' style="border-left:2px solid var(--gridline);background:var(--surface-2,rgba(0,0,0,0.02));"'
+      : '';
+  }
+
+  const thead = `<thead><tr>
+    <th style="min-width:180px;">${revenueView === 'customer' ? 'Customer / BU' : 'Business Unit / Account'}</th>
+    ${cols.map(c => `<th class="num" ${thStyle(c)}>${c.label}</th>`).join('')}
+  </tr></thead>`;
+
+  const totalRow = `<tr class="rev-total-row">
+    <td>Total</td>
+    ${cols.map((c, i) => `<td class="num"${tdQStyle(c)}>${fmtCell(grandTotals[i])}</td>`).join('')}
+  </tr>`;
+
+  let tableBody = '';
+
+  if (revenueView === 'bu') {
+    for (const bu of buList) {
+      const buIdx = idx.get(bu);
+      if (!buIdx) continue;
+      const isExpanded = revenueExpandedBU === bu;
+
+      function buColVal(col) {
+        const ms = col.type === 'month' ? [col.key] : col.months;
+        let t = 0;
+        for (const [, mMap] of buIdx) { for (const m of ms) { const r = mMap.get(m); if (r) t += revenueAmtOf(r); } }
+        return t;
+      }
+      const buVals = cols.map(buColVal);
+
+      const dot = `<span style="display:inline-block;width:9px;height:9px;border-radius:2px;background:${colorVar(bu)};margin-right:8px;vertical-align:middle;flex-shrink:0;"></span>`;
+      tableBody += `<tr class="rev-bu-row" data-rev-bu="${escapeHtml(bu)}">
+        <td>${dot}<span class="rev-expand-icon ${isExpanded ? 'open' : ''}">▶</span>${escapeHtml(bu)}</td>
+        ${cols.map((c, i) => {
+          const prev = c.type === 'month' && i > 0 && cols[i-1].type === 'month' ? buVals[i-1] : null;
+          return `<td class="num"${tdQStyle(c)}>${prev===null ? fmtCell(buVals[i]) : `<span class="${buVals[i]>=prev?'rev-pos':'rev-neg'}">${fmtINR(buVals[i])}</span>`}</td>`;
+        }).join('')}
+      </tr>`;
+
+      if (isExpanded) {
+        const accounts = [...buIdx.keys()].sort();
+        for (const acct of accounts) {
+          const mMap = buIdx.get(acct);
+          function acctColVal(col) {
+            const ms = col.type === 'month' ? [col.key] : col.months;
+            return ms.reduce((t, m) => { const r = mMap.get(m); return t + (r ? revenueAmtOf(r) : 0); }, 0);
+          }
+          const acctVals = cols.map(acctColVal);
+          tableBody += `<tr class="rev-account-row">
+            <td style="padding-left:40px;">${escapeHtml(acct)}</td>
+            ${cols.map((c, i) => {
+              const prev = c.type === 'month' && i > 0 && cols[i-1].type === 'month' ? acctVals[i-1] : null;
+              return `<td class="num"${tdQStyle(c)}>${prev===null ? fmtCell(acctVals[i]) : `<span class="${acctVals[i]>=prev?'rev-pos':'rev-neg'}">${fmtINR(acctVals[i])}</span>`}</td>`;
+            }).join('')}
+          </tr>`;
+        }
+      }
+    }
+  } else {
+    // Customer view: flat list, all accounts, sorted by name, BU as a column
+    // Collect all account+BU combos
+    const custMap = new Map(); // "acct|bu" → { acct, bu, monthMap }
+    for (const r of REVENUE_ACTUALS) {
+      if (!months.includes(r.month)) continue;
+      const k = r.account_name + '|' + r.business_unit;
+      if (!custMap.has(k)) custMap.set(k, { acct: r.account_name, bu: r.business_unit, mMap: new Map() });
+      custMap.get(k).mMap.set(r.month, r);
+    }
+    const custList = [...custMap.values()].sort((a, b) => a.acct.localeCompare(b.acct));
+
+    // Customer view header has an extra BU column
+    const custThead = `<thead><tr>
+      <th style="min-width:200px;">Customer</th>
+      <th style="min-width:120px;">Business Unit</th>
+      ${cols.map(c => `<th class="num" ${thStyle(c)}>${c.label}</th>`).join('')}
+    </tr></thead>`;
+
+    const custTotalRow = `<tr class="rev-total-row">
+      <td>Total</td><td></td>
+      ${cols.map((c, i) => `<td class="num"${tdQStyle(c)}>${fmtCell(grandTotals[i])}</td>`).join('')}
+    </tr>`;
+
+    let custRows = '';
+    for (const { acct, bu, mMap } of custList) {
+      function custColVal(col) {
+        const ms = col.type === 'month' ? [col.key] : col.months;
+        return ms.reduce((t, m) => { const r = mMap.get(m); return t + (r ? revenueAmtOf(r) : 0); }, 0);
+      }
+      const custVals = cols.map(custColVal);
+      const dot = `<span style="display:inline-block;width:7px;height:7px;border-radius:2px;background:${colorVar(bu)};margin-right:6px;vertical-align:middle;"></span>`;
+      custRows += `<tr class="rev-account-row">
+        <td>${escapeHtml(acct)}</td>
+        <td style="color:var(--text-secondary);font-size:12px;">${dot}${escapeHtml(bu)}</td>
+        ${cols.map((c, i) => {
+          const prev = c.type === 'month' && i > 0 && cols[i-1].type === 'month' ? custVals[i-1] : null;
+          return `<td class="num"${tdQStyle(c)}>${prev===null ? fmtCell(custVals[i]) : `<span class="${custVals[i]>=prev?'rev-pos':'rev-neg'}">${fmtINR(custVals[i])}</span>`}</td>`;
+        }).join('')}
+      </tr>`;
+    }
+
+    const html2 = `${viewToggle}<div class="card"><div class="rev-table-wrap"><table class="rev-table">
+      ${custThead}<tbody>${custTotalRow}${custRows}</tbody></table></div></div>`;
+    el.innerHTML = html2;
+    el.querySelector('#rev-view-bu').addEventListener('click', () => { revenueView = 'bu'; renderRevenuePage(); });
+    el.querySelector('#rev-view-customer').addEventListener('click', () => { revenueView = 'customer'; renderRevenuePage(); });
+    return;
+  }
+
+  const html = `${viewToggle}<div class="card"><div class="rev-table-wrap"><table class="rev-table">
+    ${thead}<tbody>${totalRow}${tableBody}</tbody></table></div></div>`;
   el.innerHTML = html;
+
+  el.querySelector('#rev-view-bu').addEventListener('click', () => { revenueView = 'bu'; renderRevenuePage(); });
+  el.querySelector('#rev-view-customer').addEventListener('click', () => { revenueView = 'customer'; renderRevenuePage(); });
 
   // BU row click → expand/collapse
   el.querySelectorAll('.rev-bu-row').forEach(row => {
