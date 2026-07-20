@@ -203,6 +203,8 @@
   .rev-table th.rev-q-col, .rev-table td.rev-q-col { border-left: 2px solid var(--border); background: rgba(0,0,0,0.025); font-style: italic; }
   @media (prefers-color-scheme: dark) { .rev-table th.rev-q-col, .rev-table td.rev-q-col { background: rgba(255,255,255,0.03); } }
   .tab-btn-sm { font-size: 11px; padding: 3px 10px; }
+  .rev-name-cell { max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .rev-table td:first-child { max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .rev-netnew-row td { font-size: 11px; padding-top: 2px; padding-bottom: 6px; border-bottom: 2px solid var(--gridline); background: rgba(0,0,0,0.01); }
   .rev-netnew-label { color: var(--text-muted); font-weight: 500; text-transform: uppercase; letter-spacing: 0.04em; font-size: 10px; }
   .rev-netnew-cell { font-size: 11px; }
@@ -822,7 +824,7 @@ function renderRevenuePage() {
   }
 
   const thead = `<thead><tr>
-    <th style="min-width:180px;">${revenueView === 'customer' ? 'Customer / BU' : 'Business Unit / Account'}</th>
+    <th style="min-width:140px;max-width:200px;">${revenueView === 'customer' ? 'Customer' : 'Business Unit / Account'}</th>
     ${cols.map(c => `<th class="num" ${thStyle(c)}>${c.label}</th>`).join('')}
   </tr></thead>`;
 
@@ -879,14 +881,13 @@ function renderRevenuePage() {
       .sort((a, b) => a.acct.localeCompare(b.acct));
 
     const custThead = `<thead><tr>
-      <th style="min-width:200px;">Customer Name</th>
-      <th style="min-width:160px;">Zoho / Alt Name</th>
-      <th style="min-width:120px;">Business Unit</th>
+      <th style="min-width:140px;max-width:200px;">Customer</th>
+      <th style="min-width:90px;max-width:130px;">BU</th>
       ${cols.map(c => `<th class="num" ${thStyle(c)}>${c.label}</th>`).join('')}
     </tr></thead>`;
 
     const custTotalRow = `<tr class="rev-total-row">
-      <td colspan="3">Total MRR</td>
+      <td colspan="2">${totalRowLabel}</td>
       ${cols.map((c, i) => `<td class="num"${tdQStyle(c)}>${fmtCell(grandTotals[i])}</td>`).join('')}
     </tr>`;
 
@@ -915,9 +916,8 @@ function renderRevenuePage() {
         }).join('');
         const dot = `<span style="display:inline-block;width:7px;height:7px;border-radius:2px;background:${colorVar(bu)};margin-right:6px;vertical-align:middle;"></span>`;
         rows += `<tr class="rev-account-row">
-          <td>${escapeHtml(acct)}</td>
-          <td style="color:var(--text-muted);font-size:12px;">${zoho ? escapeHtml(zoho) : '<span style="color:var(--text-muted)">—</span>'}</td>
-          <td style="color:var(--text-secondary);font-size:12px;">${dot}${escapeHtml(bu)}</td>
+          <td class="rev-name-cell" title="${escapeHtml(acct)}">${escapeHtml(acct)}</td>
+          <td style="color:var(--text-secondary);font-size:11px;white-space:nowrap;">${dot}${escapeHtml(bu)}</td>
           ${dataCells}
         </tr>`;
       }
