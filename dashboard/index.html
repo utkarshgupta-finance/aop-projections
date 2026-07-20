@@ -202,6 +202,7 @@
   .rev-metric-badge.nrr { background: rgba(27,175,120,0.12); color: var(--series-2); }
   .rev-table th.rev-q-col, .rev-table td.rev-q-col { border-left: 2px solid var(--border); background: rgba(0,0,0,0.025); font-style: italic; }
   @media (prefers-color-scheme: dark) { .rev-table th.rev-q-col, .rev-table td.rev-q-col { background: rgba(255,255,255,0.03); } }
+  .tab-btn-sm { font-size: 11px; padding: 3px 10px; }
   .rev-netnew-row td { font-size: 11px; padding-top: 2px; padding-bottom: 6px; border-bottom: 2px solid var(--gridline); background: rgba(0,0,0,0.01); }
   .rev-netnew-label { color: var(--text-muted); font-weight: 500; text-transform: uppercase; letter-spacing: 0.04em; font-size: 10px; }
   .rev-netnew-cell { font-size: 11px; }
@@ -385,7 +386,8 @@ let modalCtx        = null; // { bu, dealType, metric, periodTab }
 // ---- Revenue page state ----
 let REVENUE_ACTUALS   = [];
 let currentPage       = 'revenue'; // 'revenue' | 'projections'
-let revenueMetric     = 'MRR';     // 'MRR' | 'NRR' | 'NNR' | 'Combined'
+let revenueMetric     = 'MRR';     // 'MRR' | 'NRR' | 'Combined'
+let revenueMrrMode    = 'mrr';     // 'mrr' | 'nnr' — sub-tab under MRR
 let revenueExpandedBU = null;      // BU name currently expanded, or null
 let revenueView       = 'bu';      // 'bu' | 'customer'
 let revenuePeriod     = 'monthly'; // 'monthly' | 'quarterly' | 'halfyearly' | 'annual'
@@ -579,11 +581,7 @@ function switchPage(page) {
 
 function revenueAmtOf(row) {
   if (revenueMetric === 'NRR') return Number(row.nrr_amount ?? 0);
-  // MRR, NNR (Net New MRR), and Combined all use MRR base amount
-  return Number(row.mrr_amount ?? 0);
-}
-function revenueBaseOf(row) {
-  // Always MRR for NNR delta calculation
+  if (revenueMetric === 'Combined') return Number(row.mrr_amount ?? 0) + Number(row.nrr_amount ?? 0);
   return Number(row.mrr_amount ?? 0);
 }
 
@@ -607,12 +605,20 @@ function wireRevToggles(el) {
 function renderRevenuePage() {
   // Metric tabs
   const tabs = document.getElementById('revenue-metric-tabs');
-  const metrics = ['MRR', 'NRR', 'NNR', 'Combined'];
-  tabs.innerHTML = metrics.map(m =>
+  tabs.innerHTML = ['MRR', 'NRR', 'Combined'].map(m =>
     `<button class="tab-btn ${m === revenueMetric ? 'active' : ''}" data-rev-metric="${m}">${m}</button>`
-  ).join('');
-  tabs.querySelectorAll('.tab-btn').forEach(btn => btn.addEventListener('click', () => {
+  ).join('') + (revenueMetric === 'MRR'
+    ? `<span style="margin-left:12px;border-left:1px solid var(--border);padding-left:12px;">` +
+      ['mrr','nnr'].map(s =>
+        `<button class="tab-btn tab-btn-sm ${s === revenueMrrMode ? 'active' : ''}" data-rev-mrrmode="${s}">${s === 'mrr' ? 'MRR' : 'NNR'}</button>`
+      ).join('') + `</span>`
+    : '');
+  tabs.querySelectorAll('[data-rev-metric]').forEach(btn => btn.addEventListener('click', () => {
     revenueMetric = btn.dataset.revMetric;
+    renderRevenuePage();
+  }));
+  tabs.querySelectorAll('[data-rev-mrrmode]').forEach(btn => btn.addEventListener('click', () => {
+    revenueMrrMode = btn.dataset.revMrrmode;
     renderRevenuePage();
   }));
 
@@ -728,12 +734,13 @@ function renderRevenuePage() {
 
   const isMonthly = revenuePeriod === 'monthly';
 
-  const isNNR = revenueMetric === 'NNR';
+  const isNNR = revenueMetric === 'MRR' && revenueMrrMode === 'nnr';
 
-  // Format a single data cell — for NNR show delta vs prev col, for MRR/NRR show value with MoM colour
+  // Format a single data cell
   function fmtDataCell(v, prev) {
     if (isNNR) {
-      if (prev === null) return `<td class="num"><span class="rev-zero">—</span></td>`;
+      // No delta if first month, or if current month is 0 (e.g. Aug not yet filled)
+      if (prev === null || v === 0) return `<td class="num"><span class="rev-zero">—</span></td>`;
       const delta = v - prev;
       const cls = delta >= 0 ? 'rev-pos' : 'rev-neg';
       return `<td class="num"><span class="${cls}">${delta >= 0 ? '+' : ''}${fmtINR(delta)}</span></td>`;
