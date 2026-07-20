@@ -619,7 +619,7 @@ function renderRevenuePage() {
     buIdx.get(r.account_name).set(r.month, r);
   }
 
-  const fmtMonth = m => { const d = new Date(m + 'T00:00:00'); return MONTH_ABBR[d.getUTCMonth()] + ' ' + d.getUTCFullYear(); };
+  const fmtMonth = m => { const [yr, mo] = m.split('-'); return MONTH_ABBR[parseInt(mo, 10) - 1] + ' ' + yr; };
   const fmtCell  = v => v === 0 ? `<span class="rev-zero">-</span>` : v > 0 ? fmtINR(v) : `<span class="rev-neg">${fmtINR(v)}</span>`;
 
   // Grand total per month
