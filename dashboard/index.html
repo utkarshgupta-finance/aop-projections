@@ -388,6 +388,7 @@ let REVENUE_ACTUALS   = [];
 let currentPage       = 'revenue'; // 'revenue' | 'projections'
 let revenueMetric     = 'MRR';     // 'MRR' | 'NRR' | 'Combined'
 let revenueMrrMode    = 'mrr';     // 'mrr' | 'nnr' — sub-tab under MRR
+let revenueMrrAgg     = 'total';   // 'total' | 'exit' — for non-monthly periods
 let revenueExpandedBU = null;      // BU name currently expanded, or null
 let revenueView       = 'bu';      // 'bu' | 'customer'
 let revenuePeriod     = 'monthly'; // 'monthly' | 'quarterly' | 'halfyearly' | 'annual'
@@ -605,20 +606,35 @@ function wireRevToggles(el) {
 function renderRevenuePage() {
   // Metric tabs
   const tabs = document.getElementById('revenue-metric-tabs');
-  tabs.innerHTML = ['MRR', 'NRR', 'Combined'].map(m =>
+  const isNonMonthly = revenuePeriod !== 'monthly';
+  let tabHtml = ['MRR', 'NRR', 'Combined'].map(m =>
     `<button class="tab-btn ${m === revenueMetric ? 'active' : ''}" data-rev-metric="${m}">${m}</button>`
-  ).join('') + (revenueMetric === 'MRR'
-    ? `<span style="margin-left:12px;border-left:1px solid var(--border);padding-left:12px;">` +
+  ).join('');
+  // MRR sub-tabs: MRR | NNR
+  if (revenueMetric === 'MRR') {
+    tabHtml += `<span style="margin-left:12px;border-left:1px solid var(--border);padding-left:12px;">` +
       ['mrr','nnr'].map(s =>
         `<button class="tab-btn tab-btn-sm ${s === revenueMrrMode ? 'active' : ''}" data-rev-mrrmode="${s}">${s === 'mrr' ? 'MRR' : 'NNR'}</button>`
-      ).join('') + `</span>`
-    : '');
+      ).join('') + `</span>`;
+  }
+  // Exit | Total toggle for non-monthly periods (applies to MRR and NNR modes)
+  if (isNonMonthly && revenueMetric === 'MRR') {
+    tabHtml += `<span style="margin-left:12px;border-left:1px solid var(--border);padding-left:12px;">` +
+      ['total','exit'].map(a =>
+        `<button class="tab-btn tab-btn-sm ${a === revenueMrrAgg ? 'active' : ''}" data-rev-mrragg="${a}">${a === 'total' ? 'Total' : 'Exit'}</button>`
+      ).join('') + `</span>`;
+  }
+  tabs.innerHTML = tabHtml;
   tabs.querySelectorAll('[data-rev-metric]').forEach(btn => btn.addEventListener('click', () => {
     revenueMetric = btn.dataset.revMetric;
     renderRevenuePage();
   }));
   tabs.querySelectorAll('[data-rev-mrrmode]').forEach(btn => btn.addEventListener('click', () => {
     revenueMrrMode = btn.dataset.revMrrmode;
+    renderRevenuePage();
+  }));
+  tabs.querySelectorAll('[data-rev-mrragg]').forEach(btn => btn.addEventListener('click', () => {
+    revenueMrrAgg = btn.dataset.revMrragg;
     renderRevenuePage();
   }));
 
@@ -725,35 +741,55 @@ function renderRevenuePage() {
 
   const cols = buildCols();
 
+  const isMonthly = revenuePeriod === 'monthly';
+  const isNNR = revenueMetric === 'MRR' && revenueMrrMode === 'nnr';
+  // Exit mode: use last month of the period bucket instead of summing all months
+  const useExit = !isMonthly && revenueMetric === 'MRR' && revenueMrrAgg === 'exit';
+
+  // Compute value for one col from a month→row map (respects exit vs total)
+  function colValFromMap(col, mMap) {
+    if (useExit) {
+      // Exit: value of the last month in this bucket
+      const r = mMap.get(col.months[col.months.length - 1]);
+      return r ? revenueAmtOf(r) : 0;
+    }
+    // Total: sum all months in bucket
+    let t = 0;
+    for (const m of col.months) { const r = mMap.get(m); if (r) t += revenueAmtOf(r); }
+    return t;
+  }
+
   // Grand totals per col
   const grandTotals = cols.map(col => {
+    if (useExit) {
+      const lastMonth = col.months[col.months.length - 1];
+      let t = 0;
+      for (const r of REVENUE_ACTUALS) { if (r.month === lastMonth) t += revenueAmtOf(r); }
+      return t;
+    }
     let t = 0;
     for (const r of REVENUE_ACTUALS) { if (col.months.includes(r.month)) t += revenueAmtOf(r); }
     return t;
   });
 
-  const isMonthly = revenuePeriod === 'monthly';
-
-  const isNNR = revenueMetric === 'MRR' && revenueMrrMode === 'nnr';
-
-  // Format a single data cell
+  // Format a single data cell — always passes prev so NNR/colouring works for all period views
   function fmtDataCell(v, prev) {
     if (isNNR) {
-      // No delta if first month, or if current month is 0 (e.g. Aug not yet filled)
+      // Suppress delta when no prior period or current value is 0
       if (prev === null || v === 0) return `<td class="num"><span class="rev-zero">—</span></td>`;
       const delta = v - prev;
       const cls = delta >= 0 ? 'rev-pos' : 'rev-neg';
       return `<td class="num"><span class="${cls}">${delta >= 0 ? '+' : ''}${fmtINR(delta)}</span></td>`;
     }
-    if (!isMonthly || prev === null) return `<td class="num">${fmtCell(v)}</td>`;
+    if (prev === null) return `<td class="num">${fmtCell(v)}</td>`;
     const cls = v >= prev ? 'rev-pos' : 'rev-neg';
     return `<td class="num"><span class="${cls}">${fmtINR(v)}</span></td>`;
   }
 
-  // Build a single row for an entity
+  // Build a single row for an entity — prev always passed for all period types
   function entityRows(labelCell, vals, extraStyle) {
     const cells = cols.map((c, i) => {
-      const prev = isMonthly && i > 0 ? vals[i-1] : null;
+      const prev = i > 0 ? vals[i-1] : null;
       return fmtDataCell(vals[i], prev);
     }).join('');
     return `<tr${extraStyle||''}><td>${labelCell}</td>${cells}</tr>`;
@@ -802,13 +838,11 @@ function renderRevenuePage() {
       if (![...buIdx.values()].some(mMap => acctHasData(mMap))) continue;
       const isExpanded = revenueExpandedBU === bu;
 
-      function buColVal(col) {
-        const ms = col.type === 'month' ? [col.key] : col.months;
+      const buVals = cols.map(col => {
         let t = 0;
-        for (const [, mMap] of buIdx) { for (const m of ms) { const r = mMap.get(m); if (r) t += revenueAmtOf(r); } }
+        for (const [, mMap] of buIdx) t += colValFromMap(col, mMap);
         return t;
-      }
-      const buVals = cols.map(buColVal);
+      });
 
       const dot = `<span style="display:inline-block;width:9px;height:9px;border-radius:2px;background:${colorVar(bu)};margin-right:8px;vertical-align:middle;flex-shrink:0;"></span>`;
       const buLabel = `${dot}<span class="rev-expand-icon ${isExpanded ? 'open' : ''}">▶</span>${escapeHtml(bu)}`;
@@ -819,7 +853,7 @@ function renderRevenuePage() {
         for (const acct of accounts) {
           const mMap = buIdx.get(acct);
           if (!acctHasData(mMap)) continue;
-          const acctVals = cols.map(col => col.months.reduce((t, m) => { const r = mMap.get(m); return t + (r ? revenueAmtOf(r) : 0); }, 0));
+          const acctVals = cols.map(col => colValFromMap(col, mMap));
           tableBody += entityRows(`<span style="padding-left:28px;">${escapeHtml(acct)}</span>`, acctVals, ' class="rev-account-row"');
         }
       }
@@ -874,9 +908,9 @@ function renderRevenuePage() {
       for (const { acct, zoho, bu, mMap } of allCustList) {
         if (buFilter && bu !== buFilter) continue;
         if (ql && !acct.toLowerCase().includes(ql) && !zoho.toLowerCase().includes(ql)) continue;
-        const custVals = cols.map(col => col.months.reduce((t, m) => { const r = mMap.get(m); return t + (r ? revenueAmtOf(r) : 0); }, 0));
+        const custVals = cols.map(col => colValFromMap(col, mMap));
         const dataCells = cols.map((c, i) => {
-          const prev = isMonthly && i > 0 ? custVals[i-1] : null;
+          const prev = i > 0 ? custVals[i-1] : null;
           return fmtDataCell(custVals[i], prev);
         }).join('');
         const dot = `<span style="display:inline-block;width:7px;height:7px;border-radius:2px;background:${colorVar(bu)};margin-right:6px;vertical-align:middle;"></span>`;
