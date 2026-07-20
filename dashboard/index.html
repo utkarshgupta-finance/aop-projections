@@ -783,8 +783,8 @@ function renderRevenuePage() {
       const cls = delta >= 0 ? 'rev-pos' : 'rev-neg';
       return `<td class="num"><span class="${cls}">${delta >= 0 ? '+' : ''}${fmtINR(delta)}</span></td>`;
     }
-    if (prev === null) return `<td class="num">${fmtCell(v)}</td>`;
-    const cls = v >= prev ? 'rev-pos' : 'rev-neg';
+    if (prev === null || v === prev) return `<td class="num">${fmtCell(v)}</td>`;
+    const cls = v > prev ? 'rev-pos' : 'rev-neg';
     return `<td class="num"><span class="${cls}">${fmtINR(v)}</span></td>`;
   }
 
