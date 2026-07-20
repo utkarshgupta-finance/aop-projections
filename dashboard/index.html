@@ -1847,17 +1847,19 @@ function renderDealsTableWith({ dealsById, snapshots, metric, tableId, buFilterI
     if (commitView?.deal_types?.length && !commitView.deal_types.includes(d.deal_type)) return false;
     // Stage filter only applies to deals that have a stage value
     if (commitView?.stages?.length && d.stage && !commitView.stages.includes(d.stage)) return false;
-    // Closing date range filter on the deal's current closing_date
-    if (commitView?.closing_date_start && (!d.closing_date || d.closing_date < commitView.closing_date_start)) return false;
-    if (commitView?.closing_date_end   && (!d.closing_date || d.closing_date > commitView.closing_date_end))   return false;
+    // closing_date is intentionally NOT checked here — it is checked per-snapshot in snapAmt
+    // so that historical snapshot columns reflect what was committed ON THAT DATE, not today's closing_date.
     return true;
   };
 
-  // Snapshot amount: just check probability (no period closing_date check — deals are pre-filtered)
+  // Snapshot amount: checks probability AND closing_date range against the snapshot's own closing_date
+  // (not the deal's current closing_date) so historical columns are immutable.
   const snapAmt = (byDate, date) => {
     const e = byDate?.get(date);
     if (e === undefined) return undefined;
     if ((e.probability ?? 100) < minProb) return null;
+    if (commitView?.closing_date_start && (!e.closing_date || e.closing_date < commitView.closing_date_start)) return null;
+    if (commitView?.closing_date_end   && (!e.closing_date || e.closing_date > commitView.closing_date_end))   return null;
     return e.amount;
   };
 
@@ -1877,11 +1879,19 @@ function renderDealsTableWith({ dealsById, snapshots, metric, tableId, buFilterI
     return bestAmt;
   };
 
+  // Include a deal if it has at least one snapshot that passes prob + closing_date filter
+  const snapPassesFilter = e => {
+    if ((e.probability ?? 100) < minProb) return false;
+    if (commitView?.closing_date_start && (!e.closing_date || e.closing_date < commitView.closing_date_start)) return false;
+    if (commitView?.closing_date_end   && (!e.closing_date || e.closing_date > commitView.closing_date_end))   return false;
+    return true;
+  };
+
   let tabDeals = DEALS
     .filter(d => !currentBU || (d.business_unit || 'UNMAPPED') === currentBU)
     .filter(d => matchesCommitView(d))
     .filter(d => snapshotsByDeal.has(d.deal_id) &&
-      [...snapshotsByDeal.get(d.deal_id).values()].some(e => (e.probability ?? 100) >= minProb));
+      [...snapshotsByDeal.get(d.deal_id).values()].some(snapPassesFilter));
 
   const buOptions = [...new Set(tabDeals.map(d => d.business_unit || 'UNMAPPED'))].sort();
   const buFilterEl = document.getElementById(buFilterId);
