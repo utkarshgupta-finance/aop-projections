@@ -203,8 +203,8 @@
   .rev-table th.rev-q-col, .rev-table td.rev-q-col { border-left: 2px solid var(--border); background: rgba(0,0,0,0.025); font-style: italic; }
   @media (prefers-color-scheme: dark) { .rev-table th.rev-q-col, .rev-table td.rev-q-col { background: rgba(255,255,255,0.03); } }
   .tab-btn-sm { font-size: 11px; padding: 3px 10px; }
-  .rev-name-cell { max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .rev-table td:first-child { max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .rev-name-cell { white-space: normal; word-break: break-word; min-width: 140px; }
+  .rev-table td:first-child { white-space: normal; word-break: break-word; }
   .rev-netnew-row td { font-size: 11px; padding-top: 2px; padding-bottom: 6px; border-bottom: 2px solid var(--gridline); background: rgba(0,0,0,0.01); }
   .rev-netnew-label { color: var(--text-muted); font-weight: 500; text-transform: uppercase; letter-spacing: 0.04em; font-size: 10px; }
   .rev-netnew-cell { font-size: 11px; }
@@ -286,6 +286,11 @@
         </div>
         <button id="nrr-modal-close" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--text-muted);padding:4px 8px;line-height:1;">×</button>
       </div>
+      <div style="margin-bottom:10px;">
+        <input id="nrr-modal-search" type="text" placeholder="Search by account, invoice, memo…"
+          style="width:100%;padding:7px 12px;border:1px solid var(--border);border-radius:6px;background:var(--page);color:var(--text-primary);font-size:13px;box-sizing:border-box;">
+      </div>
+      <div id="nrr-modal-count" style="font-size:12px;color:var(--text-muted);margin-bottom:6px;"></div>
       <div style="overflow-x:hidden;overflow-y:auto;flex:1;">
         <table id="nrr-modal-table" style="width:100%;border-collapse:collapse;font-size:13px;table-layout:fixed;">
           <thead>
@@ -410,6 +415,10 @@ let modalSortKey    = '__latest';
 let modalSortDir    = 'desc';
 let modalSearch     = '';
 let modalCtx        = null; // { bu, dealType, metric, periodTab }
+let revSortKey      = null; // null = default order; 'name'|'bu'|col.key
+let revSortDir      = 'asc';
+let nrrModalSortKey = null; // null = server order; 'acct'|'inv_no'|'memo'|'revenue_type'|'amount'
+let nrrModalSortDir = 'asc';
 
 // ---- Revenue page state ----
 let REVENUE_ACTUALS   = [];
@@ -615,10 +624,12 @@ function acctHasData(mMap) {
 function wireRevToggles(el) {
   el.querySelectorAll('[data-rev-period]').forEach(btn => btn.addEventListener('click', () => {
     revenuePeriod = btn.dataset.revPeriod;
+    revSortKey = null; revSortDir = 'asc';
     renderRevenuePage();
   }));
   el.querySelectorAll('[data-rev-view]').forEach(btn => btn.addEventListener('click', () => {
     revenueView = btn.dataset.revView;
+    revSortKey = null; revSortDir = 'asc';
     renderRevenuePage();
   }));
 }
@@ -849,9 +860,20 @@ function renderRevenuePage() {
       : '';
   }
 
+  function sortArrow(key) {
+    if (revSortKey !== key) return `<span style="color:var(--text-muted);opacity:0.4;margin-left:3px;">↕</span>`;
+    return revSortDir === 'asc'
+      ? `<span style="margin-left:3px;">↑</span>`
+      : `<span style="margin-left:3px;">↓</span>`;
+  }
+  function thSort(key, label, extraStyle='') {
+    const isActive = revSortKey === key;
+    return `<th data-rev-sort="${key}" style="cursor:pointer;user-select:none;${extraStyle}" title="Sort by ${label}">${label}${sortArrow(key)}</th>`;
+  }
+
   const thead = `<thead><tr>
-    <th style="min-width:140px;max-width:200px;">${revenueView === 'customer' ? 'Customer' : 'Business Unit / Account'}</th>
-    ${cols.map(c => `<th class="num" ${thStyle(c)}>${c.label}</th>`).join('')}
+    ${thSort('name', revenueView === 'customer' ? 'Customer' : 'Business Unit / Account', 'min-width:140px;')}
+    ${cols.map(c => `<th class="num" data-rev-sort="${c.key}" style="cursor:pointer;user-select:none;" ${thStyle(c)}>${c.label}${sortArrow(c.key)}</th>`).join('')}
   </tr></thead>`;
 
   const totalRowLabel = isNNR ? 'Net New MRR' : revenueMetric === 'NRR' ? 'Total NRR' : revenueMetric === 'Combined' ? 'Total Revenue' : 'Total MRR';
@@ -860,25 +882,46 @@ function renderRevenuePage() {
   let tableBody = '';
 
   if (revenueView === 'bu') {
-    for (const bu of buList) {
-      const buIdx = idx.get(bu);
-      if (!buIdx) continue;
-      if (![...buIdx.values()].some(mMap => acctHasData(mMap))) continue;
+    // Build sortable list of BUs with their col values
+    let buEntries = buList
+      .map(bu => {
+        const buIdx = idx.get(bu);
+        if (!buIdx) return null;
+        if (![...buIdx.values()].some(mMap => acctHasData(mMap))) return null;
+        const buVals = cols.map(col => { let t = 0; for (const [, mMap] of buIdx) t += colValFromMap(col, mMap); return t; });
+        return { bu, buIdx, buVals };
+      })
+      .filter(Boolean);
+
+    if (revSortKey && revSortKey !== 'name') {
+      const colIdx = cols.findIndex(c => c.key === revSortKey);
+      if (colIdx >= 0) {
+        buEntries.sort((a, b) => revSortDir === 'asc' ? a.buVals[colIdx] - b.buVals[colIdx] : b.buVals[colIdx] - a.buVals[colIdx]);
+      }
+    } else if (revSortKey === 'name') {
+      buEntries.sort((a, b) => revSortDir === 'asc' ? a.bu.localeCompare(b.bu) : b.bu.localeCompare(a.bu));
+    }
+
+    for (const { bu, buIdx, buVals } of buEntries) {
       const isExpanded = revenueExpandedBU === bu;
-
-      const buVals = cols.map(col => {
-        let t = 0;
-        for (const [, mMap] of buIdx) t += colValFromMap(col, mMap);
-        return t;
-      });
-
       const dot = `<span style="display:inline-block;width:9px;height:9px;border-radius:2px;background:${colorVar(bu)};margin-right:8px;vertical-align:middle;flex-shrink:0;"></span>`;
       const buLabel = `${dot}<span class="rev-expand-icon ${isExpanded ? 'open' : ''}">▶</span>${escapeHtml(bu)}`;
-      // Pass null acct so account rows inside don't get confused; bu-level NRR uses special sentinel
       tableBody += entityRows(buLabel, buVals, ` class="rev-bu-row" data-rev-bu="${escapeHtml(bu)}"`, '__BU__', bu);
 
       if (isExpanded) {
-        const accounts = [...buIdx.keys()].sort();
+        let accounts = [...buIdx.keys()];
+        if (revSortKey === 'name') {
+          accounts.sort((a, b) => revSortDir === 'asc' ? a.localeCompare(b) : b.localeCompare(a));
+        } else if (revSortKey) {
+          const colIdx = cols.findIndex(c => c.key === revSortKey);
+          if (colIdx >= 0) {
+            accounts.sort((a, b) => {
+              const va = colValFromMap(cols[colIdx], buIdx.get(a));
+              const vb = colValFromMap(cols[colIdx], buIdx.get(b));
+              return revSortDir === 'asc' ? va - vb : vb - va;
+            });
+          } else accounts.sort();
+        } else accounts.sort();
         for (const acct of accounts) {
           const mMap = buIdx.get(acct);
           if (!acctHasData(mMap)) continue;
@@ -907,16 +950,15 @@ function renderRevenuePage() {
       .filter(({ mMap }) => acctHasData(mMap))
       .sort((a, b) => a.acct.localeCompare(b.acct));
 
+    function custSortArrow(key) {
+      if (revSortKey !== key) return `<span style="color:var(--text-muted);opacity:0.4;margin-left:3px;">↕</span>`;
+      return revSortDir === 'asc' ? `<span style="margin-left:3px;">↑</span>` : `<span style="margin-left:3px;">↓</span>`;
+    }
     const custThead = `<thead><tr>
-      <th style="min-width:140px;max-width:200px;">Customer</th>
-      <th style="min-width:90px;max-width:130px;">BU</th>
-      ${cols.map(c => `<th class="num" ${thStyle(c)}>${c.label}</th>`).join('')}
+      <th data-rev-sort="name" style="min-width:140px;cursor:pointer;user-select:none;">Customer${custSortArrow('name')}</th>
+      <th data-rev-sort="bu" style="min-width:80px;cursor:pointer;user-select:none;">BU${custSortArrow('bu')}</th>
+      ${cols.map(c => `<th class="num" data-rev-sort="${c.key}" style="cursor:pointer;user-select:none;" ${thStyle(c)}>${c.label}${custSortArrow(c.key)}</th>`).join('')}
     </tr></thead>`;
-
-    const custTotalRow = `<tr class="rev-total-row">
-      <td colspan="2">${totalRowLabel}</td>
-      ${cols.map((c, i) => `<td class="num"${tdQStyle(c)}>${fmtCell(grandTotals[i])}</td>`).join('')}
-    </tr>`;
 
     const buOptions = ['', ...buList].map(b =>
       `<option value="${escapeHtml(b)}"${b===''?'selected':''}>${b===''?'All BUs':escapeHtml(b)}</option>`
@@ -932,10 +974,38 @@ function renderRevenuePage() {
 
     function buildCustRows(q, buFilter) {
       const ql = q.toLowerCase();
-      let rows = '';
-      for (const { acct, zoho, bu, mMap } of allCustList) {
-        if (buFilter && bu !== buFilter) continue;
-        if (ql && !acct.toLowerCase().includes(ql) && !zoho.toLowerCase().includes(ql)) continue;
+      let filtered = allCustList.filter(({ acct, zoho, bu }) => {
+        if (buFilter && bu !== buFilter) return false;
+        if (ql && !acct.toLowerCase().includes(ql) && !zoho.toLowerCase().includes(ql)) return false;
+        return true;
+      });
+
+      // Apply sort
+      if (revSortKey === 'name') {
+        filtered.sort((a, b) => revSortDir === 'asc' ? a.acct.localeCompare(b.acct) : b.acct.localeCompare(a.acct));
+      } else if (revSortKey === 'bu') {
+        filtered.sort((a, b) => revSortDir === 'asc' ? a.bu.localeCompare(b.bu) : b.bu.localeCompare(a.bu));
+      } else if (revSortKey) {
+        const colIdx = cols.findIndex(c => c.key === revSortKey);
+        if (colIdx >= 0) {
+          filtered.sort((a, b) => {
+            const va = colValFromMap(cols[colIdx], a.mMap);
+            const vb = colValFromMap(cols[colIdx], b.mMap);
+            return revSortDir === 'asc' ? va - vb : vb - va;
+          });
+        }
+      }
+
+      // Compute filtered totals
+      const filteredTotals = cols.map(col => filtered.reduce((s, { mMap }) => s + colValFromMap(col, mMap), 0));
+      const isFiltered = ql || buFilter;
+      const filteredTotalRow = `<tr class="rev-total-row">
+        <td colspan="2">${totalRowLabel}${isFiltered ? ` <span style="font-weight:400;font-size:11px;color:var(--text-muted);">(filtered)</span>` : ''}</td>
+        ${cols.map((c, i) => `<td class="num"${tdQStyle(c)}>${fmtCell(isFiltered ? filteredTotals[i] : grandTotals[i])}</td>`).join('')}
+      </tr>`;
+
+      let rows = filteredTotalRow;
+      for (const { acct, bu, mMap } of filtered) {
         const custVals = cols.map(col => colValFromMap(col, mMap));
         const dataCells = cols.map((c, i) => {
           const prev = i > 0 ? custVals[i-1] : null;
@@ -943,26 +1013,47 @@ function renderRevenuePage() {
         }).join('');
         const dot = `<span style="display:inline-block;width:7px;height:7px;border-radius:2px;background:${colorVar(bu)};margin-right:6px;vertical-align:middle;"></span>`;
         rows += `<tr class="rev-account-row">
-          <td class="rev-name-cell" title="${escapeHtml(acct)}">${escapeHtml(acct)}</td>
+          <td class="rev-name-cell">${escapeHtml(acct)}</td>
           <td style="color:var(--text-secondary);font-size:11px;white-space:nowrap;">${dot}${escapeHtml(bu)}</td>
           ${dataCells}
         </tr>`;
       }
-      return rows;
+      return { html: rows, count: filtered.length };
     }
 
+    const { html: initialRows } = buildCustRows('', '');
     const html2 = `${viewToggle}${searchBar}<div class="card"><div class="rev-table-wrap"><table class="rev-table" id="rev-cust-table">
-      ${custThead}<tbody id="rev-cust-body">${custTotalRow}${buildCustRows('', '')}</tbody></table></div></div>`;
+      ${custThead}<tbody id="rev-cust-body">${initialRows}</tbody></table></div></div>`;
     el.innerHTML = html2;
     wireRevToggles(el);
 
     function refreshCustTable() {
       const q = el.querySelector('#rev-cust-search').value;
       const bu = el.querySelector('#rev-cust-bu').value;
-      el.querySelector('#rev-cust-body').innerHTML = custTotalRow + buildCustRows(q, bu);
+      const { html: rows, count } = buildCustRows(q, bu);
+      el.querySelector('#rev-cust-body').innerHTML = rows;
     }
     el.querySelector('#rev-cust-search').addEventListener('input', () => { refreshCustTable(); wireNrrCellClicks(el); });
     el.querySelector('#rev-cust-bu').addEventListener('change', () => { refreshCustTable(); wireNrrCellClicks(el); });
+    // Sort header clicks for customer view
+    el.querySelectorAll('[data-rev-sort]').forEach(th => {
+      th.addEventListener('click', () => {
+        const key = th.dataset.revSort;
+        if (revSortKey === key) revSortDir = revSortDir === 'asc' ? 'desc' : 'asc';
+        else { revSortKey = key; revSortDir = key === 'name' || key === 'bu' ? 'asc' : 'desc'; }
+        refreshCustTable();
+        wireNrrCellClicks(el);
+        // Update arrows in thead
+        el.querySelectorAll('[data-rev-sort]').forEach(h => {
+          const k = h.dataset.revSort;
+          const isAct = revSortKey === k;
+          const arrow = !isAct
+            ? `<span style="color:var(--text-muted);opacity:0.4;margin-left:3px;">↕</span>`
+            : (revSortDir === 'asc' ? `<span style="margin-left:3px;">↑</span>` : `<span style="margin-left:3px;">↓</span>`);
+          h.innerHTML = h.innerHTML.replace(/(<span[^>]*>[↕↑↓]<\/span>|<span style="[^"]*">[↕↑↓]<\/span>)/, '') + arrow;
+        });
+      });
+    });
     wireNrrCellClicks(el);
     return;
   }
@@ -972,9 +1063,21 @@ function renderRevenuePage() {
   el.innerHTML = html;
   wireRevToggles(el);
 
+  // Sort header clicks for BU view
+  el.querySelectorAll('[data-rev-sort]').forEach(th => {
+    th.addEventListener('click', () => {
+      const key = th.dataset.revSort;
+      if (revSortKey === key) revSortDir = revSortDir === 'asc' ? 'desc' : 'asc';
+      else { revSortKey = key; revSortDir = key === 'name' ? 'asc' : 'desc'; }
+      renderRevenuePage();
+    });
+  });
+
   // BU row click → expand/collapse
   el.querySelectorAll('.rev-bu-row').forEach(row => {
-    row.addEventListener('click', () => {
+    row.addEventListener('click', e => {
+      // Don't expand/collapse when clicking a sort header
+      if (e.target.closest('[data-rev-sort]')) return;
       const bu = row.dataset.revBu;
       revenueExpandedBU = revenueExpandedBU === bu ? null : bu;
       renderRevenuePage();
@@ -1013,29 +1116,76 @@ async function showNrrInvoiceModal(acct, bu, month) {
   const body  = document.getElementById('nrr-modal-body');
   const title = document.getElementById('nrr-modal-title');
   const sub   = document.getElementById('nrr-modal-subtitle');
+  const countEl = document.getElementById('nrr-modal-count');
+  const searchEl = document.getElementById('nrr-modal-search');
 
   const isBuLevel = acct === '__BU__';
   title.textContent = isBuLevel ? bu : acct;
   sub.textContent   = (isBuLevel ? 'All accounts · ' : `${bu} · `) + _nrrFmtMonth(month);
   body.innerHTML    = `<tr><td colspan="4" style="padding:16px;color:var(--text-muted);text-align:center;">Loading…</td></tr>`;
+  countEl.textContent = '';
+  searchEl.value = '';
+  nrrModalSortKey = null; nrrModalSortDir = 'asc';
   modal.style.display = 'flex';
 
-  try {
-    let qs;
-    if (isBuLevel) {
-      qs = `business_unit=eq.${encodeURIComponent(bu)}&month=eq.${encodeURIComponent(month)}&order=account_name.asc,inv_no.asc`;
-    } else {
-      qs = `account_name=eq.${encodeURIComponent(acct)}&business_unit=eq.${encodeURIComponent(bu)}&month=eq.${encodeURIComponent(month)}&order=inv_no.asc`;
+  const colspan = isBuLevel ? 5 : 4;
+
+  function thStyle2(key, label, align='left', width='') {
+    const isAct = nrrModalSortKey === key;
+    const arrow = !isAct
+      ? `<span style="opacity:0.35;margin-left:3px;">↕</span>`
+      : (nrrModalSortDir === 'asc' ? `<span style="margin-left:3px;">↑</span>` : `<span style="margin-left:3px;">↓</span>`);
+    return `<th data-nrr-sort="${key}" style="text-align:${align};padding:6px 10px;color:var(--text-muted);font-weight:500;cursor:pointer;user-select:none;${width?'width:'+width+';':''}">${label}${arrow}</th>`;
+  }
+
+  function renderTheadAndRows(allRows, q) {
+    const thead = document.querySelector('#nrr-modal-table thead tr');
+    if (thead) {
+      const acctTh = isBuLevel ? thStyle2('acct', 'Account', 'left', '18%') : '';
+      const memoW = isBuLevel ? '28%' : '38%';
+      thead.innerHTML = `${acctTh}
+        ${thStyle2('inv_no', 'Inv No.', 'left', '12%')}
+        ${thStyle2('memo', 'Memo', 'left', memoW)}
+        ${thStyle2('revenue_type', 'Revenue Type', 'left', '18%')}
+        ${thStyle2('amount', 'Amount', 'right', '12%')}`;
+      thead.querySelectorAll('[data-nrr-sort]').forEach(th => {
+        th.addEventListener('click', () => {
+          const k = th.dataset.nrrSort;
+          if (nrrModalSortKey === k) nrrModalSortDir = nrrModalSortDir === 'asc' ? 'desc' : 'asc';
+          else { nrrModalSortKey = k; nrrModalSortDir = k === 'amount' ? 'desc' : 'asc'; }
+          renderTheadAndRows(allRows, searchEl.value);
+        });
+      });
     }
-    const rows = await sb(`nrr_invoice_details?${qs}`);
-    if (!rows.length) {
-      body.innerHTML = `<tr><td colspan="4" style="padding:16px;color:var(--text-muted);text-align:center;">No invoice details found — run "Push MRR + NRR to Supabase" from your Google Sheet to populate.</td></tr>`;
-      return;
+
+    const ql = q.toLowerCase();
+    let filtered = allRows.filter(r => {
+      if (!ql) return true;
+      return (r.account_name || '').toLowerCase().includes(ql)
+        || (r.inv_no || '').toLowerCase().includes(ql)
+        || (r.memo || '').toLowerCase().includes(ql)
+        || (r.revenue_type || '').toLowerCase().includes(ql);
+    });
+
+    if (nrrModalSortKey) {
+      filtered = [...filtered].sort((a, b) => {
+        let va = a[nrrModalSortKey === 'acct' ? 'account_name' : nrrModalSortKey] ?? '';
+        let vb = b[nrrModalSortKey === 'acct' ? 'account_name' : nrrModalSortKey] ?? '';
+        if (nrrModalSortKey === 'amount') { va = Number(va); vb = Number(vb); }
+        const cmp = typeof va === 'number' ? va - vb : String(va).localeCompare(String(vb));
+        return nrrModalSortDir === 'asc' ? cmp : -cmp;
+      });
     }
+
+    const isFiltered = ql || nrrModalSortKey;
+    countEl.textContent = filtered.length < allRows.length
+      ? `Showing ${filtered.length} of ${allRows.length} rows`
+      : `${allRows.length} rows`;
+
     let total = 0;
-    const trs = rows.map(r => {
+    const trs = filtered.map(r => {
       total += Number(r.amount ?? 0);
-      const acctCell = isBuLevel ? `<td style="padding:7px 10px;font-size:11px;color:var(--text-muted);">${escapeHtml(r.account_name ?? '')}</td>` : '';
+      const acctCell = isBuLevel ? `<td style="padding:7px 10px;font-size:11px;color:var(--text-muted);white-space:normal;word-break:break-word;">${escapeHtml(r.account_name ?? '')}</td>` : '';
       return `<tr style="border-bottom:1px solid var(--gridline);">
         ${acctCell}
         <td style="padding:7px 10px;">${escapeHtml(r.inv_no ?? '')}</td>
@@ -1044,24 +1194,30 @@ async function showNrrInvoiceModal(acct, bu, month) {
         <td style="padding:7px 10px;text-align:right;">${fmtINR(Number(r.amount ?? 0))}</td>
       </tr>`;
     }).join('');
-    // Update thead to add Account column for BU-level view
-    const thead = document.querySelector('#nrr-modal-table thead tr');
-    if (thead) {
-      const acctTh = isBuLevel ? `<th style="text-align:left;padding:6px 10px;color:var(--text-muted);font-weight:500;width:18%;">Account</th>` : '';
-      const memoW = isBuLevel ? '30%' : '38%';
-      thead.innerHTML = `${acctTh}
-        <th style="text-align:left;padding:6px 10px;color:var(--text-muted);font-weight:500;width:12%;">Inv No.</th>
-        <th style="text-align:left;padding:6px 10px;color:var(--text-muted);font-weight:500;width:${memoW};">Memo</th>
-        <th style="text-align:left;padding:6px 10px;color:var(--text-muted);font-weight:500;width:20%;">Revenue Type</th>
-        <th style="text-align:right;padding:6px 10px;color:var(--text-muted);font-weight:500;width:12%;">Amount</th>`;
-    }
-    const colspan = isBuLevel ? 5 : 4;
+
     body.innerHTML = trs + `<tr style="border-top:2px solid var(--border);font-weight:600;">
-      <td colspan="${colspan - 1}" style="padding:8px 10px;">Total</td>
+      <td colspan="${colspan - 1}" style="padding:8px 10px;">Total${filtered.length < allRows.length ? ' (filtered)' : ''}</td>
       <td style="padding:8px 10px;text-align:right;">${fmtINR(total)}</td>
     </tr>`;
+  }
+
+  try {
+    let qs;
+    if (isBuLevel) {
+      qs = `business_unit=eq.${encodeURIComponent(bu)}&month=eq.${encodeURIComponent(month)}&order=account_name.asc,inv_no.asc`;
+    } else {
+      qs = `account_name=eq.${encodeURIComponent(acct)}&business_unit=eq.${encodeURIComponent(bu)}&month=eq.${encodeURIComponent(month)}&order=inv_no.asc`;
+    }
+    const allRows = await sb(`nrr_invoice_details?${qs}`);
+    if (!allRows.length) {
+      body.innerHTML = `<tr><td colspan="${colspan}" style="padding:16px;color:var(--text-muted);text-align:center;">No invoice details found — run "Push MRR + NRR to Supabase" from your Google Sheet to populate.</td></tr>`;
+      return;
+    }
+
+    renderTheadAndRows(allRows, '');
+    searchEl.oninput = () => renderTheadAndRows(allRows, searchEl.value);
   } catch (err) {
-    body.innerHTML = `<tr><td colspan="4" style="padding:16px;color:var(--rev-neg);text-align:center;">Error: ${escapeHtml(String(err))}</td></tr>`;
+    body.innerHTML = `<tr><td colspan="${colspan}" style="padding:16px;color:var(--bad,#d03b3b);text-align:center;">Error: ${escapeHtml(String(err))}</td></tr>`;
   }
 }
 
