@@ -278,7 +278,7 @@
   </div>
   <!-- NRR Invoice Detail Modal -->
   <div id="nrr-invoice-modal" style="display:none;position:fixed;inset:0;z-index:9000;background:rgba(0,0,0,0.45);align-items:center;justify-content:center;">
-    <div style="background:var(--surface-1);border:1px solid var(--border);border-radius:12px;padding:24px;width:min(700px,95vw);max-height:85vh;display:flex;flex-direction:column;box-shadow:0 8px 32px rgba(0,0,0,0.25);">
+    <div style="background:var(--surface-1);border:1px solid var(--border);border-radius:12px;padding:24px;width:min(1000px,95vw);max-height:92vh;display:flex;flex-direction:column;box-shadow:0 8px 32px rgba(0,0,0,0.25);">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
         <div>
           <div id="nrr-modal-title" style="font-weight:600;font-size:15px;"></div>
@@ -437,7 +437,7 @@ async function sb(path) {
 }
 
 // Fetches all rows by paginating with Range headers (avoids the 1000-row default cap).
-async function sbAll(path, pageSize = 1000) {
+async function sbAll(path, pageSize = 5000) {
   const rows = [];
   let from = 0;
   while (true) {
