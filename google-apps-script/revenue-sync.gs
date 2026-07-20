@@ -23,14 +23,17 @@ function syncRevenue() {
     rows = rows.concat(readCmrrRows());
     rows = rows.concat(readNrrRows());
 
-    if (rows.length === 0) {
+    var invoiceRows = readNrrInvoiceRows();
+
+    if (rows.length === 0 && invoiceRows.length === 0) {
       ui.alert('Revenue Sync', 'No data rows found — nothing pushed.', ui.ButtonSet.OK);
       return;
     }
 
-    var result = pushToSupabase(rows);
+    var result = pushToSupabase(rows, invoiceRows);
     ui.alert('Revenue Sync ✓',
-      'Successfully pushed ' + result.rows_upserted + ' rows to Supabase.',
+      'Successfully pushed ' + result.rows_upserted + ' revenue rows and ' +
+      result.invoice_rows_upserted + ' invoice rows to Supabase.',
       ui.ButtonSet.OK);
   } catch (e) {
     ui.alert('Revenue Sync — Error', String(e), ui.ButtonSet.OK);
@@ -39,7 +42,7 @@ function syncRevenue() {
 
 // ─── CMRR sheet reader ───────────────────────────────────────────────────────
 // Row 3 = header. Col B (idx 1) = Regrouped Nomenclature, Col D (idx 3) = Customer Name.
-// Cols AD–AP (idx 29–41) = MRR months. Col AR (idx 43) = BU.
+// Cols AD–AP (idx 29–41) = MRR months. Col AS (idx 44) = BU.
 
 function readCmrrRows() {
   var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('CMRR');
@@ -85,7 +88,7 @@ function readCmrrRows() {
 
 // ─── NRR Consolidated sheet reader ──────────────────────────────────────────
 // Row 3 = header. Col F (idx 5) = Customer Name, Cols P–AA (idx 15–26) = NRR months.
-// Col AS (idx 44) = BU. Multiple rows per account — sum them.
+// Col AT (idx 45) = BU. Multiple rows per account — sum them.
 
 function readNrrRows() {
   var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('NRR Consolidated');
@@ -124,9 +127,60 @@ function readNrrRows() {
   return Object.values(byKey).filter(function(r) { return r.nrr_amount !== 0; });
 }
 
+// ─── NRR Invoice detail reader ───────────────────────────────────────────────
+// Reads individual rows from NRR Consolidated to capture invoice-level detail.
+// Col E (idx 4) = Inv No., Col F (idx 5) = Customer Name, Col H (idx 7) = Memo,
+// Col K (idx 10) = Revenue Type, Col AT (idx 45) = BU, Cols P–AA (idx 15–26) = months.
+// One row is emitted per invoice × month combination (where amount ≠ 0).
+
+function readNrrInvoiceRows() {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('NRR Consolidated');
+  if (!sheet) throw new Error('Sheet "NRR Consolidated" not found');
+
+  var range = sheet.getDataRange();
+  var data = range.getValues();
+  var headerRow = range.getDisplayValues()[2];
+
+  var nrrMonths = [];
+  for (var c = 15; c <= 26; c++) {
+    var hdr = headerRow[c];
+    if (!hdr) continue;
+    var monthStr = formatMonthHeader(hdr);
+    if (monthStr) nrrMonths.push({ col: c, month: monthStr });
+  }
+
+  var rows = [];
+  for (var r = 3; r < data.length; r++) {
+    var row = data[r];
+    var accountName = trim(row[5]);  // col F = Customer Name
+    var bu          = trim(row[45]); // col AT = BU2
+    var invNo       = trim(row[4]);  // col E = Inv No.
+    if (!accountName || !bu || !invNo) continue;
+
+    var memo        = trim(row[7]);  // col H
+    var revenueType = trim(row[10]); // col K
+
+    for (var m = 0; m < nrrMonths.length; m++) {
+      var amt = toNumber(row[nrrMonths[m].col]);
+      if (amt === 0) continue;
+      rows.push({
+        account_name:  accountName,
+        business_unit: bu,
+        month:         nrrMonths[m].month,
+        inv_no:        invNo,
+        memo:          memo || null,
+        revenue_type:  revenueType || null,
+        amount:        amt,
+      });
+    }
+  }
+
+  return rows;
+}
+
 // ─── Push to Supabase ────────────────────────────────────────────────────────
 
-function pushToSupabase(rows) {
+function pushToSupabase(rows, invoiceRows) {
   // De-duplicate: cmrrRows + nrrRows may overlap; merge by key
   var merged = {};
   for (var i = 0; i < rows.length; i++) {
@@ -141,7 +195,7 @@ function pushToSupabase(rows) {
 
   var finalRows = Object.values(merged);
 
-  // Push in batches of 500 to stay within request size limits
+  // Push revenue rows in batches of 500
   var BATCH = 500;
   var totalUpserted = 0;
   for (var start = 0; start < finalRows.length; start += BATCH) {
@@ -160,7 +214,27 @@ function pushToSupabase(rows) {
     }
     totalUpserted += body.rows_upserted;
   }
-  return { rows_upserted: totalUpserted };
+
+  // Push invoice rows in batches of 500
+  var totalInvoiceUpserted = 0;
+  for (var istart = 0; istart < invoiceRows.length; istart += BATCH) {
+    var ibatch = invoiceRows.slice(istart, istart + BATCH);
+    var iresp = UrlFetchApp.fetch(SUPABASE_ENDPOINT, {
+      method: 'post',
+      contentType: 'application/json',
+      headers: { 'Authorization': 'Bearer ' + SUPABASE_API_KEY },
+      payload: JSON.stringify({ rows: [], invoice_rows: ibatch }),
+      muteHttpExceptions: true,
+    });
+    var icode = iresp.getResponseCode();
+    var ibody = JSON.parse(iresp.getContentText());
+    if (icode !== 200 || !ibody.ok) {
+      throw new Error('Supabase invoice error (HTTP ' + icode + '): ' + (ibody.error || iresp.getContentText()));
+    }
+    totalInvoiceUpserted += ibody.invoice_rows_upserted;
+  }
+
+  return { rows_upserted: totalUpserted, invoice_rows_upserted: totalInvoiceUpserted };
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────

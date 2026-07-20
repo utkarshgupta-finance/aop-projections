@@ -20,6 +20,16 @@ interface RevenueRow {
   notes?:        string;
 }
 
+interface InvoiceRow {
+  account_name:  string;
+  business_unit: string;
+  month:         string;
+  inv_no:        string;
+  memo?:         string | null;
+  revenue_type?: string | null;
+  amount?:       number | null;
+}
+
 function normaliseMonth(raw: string): string {
   // Accept "2026-07", "2026-07-01", "Jul 2026", "July 2026"
   const ym = raw.trim();
@@ -53,45 +63,74 @@ Deno.serve(async (req: Request) => {
   try {
     const body = await req.json();
     const rawRows: RevenueRow[] = body.rows;
-
-    if (!Array.isArray(rawRows) || rawRows.length === 0) {
-      return new Response(
-        JSON.stringify({ ok: false, error: 'No rows provided. Expected: { rows: [...] }' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
-      );
-    }
-
-    // Validate + normalise
-    const rows = rawRows.map((r, i) => {
-      if (!r.account_name) throw new Error(`Row ${i}: missing account_name`);
-      if (!r.business_unit) throw new Error(`Row ${i}: missing business_unit`);
-      if (!r.month) throw new Error(`Row ${i}: missing month`);
-      return {
-        account_name:  String(r.account_name).trim(),
-        business_unit: String(r.business_unit).trim(),
-        month:         normaliseMonth(String(r.month)),
-        mrr_amount:    r.mrr_amount ?? null,
-        nrr_amount:    r.nrr_amount ?? null,
-        currency:      r.currency ?? 'INR',
-        notes:         r.notes ?? null,
-        updated_at:    new Date().toISOString(),
-      };
-    });
+    const rawInvoiceRows: InvoiceRow[] = body.invoice_rows ?? [];
 
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL')!,
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
     );
 
-    const { error } = await supabase
-      .from('revenue_actuals')
-      .upsert(rows, { onConflict: 'account_name,business_unit,month' });
+    let revenueUpserted = 0;
 
-    if (error) throw error;
+    // ── Revenue actuals ──────────────────────────────────────────────────────
+    if (Array.isArray(rawRows) && rawRows.length > 0) {
+      const rows = rawRows.map((r, i) => {
+        if (!r.account_name) throw new Error(`Row ${i}: missing account_name`);
+        if (!r.business_unit) throw new Error(`Row ${i}: missing business_unit`);
+        if (!r.month) throw new Error(`Row ${i}: missing month`);
+        return {
+          account_name:  String(r.account_name).trim(),
+          business_unit: String(r.business_unit).trim(),
+          month:         normaliseMonth(String(r.month)),
+          mrr_amount:    r.mrr_amount ?? null,
+          nrr_amount:    r.nrr_amount ?? null,
+          currency:      r.currency ?? 'INR',
+          notes:         r.notes ?? null,
+          updated_at:    new Date().toISOString(),
+        };
+      });
 
-    console.log(`sheets-sync: upserted ${rows.length} rows`);
+      const { error } = await supabase
+        .from('revenue_actuals')
+        .upsert(rows, { onConflict: 'account_name,business_unit,month' });
+
+      if (error) throw error;
+      revenueUpserted = rows.length;
+      console.log(`sheets-sync: upserted ${rows.length} revenue rows`);
+    }
+
+    // ── NRR invoice details ──────────────────────────────────────────────────
+    let invoiceUpserted = 0;
+
+    if (rawInvoiceRows.length > 0) {
+      const invoiceRows = rawInvoiceRows.map((r, i) => {
+        if (!r.account_name) throw new Error(`Invoice row ${i}: missing account_name`);
+        if (!r.business_unit) throw new Error(`Invoice row ${i}: missing business_unit`);
+        if (!r.month) throw new Error(`Invoice row ${i}: missing month`);
+        if (!r.inv_no) throw new Error(`Invoice row ${i}: missing inv_no`);
+        return {
+          account_name:  String(r.account_name).trim(),
+          business_unit: String(r.business_unit).trim(),
+          month:         normaliseMonth(String(r.month)),
+          inv_no:        String(r.inv_no).trim(),
+          memo:          r.memo ? String(r.memo).trim() : null,
+          revenue_type:  r.revenue_type ? String(r.revenue_type).trim() : null,
+          amount:        r.amount ?? null,
+          updated_at:    new Date().toISOString(),
+        };
+      });
+
+      const { error } = await supabase
+        .from('nrr_invoice_details')
+        .upsert(invoiceRows, { onConflict: 'account_name,business_unit,inv_no,month' });
+
+      if (error) throw error;
+      invoiceUpserted = invoiceRows.length;
+      console.log(`sheets-sync: upserted ${invoiceRows.length} invoice rows`);
+    }
+
     return new Response(
-      JSON.stringify({ ok: true, rows_upserted: rows.length }),
+      JSON.stringify({ ok: true, rows_upserted: revenueUpserted, invoice_rows_upserted: invoiceUpserted }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
     );
   } catch (err: any) {

@@ -276,6 +276,32 @@
       <div id="revenue-content"><p style="color:var(--text-muted);padding:20px 0;">Loading...</p></div>
     </div>
   </div>
+  <!-- NRR Invoice Detail Modal -->
+  <div id="nrr-invoice-modal" style="display:none;position:fixed;inset:0;z-index:9000;background:rgba(0,0,0,0.45);align-items:center;justify-content:center;">
+    <div style="background:var(--surface-1);border:1px solid var(--border);border-radius:12px;padding:24px;width:min(700px,95vw);max-height:85vh;display:flex;flex-direction:column;box-shadow:0 8px 32px rgba(0,0,0,0.25);">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+        <div>
+          <div id="nrr-modal-title" style="font-weight:600;font-size:15px;"></div>
+          <div id="nrr-modal-subtitle" style="font-size:12px;color:var(--text-muted);margin-top:2px;"></div>
+        </div>
+        <button id="nrr-modal-close" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--text-muted);padding:4px 8px;line-height:1;">×</button>
+      </div>
+      <div style="overflow:auto;flex:1;">
+        <table id="nrr-modal-table" style="width:100%;border-collapse:collapse;font-size:13px;">
+          <thead>
+            <tr style="border-bottom:2px solid var(--border);">
+              <th style="text-align:left;padding:6px 10px;color:var(--text-muted);font-weight:500;">Inv No.</th>
+              <th style="text-align:left;padding:6px 10px;color:var(--text-muted);font-weight:500;">Memo</th>
+              <th style="text-align:left;padding:6px 10px;color:var(--text-muted);font-weight:500;">Revenue Type</th>
+              <th style="text-align:right;padding:6px 10px;color:var(--text-muted);font-weight:500;">Amount</th>
+            </tr>
+          </thead>
+          <tbody id="nrr-modal-body"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
   <!-- Projections Page (existing content) -->
   <div id="page-projections" class="page-pane">
     <div class="wrap">
@@ -775,7 +801,8 @@ function renderRevenuePage() {
   });
 
   // Format a single data cell — always passes prev so NNR/colouring works for all period views
-  function fmtDataCell(v, prev) {
+  // nrrCtx: { acct, bu, col } — when provided and revenueMetric=NRR, cell becomes clickable
+  function fmtDataCell(v, prev, nrrCtx) {
     if (isNNR) {
       // Suppress delta when no prior period or current value is 0
       if (prev === null || v === 0) return `<td class="num"><span class="rev-zero">—</span></td>`;
@@ -783,16 +810,22 @@ function renderRevenuePage() {
       const cls = delta >= 0 ? 'rev-pos' : 'rev-neg';
       return `<td class="num"><span class="${cls}">${delta >= 0 ? '+' : ''}${fmtINR(delta)}</span></td>`;
     }
-    if (prev === null || v === prev) return `<td class="num">${fmtCell(v)}</td>`;
+    const isNRRCell = revenueMetric === 'NRR' && isMonthly && nrrCtx && v !== 0;
+    const clickAttr = isNRRCell
+      ? ` data-nrr-click="1" data-nrr-acct="${escapeHtml(nrrCtx.acct)}" data-nrr-bu="${escapeHtml(nrrCtx.bu)}" data-nrr-month="${escapeHtml(nrrCtx.col.months[0])}" style="cursor:pointer;"`
+      : '';
+    if (prev === null || v === prev) return `<td class="num"${clickAttr}>${fmtCell(v)}</td>`;
     const cls = v > prev ? 'rev-pos' : 'rev-neg';
-    return `<td class="num"><span class="${cls}">${fmtINR(v)}</span></td>`;
+    return `<td class="num"${clickAttr}><span class="${cls}">${fmtINR(v)}</span></td>`;
   }
 
   // Build a single row for an entity — prev always passed for all period types
-  function entityRows(labelCell, vals, extraStyle) {
+  // acctCtx: account name for NRR drill-down; buCtx: BU name
+  function entityRows(labelCell, vals, extraStyle, acctCtx, buCtx) {
     const cells = cols.map((c, i) => {
       const prev = i > 0 ? vals[i-1] : null;
-      return fmtDataCell(vals[i], prev);
+      const nrrCtx = (acctCtx && buCtx) ? { acct: acctCtx, bu: buCtx, col: c } : null;
+      return fmtDataCell(vals[i], prev, nrrCtx);
     }).join('');
     return `<tr${extraStyle||''}><td>${labelCell}</td>${cells}</tr>`;
   }
@@ -856,7 +889,7 @@ function renderRevenuePage() {
           const mMap = buIdx.get(acct);
           if (!acctHasData(mMap)) continue;
           const acctVals = cols.map(col => colValFromMap(col, mMap));
-          tableBody += entityRows(`<span style="padding-left:28px;">${escapeHtml(acct)}</span>`, acctVals, ' class="rev-account-row"');
+          tableBody += entityRows(`<span style="padding-left:28px;">${escapeHtml(acct)}</span>`, acctVals, ' class="rev-account-row"', acct, bu);
         }
       }
     }
@@ -912,7 +945,7 @@ function renderRevenuePage() {
         const custVals = cols.map(col => colValFromMap(col, mMap));
         const dataCells = cols.map((c, i) => {
           const prev = i > 0 ? custVals[i-1] : null;
-          return fmtDataCell(custVals[i], prev);
+          return fmtDataCell(custVals[i], prev, { acct, bu, col: c });
         }).join('');
         const dot = `<span style="display:inline-block;width:7px;height:7px;border-radius:2px;background:${colorVar(bu)};margin-right:6px;vertical-align:middle;"></span>`;
         rows += `<tr class="rev-account-row">
@@ -934,8 +967,9 @@ function renderRevenuePage() {
       const bu = el.querySelector('#rev-cust-bu').value;
       el.querySelector('#rev-cust-body').innerHTML = custTotalRow + buildCustRows(q, bu);
     }
-    el.querySelector('#rev-cust-search').addEventListener('input', refreshCustTable);
-    el.querySelector('#rev-cust-bu').addEventListener('change', refreshCustTable);
+    el.querySelector('#rev-cust-search').addEventListener('input', () => { refreshCustTable(); wireNrrCellClicks(el); });
+    el.querySelector('#rev-cust-bu').addEventListener('change', () => { refreshCustTable(); wireNrrCellClicks(el); });
+    wireNrrCellClicks(el);
     return;
   }
 
@@ -952,7 +986,66 @@ function renderRevenuePage() {
       renderRevenuePage();
     });
   });
+
+  // NRR cell click → show invoice detail modal
+  wireNrrCellClicks(el);
 }
+
+function wireNrrCellClicks(el) {
+  el.querySelectorAll('[data-nrr-click]').forEach(td => {
+    td.addEventListener('click', async e => {
+      e.stopPropagation();
+      const acct  = td.dataset.nrrAcct;
+      const bu    = td.dataset.nrrBu;
+      const month = td.dataset.nrrMonth; // YYYY-MM-01
+      await showNrrInvoiceModal(acct, bu, month);
+    });
+  });
+}
+
+async function showNrrInvoiceModal(acct, bu, month) {
+  const modal = document.getElementById('nrr-invoice-modal');
+  const body  = document.getElementById('nrr-modal-body');
+  const title = document.getElementById('nrr-modal-title');
+  const sub   = document.getElementById('nrr-modal-subtitle');
+
+  title.textContent = acct;
+  sub.textContent   = `${bu} · ${fmtMonth(month)}`;
+  body.innerHTML    = `<tr><td colspan="4" style="padding:16px;color:var(--text-muted);text-align:center;">Loading…</td></tr>`;
+  modal.style.display = 'flex';
+
+  try {
+    const qs = `account_name=eq.${encodeURIComponent(acct)}&business_unit=eq.${encodeURIComponent(bu)}&month=eq.${encodeURIComponent(month)}&order=inv_no.asc`;
+    const rows = await sb(`nrr_invoice_details?${qs}`);
+    if (!rows.length) {
+      body.innerHTML = `<tr><td colspan="4" style="padding:16px;color:var(--text-muted);text-align:center;">No invoice details found.</td></tr>`;
+      return;
+    }
+    let total = 0;
+    const trs = rows.map(r => {
+      total += Number(r.amount ?? 0);
+      return `<tr style="border-bottom:1px solid var(--gridline);">
+        <td style="padding:7px 10px;">${escapeHtml(r.inv_no ?? '')}</td>
+        <td style="padding:7px 10px;color:var(--text-secondary);">${escapeHtml(r.memo ?? '')}</td>
+        <td style="padding:7px 10px;color:var(--text-secondary);">${escapeHtml(r.revenue_type ?? '')}</td>
+        <td style="padding:7px 10px;text-align:right;">${fmtINR(Number(r.amount ?? 0))}</td>
+      </tr>`;
+    }).join('');
+    body.innerHTML = trs + `<tr style="border-top:2px solid var(--border);font-weight:600;">
+      <td colspan="3" style="padding:8px 10px;">Total</td>
+      <td style="padding:8px 10px;text-align:right;">${fmtINR(total)}</td>
+    </tr>`;
+  } catch (err) {
+    body.innerHTML = `<tr><td colspan="4" style="padding:16px;color:var(--rev-neg);text-align:center;">Error: ${escapeHtml(String(err))}</td></tr>`;
+  }
+}
+
+// Wire modal close on load (once)
+document.addEventListener('DOMContentLoaded', () => {
+  const modal = document.getElementById('nrr-invoice-modal');
+  document.getElementById('nrr-modal-close').addEventListener('click', () => { modal.style.display = 'none'; });
+  modal.addEventListener('click', e => { if (e.target === modal) modal.style.display = 'none'; });
+});
 
 function revenueSetupHtml() {
   const endpoint = `${SUPABASE_URL}/functions/v1/sheets-sync`;
