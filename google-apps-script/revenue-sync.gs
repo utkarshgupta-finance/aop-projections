@@ -195,16 +195,16 @@ function pushToSupabase(rows, invoiceRows) {
 
   var finalRows = Object.values(merged);
 
-  // Push revenue rows in batches of 500
-  var BATCH = 500;
+  // Send ALL revenue rows in a single request so the edge function's
+  // delete-then-insert covers every row in one atomic operation.
+  // UrlFetchApp handles payloads up to 10 MB; ~1000 rows ≈ 150 KB, well within limits.
   var totalUpserted = 0;
-  for (var start = 0; start < finalRows.length; start += BATCH) {
-    var batch = finalRows.slice(start, start + BATCH);
+  if (finalRows.length > 0) {
     var resp = UrlFetchApp.fetch(SUPABASE_ENDPOINT, {
       method: 'post',
       contentType: 'application/json',
       headers: { 'Authorization': 'Bearer ' + SUPABASE_API_KEY },
-      payload: JSON.stringify({ rows: batch }),
+      payload: JSON.stringify({ rows: finalRows }),
       muteHttpExceptions: true,
     });
     var code = resp.getResponseCode();
@@ -212,7 +212,7 @@ function pushToSupabase(rows, invoiceRows) {
     if (code !== 200 || !body.ok) {
       throw new Error('Supabase error (HTTP ' + code + '): ' + (body.error || resp.getContentText()));
     }
-    totalUpserted += body.rows_upserted;
+    totalUpserted = body.rows_upserted;
   }
 
   // Push invoice rows in batches of 500
