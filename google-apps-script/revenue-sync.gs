@@ -63,7 +63,7 @@ function readCmrrRows() {
     var row = data[r];
     // Use col D (Customer Name) as primary; fall back to col B (Regrouped Nomenclature)
     var accountName = trim(row[3]) || trim(row[1]);
-    var bu          = trim(row[43]);
+    var bu          = trim(row[44]); // col AS = BU2
     if (!accountName || !bu) continue;
 
     for (var m = 0; m < mrrMonths.length; m++) {
@@ -113,7 +113,7 @@ function readNrrRows(cmrrRows) {
   for (var r = 3; r < data.length; r++) {
     var row = data[r];
     var accountName = trim(row[5]);
-    var bu          = trim(row[44]);
+    var bu          = trim(row[45]); // col AT = BU2
     if (!accountName || !bu) continue;
 
     for (var m = 0; m < nrrMonths.length; m++) {
