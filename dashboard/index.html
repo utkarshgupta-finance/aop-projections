@@ -583,6 +583,12 @@ function revenueAmtOf(row) {
   return Number(row.mrr_amount ?? 0) + Number(row.nrr_amount ?? 0);
 }
 
+// Returns true if this account (mMap: month→row) has at least one non-zero value for the current metric
+function acctHasData(mMap) {
+  for (const r of mMap.values()) { if (revenueAmtOf(r) !== 0) return true; }
+  return false;
+}
+
 function wireRevToggles(el) {
   el.querySelectorAll('[data-rev-period]').forEach(btn => btn.addEventListener('click', () => {
     revenuePeriod = btn.dataset.revPeriod;
@@ -785,6 +791,7 @@ function renderRevenuePage() {
     for (const bu of buList) {
       const buIdx = idx.get(bu);
       if (!buIdx) continue;
+      if (![...buIdx.values()].some(mMap => acctHasData(mMap))) continue;
       const isExpanded = revenueExpandedBU === bu;
 
       function buColVal(col) {
@@ -803,6 +810,7 @@ function renderRevenuePage() {
         const accounts = [...buIdx.keys()].sort();
         for (const acct of accounts) {
           const mMap = buIdx.get(acct);
+          if (!acctHasData(mMap)) continue;
           const acctVals = cols.map(col => col.months.reduce((t, m) => { const r = mMap.get(m); return t + (r ? revenueAmtOf(r) : 0); }, 0));
           tableBody += entityRows(`<span style="padding-left:28px;">${escapeHtml(acct)}</span>`, acctVals, ' class="rev-account-row"');
         }
@@ -818,13 +826,15 @@ function renderRevenuePage() {
       const k = r.account_name + '|' + r.business_unit;
       if (!custMap.has(k)) custMap.set(k, {
         acct: r.account_name,
-        zoho: r.zoho_name || '',   // secondary name column if present
+        zoho: r.zoho_name || '',
         bu: r.business_unit,
         mMap: new Map()
       });
       custMap.get(k).mMap.set(r.month, r);
     }
-    const allCustList = [...custMap.values()].sort((a, b) => a.acct.localeCompare(b.acct));
+    const allCustList = [...custMap.values()]
+      .filter(({ mMap }) => acctHasData(mMap))
+      .sort((a, b) => a.acct.localeCompare(b.acct));
 
     const custThead = `<thead><tr>
       <th style="min-width:200px;">Customer Name</th>
