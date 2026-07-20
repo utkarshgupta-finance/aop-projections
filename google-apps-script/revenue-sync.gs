@@ -21,7 +21,7 @@ function syncRevenue() {
   try {
     var rows = [];
     rows = rows.concat(readCmrrRows());
-    rows = rows.concat(readNrrRows(rows));  // pass cmrr rows so we can merge
+    rows = rows.concat(readNrrRows());
 
     if (rows.length === 0) {
       ui.alert('Revenue Sync', 'No data rows found — nothing pushed.', ui.ButtonSet.OK);
@@ -86,14 +86,13 @@ function readCmrrRows() {
 // Row 3 = header. Col F (idx 5) = Customer Name, Cols P–AA (idx 15–26) = NRR months.
 // Col AS (idx 44) = BU. Multiple rows per account — sum them.
 
-function readNrrRows(cmrrRows) {
+function readNrrRows() {
   var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('NRR Consolidated');
   if (!sheet) throw new Error('Sheet "NRR Consolidated" not found');
 
   var data = sheet.getDataRange().getValues();
   var headerRow = data[2]; // row 3
 
-  // Discover month positions from header row (cols P–AA = indices 15–26)
   var nrrMonths = [];
   for (var c = 15; c <= 26; c++) {
     var hdr = headerRow[c];
@@ -102,16 +101,7 @@ function readNrrRows(cmrrRows) {
     if (monthStr) nrrMonths.push({ col: c, month: monthStr });
   }
 
-  // Build a map keyed by account_name|bu|month for merge
   var byKey = {};
-
-  // Pre-seed from cmrrRows so we can merge into existing entries
-  for (var i = 0; i < cmrrRows.length; i++) {
-    var cr = cmrrRows[i];
-    var key = cr.account_name + '|' + cr.business_unit + '|' + cr.month;
-    byKey[key] = cr; // reference — we'll mutate nrr_amount below
-  }
-
   for (var r = 3; r < data.length; r++) {
     var row = data[r];
     var accountName = trim(row[5]);
@@ -125,13 +115,11 @@ function readNrrRows(cmrrRows) {
       if (!byKey[key]) {
         byKey[key] = { account_name: accountName, business_unit: bu, month: nrrMonths[m].month, mrr_amount: null, nrr_amount: 0 };
       }
-      if (byKey[key].nrr_amount === null) byKey[key].nrr_amount = 0;
       byKey[key].nrr_amount += amt;
     }
   }
 
-  // Return only rows that have NRR (cmrrRows are returned by readCmrrRows already)
-  return Object.values(byKey).filter(function(r) { return r.nrr_amount !== null && r.nrr_amount !== 0; });
+  return Object.values(byKey).filter(function(r) { return r.nrr_amount !== 0; });
 }
 
 // ─── Push to Supabase ────────────────────────────────────────────────────────
