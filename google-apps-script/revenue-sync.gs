@@ -178,10 +178,12 @@ function toNumber(v) {
 function formatMonthHeader(hdr) {
   if (!hdr) return null;
 
-  // Google Sheets returns Date objects in UTC; use spreadsheet timezone to get correct month
+  // Add IST offset (+5:30) to UTC date before extracting month
   if (hdr instanceof Date) {
-    var tz = SpreadsheetApp.getActiveSpreadsheet().getSpreadsheetTimeZone();
-    return Utilities.formatDate(hdr, tz, 'yyyy-MM') + '-01';
+    var ist = new Date(hdr.getTime() + 5.5 * 60 * 60 * 1000);
+    var y = ist.getUTCFullYear();
+    var mo = String(ist.getUTCMonth() + 1).padStart(2, '0');
+    return y + '-' + mo + '-01';
   }
 
   var s = String(hdr).trim();
