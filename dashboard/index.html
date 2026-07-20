@@ -602,7 +602,7 @@ function renderRevenuePage() {
 
   // Derive sorted unique months
   const allMonths = [...new Set(REVENUE_ACTUALS.map(r => r.month))].sort();
-  const months = allMonths.slice(-12);
+  const months = allMonths;
 
   // Build quarter groups from months present in data
   // Each quarter: { label, months: [...YYYY-MM-01 strings] }
