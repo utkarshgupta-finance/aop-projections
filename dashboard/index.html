@@ -1134,7 +1134,7 @@ async function main() {
       sb('hunting_pipeline_snapshots?select=*&order=synced_at.desc').catch(() => []),
       sb('pipeline_views?select=*&order=display_order.asc').catch(() => []),
       sb('crm_stages?select=stage_name&order=stage_name.asc').catch(() => []),
-      sbAll('revenue_actuals?select=*&order=month.asc').catch(() => []),
+      sbAll('revenue_actuals?select=*&order=month.asc,id.asc').catch(() => []),
     ]);
   } catch (err) {
     content.innerHTML = `<div class="card"><p class="error">Failed to load data: ${escapeHtml(err.message)}</p></div>`;
