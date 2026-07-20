@@ -2,7 +2,7 @@ name: Deploy dashboard to GitHub Pages
 
 on:
   push:
-    branches: [claude/new-repo-w78uc5]
+    branches: [main]
     paths: ["dashboard/**"]
   workflow_dispatch: {}
 
