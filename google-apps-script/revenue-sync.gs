@@ -216,6 +216,7 @@ function pushToSupabase(rows, invoiceRows) {
   }
 
   // Push invoice rows in batches of 500
+  var BATCH = 500;
   var totalInvoiceUpserted = 0;
   for (var istart = 0; istart < invoiceRows.length; istart += BATCH) {
     var ibatch = invoiceRows.slice(istart, istart + BATCH);
