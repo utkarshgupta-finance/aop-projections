@@ -385,7 +385,7 @@ let modalCtx        = null; // { bu, dealType, metric, periodTab }
 // ---- Revenue page state ----
 let REVENUE_ACTUALS   = [];
 let currentPage       = 'revenue'; // 'revenue' | 'projections'
-let revenueMetric     = 'MRR';     // 'MRR' | 'NRR' | 'Combined'
+let revenueMetric     = 'MRR';     // 'MRR' | 'NRR' | 'NNR' | 'Combined'
 let revenueExpandedBU = null;      // BU name currently expanded, or null
 let revenueView       = 'bu';      // 'bu' | 'customer'
 let revenuePeriod     = 'monthly'; // 'monthly' | 'quarterly' | 'halfyearly' | 'annual'
@@ -578,9 +578,13 @@ function switchPage(page) {
 }
 
 function revenueAmtOf(row) {
-  if (revenueMetric === 'MRR') return Number(row.mrr_amount ?? 0);
   if (revenueMetric === 'NRR') return Number(row.nrr_amount ?? 0);
-  return Number(row.mrr_amount ?? 0) + Number(row.nrr_amount ?? 0);
+  // MRR, NNR (Net New MRR), and Combined all use MRR base amount
+  return Number(row.mrr_amount ?? 0);
+}
+function revenueBaseOf(row) {
+  // Always MRR for NNR delta calculation
+  return Number(row.mrr_amount ?? 0);
 }
 
 // Returns true if this account (mMap: month→row) has at least one non-zero value for the current metric
@@ -603,7 +607,7 @@ function wireRevToggles(el) {
 function renderRevenuePage() {
   // Metric tabs
   const tabs = document.getElementById('revenue-metric-tabs');
-  const metrics = ['MRR', 'NRR', 'Combined'];
+  const metrics = ['MRR', 'NRR', 'NNR', 'Combined'];
   tabs.innerHTML = metrics.map(m =>
     `<button class="tab-btn ${m === revenueMetric ? 'active' : ''}" data-rev-metric="${m}">${m}</button>`
   ).join('');
@@ -724,32 +728,28 @@ function renderRevenuePage() {
 
   const isMonthly = revenuePeriod === 'monthly';
 
-  // Format MRR cell with MoM green/red highlight
-  function fmtMrrCell(v, prev) {
+  const isNNR = revenueMetric === 'NNR';
+
+  // Format a single data cell — for NNR show delta vs prev col, for MRR/NRR show value with MoM colour
+  function fmtDataCell(v, prev) {
+    if (isNNR) {
+      if (prev === null) return `<td class="num"><span class="rev-zero">—</span></td>`;
+      const delta = v - prev;
+      const cls = delta >= 0 ? 'rev-pos' : 'rev-neg';
+      return `<td class="num"><span class="${cls}">${delta >= 0 ? '+' : ''}${fmtINR(delta)}</span></td>`;
+    }
     if (!isMonthly || prev === null) return `<td class="num">${fmtCell(v)}</td>`;
     const cls = v >= prev ? 'rev-pos' : 'rev-neg';
     return `<td class="num"><span class="${cls}">${fmtINR(v)}</span></td>`;
   }
-  // Format Net New cell (delta)
-  function fmtNetNewCell(v, prev) {
-    if (!isMonthly || prev === null) return `<td class="num rev-netnew-cell"><span class="rev-zero">—</span></td>`;
-    const delta = v - prev;
-    const cls = delta >= 0 ? 'rev-pos' : 'rev-neg';
-    return `<td class="num rev-netnew-cell"><span class="${cls}">${delta >= 0 ? '+' : ''}${fmtINR(delta)}</span></td>`;
-  }
 
-  // Build a pair of rows (MRR + Net New) for an entity
+  // Build a single row for an entity
   function entityRows(labelCell, vals, extraStyle) {
-    const mrrCells = cols.map((c, i) => {
+    const cells = cols.map((c, i) => {
       const prev = isMonthly && i > 0 ? vals[i-1] : null;
-      return fmtMrrCell(vals[i], prev);
+      return fmtDataCell(vals[i], prev);
     }).join('');
-    const netCells = cols.map((c, i) => {
-      const prev = isMonthly && i > 0 ? vals[i-1] : null;
-      return fmtNetNewCell(vals[i], prev);
-    }).join('');
-    return `<tr${extraStyle||''}><td>${labelCell}</td>${mrrCells}</tr>
-            <tr class="rev-netnew-row"${extraStyle||''}><td class="rev-netnew-label">Net New</td>${netCells}</tr>`;
+    return `<tr${extraStyle||''}><td>${labelCell}</td>${cells}</tr>`;
   }
 
   // Two rows of toggles: period grouping + row grouping
@@ -783,7 +783,8 @@ function renderRevenuePage() {
     ${cols.map(c => `<th class="num" ${thStyle(c)}>${c.label}</th>`).join('')}
   </tr></thead>`;
 
-  const totalRow = entityRows('<strong>Total MRR</strong>', grandTotals, ' class="rev-total-row"');
+  const totalRowLabel = isNNR ? 'Net New MRR' : revenueMetric === 'NRR' ? 'Total NRR' : revenueMetric === 'Combined' ? 'Total Revenue' : 'Total MRR';
+  const totalRow = entityRows(`<strong>${totalRowLabel}</strong>`, grandTotals, ' class="rev-total-row"');
 
   let tableBody = '';
 
@@ -867,24 +868,16 @@ function renderRevenuePage() {
         if (buFilter && bu !== buFilter) continue;
         if (ql && !acct.toLowerCase().includes(ql) && !zoho.toLowerCase().includes(ql)) continue;
         const custVals = cols.map(col => col.months.reduce((t, m) => { const r = mMap.get(m); return t + (r ? revenueAmtOf(r) : 0); }, 0));
-        const mrrCells = cols.map((c, i) => {
+        const dataCells = cols.map((c, i) => {
           const prev = isMonthly && i > 0 ? custVals[i-1] : null;
-          return fmtMrrCell(custVals[i], prev);
-        }).join('');
-        const netCells = cols.map((c, i) => {
-          const prev = isMonthly && i > 0 ? custVals[i-1] : null;
-          return fmtNetNewCell(custVals[i], prev);
+          return fmtDataCell(custVals[i], prev);
         }).join('');
         const dot = `<span style="display:inline-block;width:7px;height:7px;border-radius:2px;background:${colorVar(bu)};margin-right:6px;vertical-align:middle;"></span>`;
         rows += `<tr class="rev-account-row">
           <td>${escapeHtml(acct)}</td>
           <td style="color:var(--text-muted);font-size:12px;">${zoho ? escapeHtml(zoho) : '<span style="color:var(--text-muted)">—</span>'}</td>
           <td style="color:var(--text-secondary);font-size:12px;">${dot}${escapeHtml(bu)}</td>
-          ${mrrCells}
-        </tr>
-        <tr class="rev-netnew-row">
-          <td class="rev-netnew-label" colspan="3">Net New</td>
-          ${netCells}
+          ${dataCells}
         </tr>`;
       }
       return rows;
