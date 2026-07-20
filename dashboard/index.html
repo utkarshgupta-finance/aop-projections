@@ -2109,7 +2109,12 @@ function renderSummaryView() {
     const totHunting  = rows.reduce((a, r) => a + r.hunting, 0);
     const totTotal    = rows.reduce((a, r) => a + r.total, 0);
     const totTarget   = rows.reduce((a, r) => a + (r.target ?? 0), 0);
-    const totVariance = totTarget ? totTotal - totTarget : null;
+    // When hunting is hidden, total and variance should be based on farming only
+    const visibleTotal    = r => showFarming && !showHunting ? r.farming : r.total;
+    const totVisibleTotal = showFarming && !showHunting ? totFarming : totTotal;
+    const totVariance     = totTarget ? totVisibleTotal - totTarget : null;
+    // Hide "Total MRR" column when only farming is visible (it would duplicate the Farming column)
+    const showTotalCol = showCol('total') && !(showFarming && !showHunting);
     const hasPrevMiss = rows.some(r => r.prevMiss !== null);
     const totPrevMiss = hasPrevMiss ? rows.reduce((a, r) => a + (r.prevMiss ?? 0), 0) : null;
 
@@ -2124,7 +2129,8 @@ function renderSummaryView() {
     const sArrow = key => key === summarySortKey ? `<span class="sort-arrow">${summarySortDir === 'asc' ? '↑' : '↓'}</span>` : '';
 
     const bodyRows = rows.map(r => {
-      const av = adjVar(r.variance, r.prevMiss);
+      const rowVariance = r.target !== undefined ? visibleTotal(r) - r.target : null;
+      const av = adjVar(rowVariance, r.prevMiss);
       const sparkCls = av === null ? '' : av >= 0 ? 'var-pos' : 'var-neg';
       const sparkColor = av === null ? colorVar(r.bu) : av >= 0 ? 'var(--good)' : 'var(--bad)';
       const sparkTip = r.sparkline.map(p => `${p.date}: ${fmtINR(p.v)}`).join('\n');
@@ -2133,7 +2139,7 @@ function renderSummaryView() {
       ${showCol('trend') ? `<td class="${sparkCls}" style="padding:4px 8px;" title="${escapeHtml(sparkTip)}">${sparklineSvg(r.sparkline, sparkColor)}</td>` : ''}
       ${showFarming ? `<td class="num drilldown-cell" data-bu="${escapeHtml(r.bu)}" data-type="Farming" data-metric="${metric}">${r.farming ? fmtINR(r.farming) : '<span class="muted">-</span>'}</td>` : ''}
       ${showHunting ? `<td class="num drilldown-cell" data-bu="${escapeHtml(r.bu)}" data-type="Hunting" data-metric="${metric}">${r.hunting ? fmtINR(r.hunting) : '<span class="muted">-</span>'}</td>` : ''}
-      ${showCol('total') ? `<td class="num">${r.total ? fmtINR(r.total) : '<span class="muted">-</span>'}</td>` : ''}
+      ${showTotalCol ? `<td class="num">${visibleTotal(r) ? fmtINR(visibleTotal(r)) : '<span class="muted">-</span>'}</td>` : ''}
       ${showCol('target') ? `<td class="num">${r.target !== undefined ? fmtINR(r.target) : '<span class="muted">-</span>'}</td>` : ''}
       ${hasPrevMiss && showCol('prevMiss') ? prevCarryCell(r.prevMiss) : ''}
       ${showCol('variance') ? varCell(av) : ''}
@@ -2146,7 +2152,7 @@ function renderSummaryView() {
       ${showCol('trend') ? '<td></td>' : ''}
       ${showFarming ? `<td class="num">${fmtINR(totFarming)}</td>` : ''}
       ${showHunting ? `<td class="num">${fmtINR(totHunting)}</td>` : ''}
-      ${showCol('total') ? `<td class="num">${fmtINR(totTotal)}</td>` : ''}
+      ${showTotalCol ? `<td class="num">${fmtINR(totVisibleTotal)}</td>` : ''}
       ${showCol('target') ? `<td class="num">${totTarget ? fmtINR(totTarget) : '<span class="muted">-</span>'}</td>` : ''}
       ${hasPrevMiss && showCol('prevMiss') ? prevCarryCell(totPrevMiss) : ''}
       ${showCol('variance') ? varCell(totAdjVariance) : ''}
@@ -2161,7 +2167,7 @@ function renderSummaryView() {
         ${showCol('trend') ? '<col style="width:100px;">' : ''}
         ${showFarming ? '<col style="width:160px;">' : ''}
         ${showHunting ? '<col style="width:160px;">' : ''}
-        ${showCol('total') ? '<col style="width:140px;">' : ''}
+        ${showTotalCol ? '<col style="width:140px;">' : ''}
         ${showCol('target') ? '<col style="width:120px;">' : ''}
         ${hasPrevMiss && showCol('prevMiss') ? '<col style="width:130px;">' : ''}
         ${showCol('variance') ? '<col style="width:130px;">' : ''}
@@ -2171,7 +2177,7 @@ function renderSummaryView() {
         ${showCol('trend') ? '<th style="white-space:nowrap;">Commit Trend</th>' : ''}
         ${showFarming ? `<th class="num" data-sort="farming" style="cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${fLabel}">${fLabel}${sArrow('farming')}</th>` : ''}
         ${showHunting ? `<th class="num" data-sort="hunting" style="cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${hLabel}">${hLabel}${sArrow('hunting')}</th>` : ''}
-        ${showCol('total') ? `<th class="num" data-sort="total" style="cursor:pointer;white-space:nowrap;">Total ${metric}${sArrow('total')}</th>` : ''}
+        ${showTotalCol ? `<th class="num" data-sort="total" style="cursor:pointer;white-space:nowrap;">Total ${metric}${sArrow('total')}</th>` : ''}
         ${showCol('target') ? `<th class="num" data-sort="target" style="cursor:pointer;white-space:nowrap;">Target${sArrow('target')}</th>` : ''}
         ${hasPrevMiss && showCol('prevMiss') ? `<th class="num" data-sort="prevMiss" style="cursor:pointer;white-space:nowrap;">Prev Month Carry${sArrow('prevMiss')}</th>` : ''}
         ${showCol('variance') ? `<th class="num" data-sort="variance" style="cursor:pointer;white-space:nowrap;">${varColLabel}${sArrow('variance')}</th>` : ''}
