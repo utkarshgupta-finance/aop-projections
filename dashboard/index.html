@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>MRR Commit Dashboard</title>
+<title>Revenue Dashboard</title>
 <style>
   .viz-root {
     --surface-1:      #fcfcfb;
@@ -167,6 +167,50 @@
   .stage-capsule.stage-closed-lost.active { background: var(--bad); border-color: var(--bad); box-shadow: 0 1px 4px rgba(208,59,59,0.35); }
   .drilldown-cell { cursor: pointer; }
   .drilldown-cell:hover { text-decoration: underline; text-decoration-style: dotted; }
+  /* ---- Layout: sidebar + pages ---- */
+  .app-root { display: flex; min-height: 100vh; }
+  .sidebar { width: 196px; flex-shrink: 0; background: var(--surface-1); border-right: 1px solid var(--border); display: flex; flex-direction: column; position: sticky; top: 0; height: 100vh; overflow-y: auto; }
+  .sidebar-brand { padding: 18px 16px 14px; font-size: 15px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.3; border-bottom: 1px solid var(--border); }
+  .nav-section-label { padding: 14px 16px 4px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: var(--text-muted); }
+  .nav-item { display: block; width: 100%; text-align: left; padding: 10px 16px; border: none; border-left: 3px solid transparent; background: none; font: inherit; font-size: 13px; color: var(--text-secondary); cursor: pointer; text-decoration: none; }
+  .nav-item:hover { color: var(--text-primary); background: rgba(0,0,0,0.04); }
+  .nav-item.active { color: var(--series-1); font-weight: 600; border-left-color: var(--series-1); background: rgba(42,120,214,0.07); }
+  @media (prefers-color-scheme: dark) { .nav-item.active { background: rgba(57,135,229,0.12); } .nav-item:hover { background: rgba(255,255,255,0.04); } }
+  .sidebar-spacer { flex: 1; }
+  .nav-item.nav-settings { font-size: 12px; color: var(--text-muted); border-top: 1px solid var(--border); }
+  .page-shell { flex: 1; min-width: 0; overflow-y: auto; }
+  .page-pane { display: none; }
+  .page-pane.active { display: block; }
+  /* ---- Revenue page ---- */
+  .rev-table-wrap { overflow-x: auto; }
+  .rev-table { width: 100%; border-collapse: collapse; font-size: 13px; table-layout: auto; }
+  .rev-table th, .rev-table td { padding: 8px 12px; border-bottom: 1px solid var(--gridline); white-space: nowrap; }
+  .rev-table th { color: var(--text-secondary); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; background: var(--surface-1); position: sticky; top: 0; }
+  .rev-table td.num, .rev-table th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .rev-table .rev-total-row td { font-weight: 700; background: var(--page); border-bottom: 2px solid var(--border); }
+  .rev-table .rev-bu-row td { font-weight: 600; background: var(--surface-1); cursor: pointer; }
+  .rev-table .rev-bu-row:hover td { background: rgba(42,120,214,0.05); }
+  .rev-table .rev-account-row td { color: var(--text-secondary); font-size: 12px; padding-left: 28px; }
+  .rev-table .rev-account-row:hover td { background: rgba(0,0,0,0.03); }
+  .rev-expand-icon { display: inline-block; margin-right: 6px; font-size: 10px; color: var(--text-muted); transition: transform 0.15s; }
+  .rev-expand-icon.open { transform: rotate(90deg); }
+  .rev-pos { color: var(--good); font-weight: 600; }
+  .rev-neg { color: var(--bad); font-weight: 600; }
+  .rev-zero { color: var(--text-muted); }
+  .rev-metric-badge { display: inline-block; font-size: 10px; font-weight: 600; padding: 2px 6px; border-radius: 4px; margin-left: 4px; vertical-align: middle; }
+  .rev-metric-badge.mrr { background: rgba(42,120,214,0.12); color: var(--series-1); }
+  .rev-metric-badge.nrr { background: rgba(27,175,122,0.12); color: var(--series-2); }
+  .setup-box { background: var(--surface-1); border: 1px solid var(--border); border-radius: 10px; padding: 20px 24px; margin-bottom: 20px; }
+  .setup-box pre { background: var(--page); border: 1px solid var(--border); border-radius: 6px; padding: 12px 14px; font-size: 12px; overflow-x: auto; white-space: pre-wrap; word-break: break-all; margin: 8px 0 0; }
+  @media (max-width: 720px) {
+    .app-root { flex-direction: column; }
+    .sidebar { width: 100%; height: auto; position: static; flex-direction: row; flex-wrap: wrap; align-items: center; padding: 0; border-right: none; border-bottom: 1px solid var(--border); }
+    .sidebar-brand { padding: 10px 14px; border-bottom: none; font-size: 14px; flex: 1; }
+    .nav-section-label, .sidebar-spacer, .nav-item.nav-settings { display: none; }
+    .nav-item { padding: 10px 14px; border-left: none; border-bottom: 3px solid transparent; font-size: 13px; }
+    .nav-item.active { border-bottom-color: var(--series-1); border-left-color: transparent; background: none; }
+    .page-shell { min-height: auto; }
+  }
   .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.55); z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 20px; }
   .modal-box { background: var(--surface-1); border: 1px solid var(--border); border-radius: 12px; padding: 24px; width: min(960px, 100%); max-height: 85vh; overflow-y: auto; position: relative; }
   .modal-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; gap: 12px; }
@@ -176,7 +220,7 @@
 </style>
 </head>
 <body>
-<div class="viz-root">
+<div class="viz-root app-root">
 <div id="modal-overlay" class="modal-overlay" style="display:none;" role="dialog" aria-modal="true">
   <div class="modal-box">
     <div class="modal-header">
@@ -192,26 +236,60 @@
   <div id="vb-panel" style="background:var(--surface-1);border:1px solid var(--border);border-radius:12px;padding:24px;max-width:600px;width:90%;max-height:80vh;overflow-y:auto;">
   </div>
 </div>
-  <div class="wrap">
-    <div class="topbar">
-      <div>
-        <h1>MRR Commit Dashboard</h1>
-        <p class="subtitle" id="subtitle">Loading latest snapshot...</p>
+<!-- Sidebar navigation -->
+<nav class="sidebar">
+  <div class="sidebar-brand">Revenue<br>Dashboard</div>
+  <div class="nav-section-label">Menu</div>
+  <button class="nav-item active" id="nav-revenue">Revenue</button>
+  <button class="nav-item" id="nav-projections">Projections</button>
+  <div class="sidebar-spacer"></div>
+  <a class="nav-item nav-settings" href="settings.html">Settings</a>
+</nav>
+<div class="page-shell">
+  <!-- Revenue Page -->
+  <div id="page-revenue" class="page-pane active">
+    <div class="wrap">
+      <div class="topbar">
+        <div>
+          <h1>Revenue</h1>
+          <p class="subtitle" id="revenue-subtitle">Actual booked revenue by business unit</p>
+        </div>
+        <div class="topbar-actions">
+          <span class="last-sync" id="revenue-last-sync"></span>
+          <button class="sync-btn" id="revenue-setup-btn">Sheet Setup</button>
+        </div>
       </div>
-      <div class="topbar-actions">
-        <span class="last-sync" id="last-sync"></span>
-        <select class="quarter-select" id="quarter-select"></select>
-        <button class="sync-btn" id="sync-btn">Sync Zoho</button>
-        <a class="settings-link" href="settings.html">Settings</a>
+      <div class="tab-group">
+        <span class="tab-group-label">Metric</span>
+        <div class="tabs" id="revenue-metric-tabs"></div>
       </div>
+      <div class="tab-divider"></div>
+      <div id="revenue-content"><p style="color:var(--text-muted);padding:20px 0;">Loading...</p></div>
     </div>
-    <div class="tab-group view"><span class="tab-group-label">View</span><div class="tabs" id="view-tabs"></div></div>
-    <div class="tab-group period" id="period-group"><span class="tab-group-label">Period</span><div class="tabs" id="period-tabs"></div></div>
-    <div class="tab-group type" id="type-group"><span class="tab-group-label">Type</span><div class="tabs" id="type-tabs"></div></div>
-    <div class="tab-group bu" id="bu-group"><span class="tab-group-label">Business Unit</span><div class="tabs" id="bu-tabs"></div></div>
-    <div class="tab-divider"></div>
-    <div id="content"></div>
   </div>
+  <!-- Projections Page (existing content) -->
+  <div id="page-projections" class="page-pane">
+    <div class="wrap">
+      <div class="topbar">
+        <div>
+          <h1>Projections</h1>
+          <p class="subtitle" id="subtitle">Loading latest snapshot...</p>
+        </div>
+        <div class="topbar-actions">
+          <span class="last-sync" id="last-sync"></span>
+          <select class="quarter-select" id="quarter-select"></select>
+          <button class="sync-btn" id="sync-btn">Sync Zoho</button>
+        </div>
+      </div>
+      <div class="tab-group view"><span class="tab-group-label">View</span><div class="tabs" id="view-tabs"></div></div>
+      <div class="tab-group period" id="period-group"><span class="tab-group-label">Period</span><div class="tabs" id="period-tabs"></div></div>
+      <div class="tab-group type" id="type-group"><span class="tab-group-label">Type</span><div class="tabs" id="type-tabs"></div></div>
+      <div class="tab-group bu" id="bu-group"><span class="tab-group-label">Business Unit</span><div class="tabs" id="bu-tabs"></div></div>
+      <div class="tab-divider"></div>
+      <div id="content"></div>
+    </div>
+  </div>
+</div>
 </div>
 
 <script>
@@ -297,6 +375,12 @@ let modalSortKey    = '__latest';
 let modalSortDir    = 'desc';
 let modalSearch     = '';
 let modalCtx        = null; // { bu, dealType, metric, periodTab }
+
+// ---- Revenue page state ----
+let REVENUE_ACTUALS   = [];
+let currentPage       = 'revenue'; // 'revenue' | 'projections'
+let revenueMetric     = 'MRR';     // 'MRR' | 'NRR' | 'Combined'
+let revenueExpandedBU = null;      // BU name currently expanded, or null
 const adjVar = (variance, prevMiss) =>
   (variance !== null && prevMiss !== null) ? variance + prevMiss : variance;
 
@@ -472,10 +556,187 @@ function renderTabs() {
   document.getElementById('bu-group').style.display = 'none';
 }
 
+// ============================================================
+// REVENUE PAGE
+// ============================================================
+function switchPage(page) {
+  currentPage = page;
+  document.getElementById('page-revenue').classList.toggle('active', page === 'revenue');
+  document.getElementById('page-projections').classList.toggle('active', page === 'projections');
+  document.getElementById('nav-revenue').classList.toggle('active', page === 'revenue');
+  document.getElementById('nav-projections').classList.toggle('active', page === 'projections');
+  if (page === 'revenue') renderRevenuePage();
+  else { renderTabs(); render(); }
+}
+
+function revenueAmtOf(row) {
+  if (revenueMetric === 'MRR') return Number(row.mrr_amount ?? 0);
+  if (revenueMetric === 'NRR') return Number(row.nrr_amount ?? 0);
+  return Number(row.mrr_amount ?? 0) + Number(row.nrr_amount ?? 0);
+}
+
+function renderRevenuePage() {
+  // Metric tabs
+  const tabs = document.getElementById('revenue-metric-tabs');
+  const metrics = ['MRR', 'NRR', 'Combined'];
+  tabs.innerHTML = metrics.map(m =>
+    `<button class="tab-btn ${m === revenueMetric ? 'active' : ''}" data-rev-metric="${m}">${m}</button>`
+  ).join('');
+  tabs.querySelectorAll('.tab-btn').forEach(btn => btn.addEventListener('click', () => {
+    revenueMetric = btn.dataset.revMetric;
+    renderRevenuePage();
+  }));
+
+  const el = document.getElementById('revenue-content');
+
+  if (!REVENUE_ACTUALS.length) {
+    el.innerHTML = `<div class="card">
+      <p style="color:var(--text-muted);margin-bottom:16px;">No revenue data yet. Push data from your Google Sheet using the endpoint below.</p>
+      ${revenueSetupHtml()}
+    </div>`;
+    return;
+  }
+
+  // Derive sorted unique months
+  const allMonths = [...new Set(REVENUE_ACTUALS.map(r => r.month))].sort();
+  // Show up to last 12 months
+  const months = allMonths.slice(-12);
+
+  // All BUs in BU_ORDER first, then any others from data
+  const buSet = new Set(REVENUE_ACTUALS.map(r => r.business_unit));
+  const buList = [
+    ...BU_ORDER.filter(b => buSet.has(b)),
+    ...[...buSet].filter(b => !BU_ORDER.includes(b)).sort(),
+  ];
+
+  // Index: bu → account → month → row
+  const idx = new Map();
+  for (const r of REVENUE_ACTUALS) {
+    if (!months.includes(r.month)) continue;
+    if (!idx.has(r.business_unit)) idx.set(r.business_unit, new Map());
+    const buIdx = idx.get(r.business_unit);
+    if (!buIdx.has(r.account_name)) buIdx.set(r.account_name, new Map());
+    buIdx.get(r.account_name).set(r.month, r);
+  }
+
+  const fmtMonth = m => { const d = new Date(m + 'T00:00:00'); return MONTH_ABBR[d.getUTCMonth()] + ' ' + d.getUTCFullYear(); };
+  const fmtCell  = v => v === 0 ? `<span class="rev-zero">-</span>` : v > 0 ? fmtINR(v) : `<span class="rev-neg">${fmtINR(v)}</span>`;
+
+  // Grand total per month
+  const grandTotals = months.map(m => {
+    let t = 0;
+    for (const r of REVENUE_ACTUALS) { if (r.month === m) t += revenueAmtOf(r); }
+    return t;
+  });
+
+  let html = `<div class="card"><div class="rev-table-wrap"><table class="rev-table">
+    <thead><tr>
+      <th style="min-width:180px;">Business Unit / Account</th>
+      ${months.map(m => `<th class="num">${fmtMonth(m)}</th>`).join('')}
+    </tr></thead>
+    <tbody>
+    <tr class="rev-total-row">
+      <td>Total</td>
+      ${grandTotals.map(v => `<td class="num">${fmtCell(v)}</td>`).join('')}
+    </tr>`;
+
+  for (const bu of buList) {
+    const buIdx = idx.get(bu);
+    if (!buIdx) continue;
+    const isExpanded = revenueExpandedBU === bu;
+    const buTotals = months.map(m => {
+      let t = 0;
+      for (const [, mMap] of buIdx) { const r = mMap.get(m); if (r) t += revenueAmtOf(r); }
+      return t;
+    });
+    const dot = `<span style="display:inline-block;width:9px;height:9px;border-radius:2px;background:${colorVar(bu)};margin-right:8px;vertical-align:middle;flex-shrink:0;"></span>`;
+    html += `<tr class="rev-bu-row" data-rev-bu="${escapeHtml(bu)}">
+      <td>${dot}<span class="rev-expand-icon ${isExpanded ? 'open' : ''}">▶</span>${escapeHtml(bu)}</td>
+      ${buTotals.map(v => `<td class="num">${fmtCell(v)}</td>`).join('')}
+    </tr>`;
+
+    if (isExpanded) {
+      const accounts = [...buIdx.keys()].sort();
+      for (const acct of accounts) {
+        const mMap = buIdx.get(acct);
+        html += `<tr class="rev-account-row">
+          <td style="padding-left:40px;">${escapeHtml(acct)}</td>
+          ${months.map(m => { const r = mMap.get(m); const v = r ? revenueAmtOf(r) : 0; return `<td class="num">${fmtCell(v)}</td>`; }).join('')}
+        </tr>`;
+      }
+    }
+  }
+
+  html += `</tbody></table></div></div>`;
+  el.innerHTML = html;
+
+  // BU row click → expand/collapse
+  el.querySelectorAll('.rev-bu-row').forEach(row => {
+    row.addEventListener('click', () => {
+      const bu = row.dataset.revBu;
+      revenueExpandedBU = revenueExpandedBU === bu ? null : bu;
+      renderRevenuePage();
+    });
+  });
+}
+
+function revenueSetupHtml() {
+  const endpoint = `${SUPABASE_URL}/functions/v1/sheets-sync`;
+  const example = `// Paste in Google Apps Script (Extensions → Apps Script)
+const ENDPOINT = "${endpoint}";
+const API_KEY  = "YOUR_SHEETS_SYNC_API_KEY";  // set in Supabase secrets
+
+function pushRevenue() {
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Revenue");
+  const data  = sheet.getDataRange().getValues();
+  const headers = data[0]; // e.g. ["Account", "BU", "2026-06", "2026-07", ...]
+  const rows = [];
+  for (let i = 1; i < data.length; i++) {
+    const row = data[i];
+    const account = row[0], bu = row[1];
+    if (!account || !bu) continue;
+    for (let c = 2; c < headers.length; c++) {
+      rows.push({
+        account_name:  account,
+        business_unit: bu,
+        month:         headers[c],  // "YYYY-MM" or "Jul 2026"
+        mrr_amount:    row[c] || null
+      });
+    }
+  }
+  const res = UrlFetchApp.fetch(ENDPOINT, {
+    method: "post",
+    contentType: "application/json",
+    headers: { Authorization: "Bearer " + API_KEY },
+    payload: JSON.stringify({ rows })
+  });
+  SpreadsheetApp.getUi().alert("Done: " + res.getContentText());
+}`;
+  return `<div class="setup-box">
+    <div class="summary-section-title">Google Sheet Setup</div>
+    <p style="font-size:13px;color:var(--text-secondary);margin:0 0 8px;">
+      Push data from Google Sheets by running this Apps Script. Set <code>SHEETS_SYNC_API_KEY</code>
+      as a Supabase secret first.
+    </p>
+    <pre>${escapeHtml(example)}</pre>
+  </div>`;
+}
+
 async function main() {
   const content = document.getElementById('content');
+
+  // Sidebar navigation
+  document.getElementById('nav-revenue').addEventListener('click', () => switchPage('revenue'));
+  document.getElementById('nav-projections').addEventListener('click', () => switchPage('projections'));
+
+  // "Sheet Setup" button shows the setup instructions inline
+  document.getElementById('revenue-setup-btn').addEventListener('click', () => {
+    const el = document.getElementById('revenue-content');
+    el.innerHTML = `<div class="card">${revenueSetupHtml()}</div>`;
+  });
+
   try {
-    [DEALS, MRR_SNAPSHOTS, NRR_SNAPSHOTS, BU_TARGETS, TARGET_SETTINGS, NRR_TARGETS, NRR_TARGET_SETTINGS, BASELINE, HUNTING_PIPELINE, HUNTING_SNAPSHOTS, PIPELINE_VIEWS, CRM_STAGES] = await Promise.all([
+    [DEALS, MRR_SNAPSHOTS, NRR_SNAPSHOTS, BU_TARGETS, TARGET_SETTINGS, NRR_TARGETS, NRR_TARGET_SETTINGS, BASELINE, HUNTING_PIPELINE, HUNTING_SNAPSHOTS, PIPELINE_VIEWS, CRM_STAGES, REVENUE_ACTUALS] = await Promise.all([
       sbAll('deals?select=*'),
       sbAll('mrr_snapshots?select=*&order=snapshot_date.asc'),
       sbAll('nrr_snapshots?select=*&order=snapshot_date.asc'),
@@ -488,6 +749,7 @@ async function main() {
       sb('hunting_pipeline_snapshots?select=*&order=synced_at.desc').catch(() => []),
       sb('pipeline_views?select=*&order=display_order.asc').catch(() => []),
       sb('crm_stages?select=stage_name&order=stage_name.asc').catch(() => []),
+      sbAll('revenue_actuals?select=*&order=month.asc').catch(() => []),
     ]);
   } catch (err) {
     content.innerHTML = `<div class="card"><p class="error">Failed to load data: ${escapeHtml(err.message)}</p></div>`;
@@ -580,6 +842,18 @@ async function main() {
   document.getElementById('modal-overlay').addEventListener('click', e => { if (e.target === e.currentTarget) closeModal(); });
   document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
 
+  // Revenue page last-sync info
+  const revLastEl = document.getElementById('revenue-last-sync');
+  if (REVENUE_ACTUALS.length) {
+    const latestTs = REVENUE_ACTUALS.reduce((max, r) => r.updated_at > max ? r.updated_at : max, '');
+    if (latestTs) {
+      const dt = new Date(latestTs);
+      const fmt = dt.toLocaleString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' });
+      if (revLastEl) revLastEl.textContent = `Updated ${fmt} IST`;
+    }
+  }
+
+  renderRevenuePage();
   renderTabs();
   render();
 }
