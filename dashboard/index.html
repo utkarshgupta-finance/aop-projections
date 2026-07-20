@@ -436,24 +436,16 @@ async function sb(path) {
   return res.json();
 }
 
-// Fetches all rows by paginating with Range headers (avoids the 1000-row default cap).
-async function sbAll(path, pageSize = 5000) {
+// Fetches all rows using limit+offset pagination (Supabase caps at 1000 rows per request).
+async function sbAll(path, pageSize = 1000) {
   const rows = [];
-  let from = 0;
+  let offset = 0;
+  const sep = path.includes('?') ? '&' : '?';
   while (true) {
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
-      headers: {
-        apikey: SUPABASE_KEY,
-        Authorization: `Bearer ${SUPABASE_KEY}`,
-        Range: `${from}-${from + pageSize - 1}`,
-        'Range-Unit': 'items',
-      },
-    });
-    if (!res.ok) throw new Error(`Supabase ${path}: ${res.status} ${await res.text()}`);
-    const page = await res.json();
+    const page = await sb(`${path}${sep}limit=${pageSize}&offset=${offset}`);
     rows.push(...page);
     if (page.length < pageSize) break;
-    from += pageSize;
+    offset += pageSize;
   }
   return rows;
 }
