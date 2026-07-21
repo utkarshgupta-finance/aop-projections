@@ -766,8 +766,8 @@ function renderRevenuePage() {
   function fmtDeltaCell(v, prev) {
     if (prev === null || prev === undefined) return `<td class="num">${fmtCell(v)}</td>`;
     if (prev === 0 && v === 0) return `<td class="num"><span class="rev-zero">-</span></td>`;
-    const cls = v >= prev ? 'rev-pos' : 'rev-neg';
-    return `<td class="num"><span class="${cls}">${fmtINR(v)}</span></td>`;
+    const cls = Math.abs(v - prev) <= 100 ? '' : v >= prev ? 'rev-pos' : 'rev-neg';
+    return cls ? `<td class="num"><span class="${cls}">${fmtINR(v)}</span></td>` : `<td class="num">${fmtINR(v)}</td>`;
   }
 
   const cols = buildCols();
@@ -810,8 +810,9 @@ function renderRevenuePage() {
       // Suppress delta when no prior period or current value is 0
       if (prev === null || v === 0) return `<td class="num"><span class="rev-zero">—</span></td>`;
       const delta = v - prev;
-      const cls = delta >= 0 ? 'rev-pos' : 'rev-neg';
-      return `<td class="num"><span class="${cls}">${delta >= 0 ? '+' : ''}${fmtINR(delta)}</span></td>`;
+      const cls = Math.abs(delta) <= 100 ? '' : delta >= 0 ? 'rev-pos' : 'rev-neg';
+      const fmt = `${delta >= 0 ? '+' : ''}${fmtINR(delta)}`;
+      return cls ? `<td class="num"><span class="${cls}">${fmt}</span></td>` : `<td class="num">${fmt}</td>`;
     }
     const isNRRCell = revenueMetric === 'NRR' && isMonthly && nrrCtx && v !== 0;
     // acct '__BU__' = BU-level row (show all invoices for that BU)
@@ -819,8 +820,8 @@ function renderRevenuePage() {
       ? ` data-nrr-click="1" data-nrr-acct="${escapeHtml(nrrCtx.acct)}" data-nrr-bu="${escapeHtml(nrrCtx.bu)}" data-nrr-month="${escapeHtml(nrrCtx.col.months[0])}" style="cursor:pointer;" title="Click to see invoice details"`
       : '';
     if (prev === null || v === prev) return `<td class="num"${clickAttr}>${fmtCell(v)}</td>`;
-    const cls = v > prev ? 'rev-pos' : 'rev-neg';
-    return `<td class="num"${clickAttr}><span class="${cls}">${fmtINR(v)}</span></td>`;
+    const cls = Math.abs(v - prev) <= 100 ? '' : v > prev ? 'rev-pos' : 'rev-neg';
+    return cls ? `<td class="num"${clickAttr}><span class="${cls}">${fmtINR(v)}</span></td>` : `<td class="num"${clickAttr}>${fmtINR(v)}</td>`;
   }
 
   // Build a single row for an entity — prev always passed for all period types
@@ -1185,7 +1186,7 @@ async function showNrrInvoiceModal(acct, bu, month) {
     let total = 0;
     const trs = filtered.map(r => {
       total += Number(r.amount ?? 0);
-      const acctCell = isBuLevel ? `<td style="padding:7px 10px;font-size:11px;color:var(--text-muted);white-space:normal;word-break:break-word;">${escapeHtml(r.account_name ?? '')}</td>` : '';
+      const acctCell = isBuLevel ? `<td style="padding:7px 10px;font-size:11px;color:var(--text-muted);white-space:normal;word-break:break-word;text-align:left;vertical-align:top;">${escapeHtml(r.account_name ?? '')}</td>` : '';
       return `<tr style="border-bottom:1px solid var(--gridline);">
         ${acctCell}
         <td style="padding:7px 10px;">${escapeHtml(r.inv_no ?? '')}</td>
