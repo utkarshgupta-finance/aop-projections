@@ -651,6 +651,8 @@ function switchPage(page) {
 // ACTUALS VS PROJECTIONS PAGE
 // ============================================================
 let actualsSelectedMonths = new Set(); // selected month strings
+let actualsViewMrr = 'actuals';  // 'actuals' | 'projections'
+let actualsViewNrr = 'actuals';  // 'actuals' | 'projections'
 
 function monthToQuarterKey(monthStr) {
   const [yr, mo] = monthStr.split('-').map(Number);
@@ -743,6 +745,27 @@ function renderActualsPage() {
     }, 0);
   }
 
+  // Snapshot projection value per BU for selected months
+  // For MRR: NNR from latest snapshot (deals closing in selected months)
+  // For NRR: sum from latest NRR snapshot (deals closing in selected months)
+  function buProjection(bu, metric) {
+    const snapshots  = metric === 'MRR' ? MRR_SNAPSHOTS : NRR_SNAPSHOTS;
+    const latestDate = metric === 'MRR' ? MRR_DATES[MRR_DATES.length - 1] : NRR_DATES[NRR_DATES.length - 1];
+    if (!latestDate) return 0;
+    // Months in selected set as YYYY-MM-01 for closing_date prefix match
+    const latestSnaps = snapshots.filter(s => s.snapshot_date === latestDate && s.business_unit === bu);
+    return latestSnaps.reduce((sum, s) => {
+      // closing_date stored as full date e.g. "2026-07-15" — match to selected months by YYYY-MM prefix
+      const cd = s.closing_date ? s.closing_date.substring(0, 7) : null;
+      if (!cd) return sum;
+      // Find corresponding month in monthSet (stored as "YYYY-MM-01" or "YYYY-MM")
+      const matches = selMonths.some(m => m.startsWith(cd) || cd === m.substring(0, 7));
+      if (!matches) return sum;
+      const amt = metric === 'MRR' ? Number(s.mrr_amount ?? 0) : Number(s.nrr_amount ?? 0);
+      return sum + amt;
+    }, 0);
+  }
+
   function varHtml(variance) {
     if (variance === undefined) return `<td class="num"><span class="rev-zero">-</span></td>`;
     const sign = variance >= 0 ? '+' : '';
@@ -752,64 +775,97 @@ function renderActualsPage() {
       : `<td class="num">${sign}${fmtINR(variance)}</td>`;
   }
 
+  function numCell(v, clickAttrs) {
+    if (v === 0) return `<td class="num"><span class="rev-zero">-</span></td>`;
+    const inner = v < 0 ? `<span class="rev-neg">${fmtINR(v)}</span>` : fmtINR(v);
+    return clickAttrs
+      ? `<td class="num" style="cursor:pointer;color:var(--series-1);" ${clickAttrs}>${fmtINR(v)}</td>`
+      : `<td class="num">${inner}</td>`;
+  }
+
   function buildTable(metric, amtField) {
-    const isMrr = metric === 'MRR';
-    // For drill-down clicks: only meaningful for single month selection
+    const isMrr    = metric === 'MRR';
+    const viewMode = isMrr ? actualsViewMrr : actualsViewNrr;
+    const isProj   = viewMode === 'projections';
     const singleMonth = selMonths.length === 1 ? selMonths[0] : null;
 
+    const viewToggle = `
+      <span style="display:inline-flex;gap:0;border:1px solid var(--border);border-radius:6px;overflow:hidden;vertical-align:middle;margin-left:12px;">
+        <button data-avp-view="${isMrr ? 'mrr' : 'nrr'}-actuals"
+          style="padding:3px 10px;font-size:11px;font-weight:600;border:none;cursor:pointer;background:${!isProj ? 'var(--series-1)' : 'var(--surface-1)'};color:${!isProj ? '#fff' : 'var(--text-secondary)'};">
+          Actuals
+        </button>
+        <button data-avp-view="${isMrr ? 'mrr' : 'nrr'}-projections"
+          style="padding:3px 10px;font-size:11px;font-weight:600;border:none;cursor:pointer;background:${isProj ? 'var(--series-1)' : 'var(--surface-1)'};color:${isProj ? '#fff' : 'var(--text-secondary)'};">
+          Projections
+        </button>
+      </span>`;
+
+    const colLabel = isProj ? 'Projections' : 'Actuals';
+
     const rows = allBUs.map(bu => {
-      const actual = isMrr
-        ? buNnrForRange(bu, selMonths)
-        : selMonths.reduce((s, m) => s + buActual(bu, m, amtField), 0);
+      let value;
+      if (isProj) {
+        value = buProjection(bu, metric);
+      } else {
+        value = isMrr
+          ? buNnrForRange(bu, selMonths)
+          : selMonths.reduce((s, m) => s + buActual(bu, m, amtField), 0);
+      }
+
       const target = selMonths.reduce((s, m) => {
         const t = actualsTargetFor(bu, m, metric);
         return t !== undefined ? s + t : s;
       }, 0);
       const hasTarget = selMonths.some(m => actualsTargetFor(bu, m, metric) !== undefined);
-      const variance = hasTarget ? actual - target : undefined;
+      const variance = hasTarget ? value - target : undefined;
       const dot = `<span style="display:inline-block;width:7px;height:7px;border-radius:2px;background:var(${BU_COLOR_VAR[bu] || '--text-muted'});margin-right:6px;vertical-align:middle;"></span>`;
 
-      let actualCell;
-      if (actual === 0) {
-        actualCell = `<td class="num"><span class="rev-zero">-</span></td>`;
-      } else if (singleMonth && metric === 'NRR') {
-        actualCell = `<td class="num" style="cursor:pointer;color:var(--series-1);" data-avp-click="nrr" data-avp-bu="${escapeHtml(bu)}" data-avp-month="${escapeHtml(singleMonth)}" title="Click to see invoice details">${fmtINR(actual)}</td>`;
-      } else if (singleMonth && isMrr) {
-        actualCell = `<td class="num" style="cursor:pointer;color:var(--series-1);" data-avp-click="mrr" data-avp-bu="${escapeHtml(bu)}" data-avp-month="${escapeHtml(singleMonth)}" title="Click to see account breakdown">${fmtINR(actual)}</td>`;
+      let valCell;
+      if (!isProj && singleMonth && metric === 'NRR') {
+        valCell = numCell(value, `data-avp-click="nrr" data-avp-bu="${escapeHtml(bu)}" data-avp-month="${escapeHtml(singleMonth)}" title="Click to see invoice details"`);
+      } else if (!isProj && singleMonth && isMrr) {
+        valCell = numCell(value, `data-avp-click="mrr" data-avp-bu="${escapeHtml(bu)}" data-avp-month="${escapeHtml(singleMonth)}" title="Click to see account breakdown"`);
       } else {
-        actualCell = `<td class="num">${actual < 0 ? `<span class="rev-neg">${fmtINR(actual)}</span>` : fmtINR(actual)}</td>`;
+        valCell = numCell(value, null);
       }
 
       return `<tr class="rev-account-row">
         <td class="rev-name-cell">${dot}${escapeHtml(bu)}</td>
-        ${actualCell}
+        ${valCell}
         <td class="num">${hasTarget ? fmtINR(target) : `<span class="rev-zero">-</span>`}</td>
         ${varHtml(variance)}
       </tr>`;
     });
 
-    const totalActual = allBUs.reduce((s, bu) =>
-      s + (isMrr ? buNnrForRange(bu, selMonths) : selMonths.reduce((a, m) => a + buActual(bu, m, amtField), 0)), 0);
+    const totalValue = allBUs.reduce((s, bu) => {
+      if (isProj) return s + buProjection(bu, metric);
+      return s + (isMrr ? buNnrForRange(bu, selMonths) : selMonths.reduce((a, m) => a + buActual(bu, m, amtField), 0));
+    }, 0);
     const totalTarget = allBUs.reduce((s, bu) =>
       s + selMonths.reduce((a, m) => { const t = actualsTargetFor(bu, m, metric); return t !== undefined ? a + t : a; }, 0), 0);
-    const totalVariance = totalActual - totalTarget;
+    const totalVariance = totalValue - totalTarget;
     const tvSign = totalVariance >= 0 ? '+' : '';
     const tvCls = Math.abs(totalVariance) <= 100 ? '' : totalVariance >= 0 ? 'rev-pos' : 'rev-neg';
+    const tvInner = totalValue < 0 ? `<span class="rev-neg">${fmtINR(totalValue)}</span>` : fmtINR(totalValue);
 
     return `<div style="margin-bottom:32px;">
-      <div style="font-weight:600;font-size:14px;margin-bottom:10px;color:var(--text-primary);">${isMrr ? 'MRR <span style="font-weight:400;font-size:12px;color:var(--text-muted);">(Net New MRR vs target)</span>' : 'NRR'}</div>
+      <div style="font-weight:600;font-size:14px;margin-bottom:10px;color:var(--text-primary);display:flex;align-items:center;">
+        ${isMrr ? 'MRR <span style="font-weight:400;font-size:12px;color:var(--text-muted);margin-left:6px;">(Net New MRR vs target)</span>' : 'NRR'}
+        ${viewToggle}
+      </div>
       <div class="table-scroll">
         <table class="rev-table">
           <thead><tr>
             <th style="min-width:160px;">Business Unit</th>
-            <th class="num">Actuals</th>
+            <th class="num">${colLabel}</th>
             <th class="num">Target</th>
             <th class="num">Variance</th>
           </tr></thead>
           <tbody>
             <tr class="rev-total-row">
               <td>Total ${isMrr ? 'NNR' : 'NRR'}</td>
-              <td class="num">${totalActual < 0 ? `<span class="rev-neg">${fmtINR(totalActual)}</span>` : fmtINR(totalActual)}</td>
+              <td class="num">${tvInner}</td>
               <td class="num">${fmtINR(totalTarget)}</td>
               <td class="num">${tvCls ? `<span class="${tvCls}">${tvSign}${fmtINR(totalVariance)}</span>` : `${tvSign}${fmtINR(totalVariance)}`}</td>
             </tr>
@@ -820,7 +876,7 @@ function renderActualsPage() {
     </div>`;
   }
 
-  // Render chips + tables into actuals-content
+  // Render chips + tables
   const topbar = document.querySelector('#page-actuals .topbar-actions');
   topbar.innerHTML = `<div class="tabs" style="flex-wrap:wrap;gap:4px;">${chipsHtml}</div>`;
   topbar.querySelectorAll('[data-avp-month-chip]').forEach(btn => {
@@ -840,7 +896,17 @@ function renderActualsPage() {
 
   content.innerHTML = buildTable('MRR', 'mrr_amount') + buildTable('NRR', 'nrr_amount');
 
-  // Wire drill-down click handlers (only active for single-month selection)
+  // Wire view-toggle buttons
+  content.querySelectorAll('[data-avp-view]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const [table, mode] = btn.dataset.avpView.split('-');
+      if (table === 'mrr') actualsViewMrr = mode;
+      else actualsViewNrr = mode;
+      renderActualsPage();
+    });
+  });
+
+  // Wire drill-down click handlers (only active for single-month actuals)
   content.querySelectorAll('[data-avp-click="nrr"]').forEach(td => {
     td.addEventListener('click', () => showNrrInvoiceModal('__BU__', td.dataset.avpBu, td.dataset.avpMonth));
   });
