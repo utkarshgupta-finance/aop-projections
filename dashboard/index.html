@@ -250,6 +250,7 @@
   <div class="sidebar-brand">Revenue<br>Dashboard</div>
   <div class="nav-section-label">Menu</div>
   <button class="nav-item active" id="nav-revenue">Revenue</button>
+  <button class="nav-item" id="nav-actuals">Actuals vs Projections</button>
   <button class="nav-item" id="nav-projections">Projections</button>
   <div class="sidebar-spacer"></div>
   <a class="nav-item nav-settings" href="settings.html">Settings</a>
@@ -302,6 +303,42 @@
             </tr>
           </thead>
           <tbody id="nrr-modal-body"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Actuals vs Projections Page -->
+  <div id="page-actuals" class="page-pane">
+    <div class="wrap">
+      <div class="topbar">
+        <div>
+          <h1>Actuals vs Projections</h1>
+          <p class="subtitle">Compare actual revenue against monthly targets by business unit</p>
+        </div>
+        <div class="topbar-actions">
+          <select class="quarter-select" id="actuals-month-sel"></select>
+        </div>
+      </div>
+      <div class="tab-divider"></div>
+      <div id="actuals-content"><p style="color:var(--text-muted);padding:20px 0;">Loading…</p></div>
+    </div>
+  </div>
+
+  <!-- MRR Detail Modal (account breakdown) -->
+  <div id="mrr-detail-modal" style="display:none;position:fixed;inset:0;z-index:9000;background:rgba(0,0,0,0.45);align-items:center;justify-content:center;">
+    <div style="background:var(--surface-1);border:1px solid var(--border);border-radius:12px;padding:24px;width:min(700px,96vw);max-height:90vh;display:flex;flex-direction:column;box-shadow:0 8px 32px rgba(0,0,0,0.25);">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+        <div id="mrr-modal-title" style="font-weight:600;font-size:15px;"></div>
+        <button id="mrr-modal-close" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--text-muted);padding:4px 8px;line-height:1;">×</button>
+      </div>
+      <div style="overflow-y:auto;flex:1;">
+        <table style="width:100%;border-collapse:collapse;font-size:13px;">
+          <thead><tr style="border-bottom:2px solid var(--border);">
+            <th style="text-align:left;padding:6px 10px;color:var(--text-muted);font-weight:500;">Account</th>
+            <th style="text-align:right;padding:6px 10px;color:var(--text-muted);font-weight:500;">MRR</th>
+          </tr></thead>
+          <tbody id="mrr-modal-body"></tbody>
         </table>
       </div>
     </div>
@@ -602,11 +639,195 @@ function renderTabs() {
 function switchPage(page) {
   currentPage = page;
   document.getElementById('page-revenue').classList.toggle('active', page === 'revenue');
+  document.getElementById('page-actuals').classList.toggle('active', page === 'actuals');
   document.getElementById('page-projections').classList.toggle('active', page === 'projections');
   document.getElementById('nav-revenue').classList.toggle('active', page === 'revenue');
+  document.getElementById('nav-actuals').classList.toggle('active', page === 'actuals');
   document.getElementById('nav-projections').classList.toggle('active', page === 'projections');
   if (page === 'revenue') renderRevenuePage();
+  else if (page === 'actuals') renderActualsPage();
   else { renderTabs(); render(); }
+}
+
+// ============================================================
+// ACTUALS VS PROJECTIONS PAGE
+// ============================================================
+let actualsMonth = null; // selected month string e.g. "2026-07"
+
+function monthToQuarterKey(monthStr) {
+  const [yr, mo] = monthStr.split('-').map(Number);
+  const q = Math.ceil(mo / 3);
+  return `${yr}-Q${q}`;
+}
+
+function monthToPeriodTab(monthStr) {
+  const [yr, mo] = monthStr.split('-').map(Number);
+  return {
+    key: monthStr,
+    label: MONTH_ABBR[mo - 1] + ' ' + yr,
+    months: [mo],
+    year: yr,
+    settingsPeriod: MONTH_FULL[mo - 1] + ' ' + yr,
+  };
+}
+
+function actualsTargetFor(bu, monthStr, metric) {
+  const qKey = monthToQuarterKey(monthStr);
+  const periodTab = monthToPeriodTab(monthStr);
+  const targets = metric === 'NRR' ? NRR_TARGETS : BU_TARGETS;
+  const settings = metric === 'NRR' ? NRR_TARGET_SETTINGS : TARGET_SETTINGS;
+  const jasTarget = targets.find(t => t.business_unit === bu && t.period === qKey);
+  if (!jasTarget) return undefined;
+  const jasVal = Number(jasTarget.target_amount);
+  const setting = settings.find(s => s.business_unit === bu && s.period === periodTab.settingsPeriod);
+  if (!setting) return undefined;
+  return setting.mode === 'absolute' ? Number(setting.value) : jasVal * (Number(setting.value) / 100);
+}
+
+function renderActualsPage() {
+  const sel = document.getElementById('actuals-month-sel');
+  const content = document.getElementById('actuals-content');
+
+  // Build sorted list of available months from REVENUE_ACTUALS
+  const monthSet = [...new Set(REVENUE_ACTUALS.map(r => r.month))].sort();
+  if (!monthSet.length) {
+    content.innerHTML = `<p style="color:var(--text-muted);padding:20px 0;">No revenue data loaded yet.</p>`;
+    return;
+  }
+
+  // Default to most recent month
+  if (!actualsMonth || !monthSet.includes(actualsMonth)) actualsMonth = monthSet[monthSet.length - 1];
+
+  // Populate selector
+  sel.innerHTML = monthSet.slice().reverse().map(m => {
+    const [yr, mo] = m.split('-').map(Number);
+    const label = MONTH_ABBR[mo - 1] + ' ' + yr;
+    return `<option value="${m}"${m === actualsMonth ? ' selected' : ''}>${label}</option>`;
+  }).join('');
+  sel.onchange = () => { actualsMonth = sel.value; renderActualsPage(); };
+
+  // BU list: union of BU_ORDER that have targets or actuals
+  const buSet = new Set(REVENUE_ACTUALS.filter(r => r.month === actualsMonth).map(r => r.business_unit));
+  const mrrTargetBUs = new Set(BU_TARGETS.map(t => t.business_unit));
+  const nrrTargetBUs = new Set(NRR_TARGETS.map(t => t.business_unit));
+  const allBUs = [...new Set([
+    ...BU_ORDER.filter(b => buSet.has(b) || mrrTargetBUs.has(b) || nrrTargetBUs.has(b)),
+    ...[...buSet].filter(b => !BU_ORDER.includes(b)).sort(),
+  ])];
+
+  const [yr, mo] = actualsMonth.split('-').map(Number);
+  const monthLabel = MONTH_FULL[mo - 1] + ' ' + yr;
+
+  function buildTable(metric, amtField) {
+    const rows = allBUs.map(bu => {
+      const actual = REVENUE_ACTUALS
+        .filter(r => r.month === actualsMonth && r.business_unit === bu)
+        .reduce((s, r) => s + Number(r[amtField] ?? 0), 0);
+      const target = actualsTargetFor(bu, actualsMonth, metric);
+      const variance = (target !== undefined && actual !== 0) ? actual - target : undefined;
+      const dot = `<span style="display:inline-block;width:7px;height:7px;border-radius:2px;background:${`var(${BU_COLOR_VAR[bu] || '--text-muted'})`};margin-right:6px;vertical-align:middle;"></span>`;
+
+      const actualCell = actual === 0
+        ? `<td class="num"><span class="rev-zero">-</span></td>`
+        : metric === 'NRR'
+          ? `<td class="num" style="cursor:pointer;color:var(--series-1);" data-avp-click="nrr" data-avp-bu="${escapeHtml(bu)}" data-avp-month="${escapeHtml(actualsMonth)}" title="Click to see invoice details">${fmtINR(actual)}</td>`
+          : `<td class="num" style="cursor:pointer;color:var(--series-1);" data-avp-click="mrr" data-avp-bu="${escapeHtml(bu)}" data-avp-month="${escapeHtml(actualsMonth)}" title="Click to see account breakdown">${fmtINR(actual)}</td>`;
+
+      const targetCell = target === undefined
+        ? `<td class="num"><span class="rev-zero">-</span></td>`
+        : `<td class="num">${fmtINR(target)}</td>`;
+
+      let varCell;
+      if (variance === undefined) {
+        varCell = `<td class="num"><span class="rev-zero">-</span></td>`;
+      } else {
+        const sign = variance >= 0 ? '+' : '';
+        const cls = Math.abs(variance) <= 100 ? '' : variance >= 0 ? 'rev-pos' : 'rev-neg';
+        varCell = cls
+          ? `<td class="num"><span class="${cls}">${sign}${fmtINR(variance)}</span></td>`
+          : `<td class="num">${sign}${fmtINR(variance)}</td>`;
+      }
+
+      return `<tr class="rev-account-row">
+        <td class="rev-name-cell">${dot}${escapeHtml(bu)}</td>
+        <td class="num" style="color:var(--text-secondary);font-size:12px;">${monthLabel}</td>
+        ${actualCell}${targetCell}${varCell}
+      </tr>`;
+    });
+
+    // Totals row
+    const totalActual = allBUs.reduce((s, bu) =>
+      s + REVENUE_ACTUALS.filter(r => r.month === actualsMonth && r.business_unit === bu).reduce((a, r) => a + Number(r[amtField] ?? 0), 0), 0);
+    const totalTarget = allBUs.reduce((s, bu) => {
+      const t = actualsTargetFor(bu, actualsMonth, metric);
+      return t !== undefined ? s + t : s;
+    }, 0);
+    const totalVariance = totalActual - totalTarget;
+    const tvSign = totalVariance >= 0 ? '+' : '';
+    const tvCls = Math.abs(totalVariance) <= 100 ? '' : totalVariance >= 0 ? 'rev-pos' : 'rev-neg';
+
+    return `<div style="margin-bottom:32px;">
+      <div style="font-weight:600;font-size:14px;margin-bottom:10px;color:var(--text-primary);">${metric}</div>
+      <div class="table-scroll">
+        <table class="rev-table">
+          <thead><tr>
+            <th style="min-width:160px;">Business Unit</th>
+            <th class="num">Month</th>
+            <th class="num">Actuals</th>
+            <th class="num">Target</th>
+            <th class="num">Variance</th>
+          </tr></thead>
+          <tbody>
+            <tr class="rev-total-row">
+              <td colspan="2">Total ${metric}</td>
+              <td class="num">${fmtINR(totalActual)}</td>
+              <td class="num">${fmtINR(totalTarget)}</td>
+              <td class="num">${tvCls ? `<span class="${tvCls}">${tvSign}${fmtINR(totalVariance)}</span>` : `${tvSign}${fmtINR(totalVariance)}`}</td>
+            </tr>
+            ${rows.join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>`;
+  }
+
+  content.innerHTML = buildTable('MRR', 'mrr_amount') + buildTable('NRR', 'nrr_amount');
+
+  // Wire click handlers
+  content.querySelectorAll('[data-avp-click="nrr"]').forEach(td => {
+    td.addEventListener('click', () => showNrrInvoiceModal('__BU__', td.dataset.avpBu, td.dataset.avpMonth));
+  });
+  content.querySelectorAll('[data-avp-click="mrr"]').forEach(td => {
+    td.addEventListener('click', () => showMrrDetailModal(td.dataset.avpBu, td.dataset.avpMonth));
+  });
+}
+
+function showMrrDetailModal(bu, monthStr) {
+  const modal = document.getElementById('mrr-detail-modal');
+  const body  = document.getElementById('mrr-modal-body');
+  const title = document.getElementById('mrr-modal-title');
+  const [yr, mo] = monthStr.split('-').map(Number);
+  title.textContent = `${bu} — MRR breakdown for ${MONTH_FULL[mo - 1]} ${yr}`;
+  const rows = REVENUE_ACTUALS
+    .filter(r => r.month === monthStr && r.business_unit === bu && Number(r.mrr_amount ?? 0) !== 0)
+    .sort((a, b) => Number(b.mrr_amount) - Number(a.mrr_amount));
+  if (!rows.length) {
+    body.innerHTML = `<tr><td colspan="2" style="padding:16px;color:var(--text-muted);text-align:center;">No MRR data for this BU/month.</td></tr>`;
+  } else {
+    const total = rows.reduce((s, r) => s + Number(r.mrr_amount), 0);
+    body.innerHTML = rows.map(r =>
+      `<tr style="border-bottom:1px solid var(--gridline);">
+        <td style="padding:7px 10px;white-space:normal;word-break:break-word;text-align:left;">${escapeHtml(r.account_name ?? '')}</td>
+        <td style="padding:7px 10px;text-align:right;">${fmtINR(Number(r.mrr_amount))}</td>
+      </tr>`
+    ).join('') + `<tr style="border-top:2px solid var(--border);font-weight:600;">
+      <td style="padding:8px 10px;">Total</td>
+      <td style="padding:8px 10px;text-align:right;">${fmtINR(total)}</td>
+    </tr>`;
+  }
+  modal.style.display = 'flex';
+  document.getElementById('mrr-modal-close').onclick = () => { modal.style.display = 'none'; };
+  modal.onclick = e => { if (e.target === modal) modal.style.display = 'none'; };
 }
 
 function revenueAmtOf(row) {
@@ -1269,6 +1490,7 @@ async function main() {
 
   // Sidebar navigation
   document.getElementById('nav-revenue').addEventListener('click', () => switchPage('revenue'));
+  document.getElementById('nav-actuals').addEventListener('click', () => switchPage('actuals'));
   document.getElementById('nav-projections').addEventListener('click', () => switchPage('projections'));
 
   // "Sheet Setup" button shows the setup instructions inline
