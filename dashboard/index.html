@@ -325,14 +325,17 @@
 
   <!-- MRR Detail Modal (account breakdown) -->
   <div id="mrr-detail-modal" style="display:none;position:fixed;inset:0;z-index:9000;background:rgba(0,0,0,0.45);align-items:center;justify-content:center;">
-    <div style="background:var(--surface-1);border:1px solid var(--border);border-radius:12px;padding:24px;width:min(700px,96vw);max-height:90vh;display:flex;flex-direction:column;box-shadow:0 8px 32px rgba(0,0,0,0.25);">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+    <div style="background:var(--surface-1);border:1px solid var(--border);border-radius:12px;padding:24px;width:min(960px,96vw);max-height:90vh;display:flex;flex-direction:column;box-shadow:0 8px 32px rgba(0,0,0,0.25);">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
         <div id="mrr-modal-title" style="font-weight:600;font-size:15px;"></div>
         <button id="mrr-modal-close" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--text-muted);padding:4px 8px;line-height:1;">×</button>
       </div>
+      <div style="margin-bottom:12px;">
+        <input id="mrr-modal-search" type="text" placeholder="Search…" style="width:100%;box-sizing:border-box;padding:7px 12px;border:1px solid var(--border);border-radius:6px;background:var(--surface-2);color:var(--text-primary);font-size:13px;outline:none;">
+      </div>
       <div style="overflow-y:auto;flex:1;">
         <table style="width:100%;border-collapse:collapse;font-size:13px;">
-          <thead><tr style="border-bottom:2px solid var(--border);">
+          <thead id="mrr-modal-thead"><tr style="border-bottom:2px solid var(--border);">
             <th style="text-align:left;padding:6px 10px;color:var(--text-muted);font-weight:500;">Account</th>
             <th style="text-align:right;padding:6px 10px;color:var(--text-muted);font-weight:500;">MRR</th>
           </tr></thead>
@@ -943,9 +946,19 @@ function renderActualsPage() {
 function openMrrModal(titleText, headRow, bodyRows, totalRow) {
   const modal = document.getElementById('mrr-detail-modal');
   document.getElementById('mrr-modal-title').textContent = titleText;
-  document.querySelector('#mrr-detail-modal thead tr').innerHTML = headRow;
-  document.getElementById('mrr-modal-body').innerHTML = bodyRows + totalRow;
+  document.querySelector('#mrr-modal-thead tr').innerHTML = headRow;
+  const tbody = document.getElementById('mrr-modal-body');
+  tbody.innerHTML = bodyRows + totalRow;
+  const search = document.getElementById('mrr-modal-search');
+  search.value = '';
+  search.oninput = () => {
+    const q = search.value.toLowerCase();
+    tbody.querySelectorAll('tr[data-mrr-row]').forEach(tr => {
+      tr.style.display = tr.dataset.mrrRow.toLowerCase().includes(q) ? '' : 'none';
+    });
+  };
   modal.style.display = 'flex';
+  setTimeout(() => search.focus(), 50);
   document.getElementById('mrr-modal-close').onclick = () => { modal.style.display = 'none'; };
   modal.onclick = e => { if (e.target === modal) modal.style.display = 'none'; };
 }
@@ -972,7 +985,7 @@ function showMrrActualsModal(bu, months) {
   const total = sorted.reduce((s,[,v]) => s+v, 0);
   const td = (v,right) => `<td style="padding:7px 10px;${right?'text-align:right;':'white-space:normal;word-break:break-word;text-align:left;'}">${v}</td>`;
   const bodyRows = sorted.map(([acct, nnr]) =>
-    `<tr style="border-bottom:1px solid var(--gridline);">${td(escapeHtml(acct))}${td(nnr<0?`<span class="rev-neg">${fmtINR(nnr)}</span>`:fmtINR(nnr),true)}</tr>`
+    `<tr data-mrr-row="${escapeHtml(acct)}" style="border-bottom:1px solid var(--gridline);">${td(escapeHtml(acct))}${td(nnr<0?`<span class="rev-neg">${fmtINR(nnr)}</span>`:fmtINR(nnr),true)}</tr>`
   ).join('') || `<tr><td colspan="2" style="padding:16px;color:var(--text-muted);text-align:center;">No MRR data.</td></tr>`;
   const totalRow = `<tr style="border-top:2px solid var(--border);font-weight:600;"><td style="padding:8px 10px;">Total NNR</td><td style="padding:8px 10px;text-align:right;">${total<0?`<span class="rev-neg">${fmtINR(total)}</span>`:fmtINR(total)}</td></tr>`;
   openMrrModal(`${bu} — MRR Actuals (NNR) · ${periodLabel}`,
@@ -1001,7 +1014,7 @@ function showMrrCommitModal(bu, months) {
     return true;
   }).map(s => {
     const d = dealMap.get(s.deal_id);
-    return { name: d.deal_name ?? d.account_name ?? s.deal_id, stage: d.stage, closing_date: s.closing_date, probability: s.probability, mrr: Number(s.mrr_amount ?? 0) };
+    return { name: d.deal_name ?? s.deal_id, account: d.account_name ?? '', stage: d.stage, closing_date: s.closing_date, probability: s.probability, mrr: Number(s.mrr_amount ?? 0) };
   }).sort((a,b) => b.mrr - a.mrr);
   const periodLabel = months.length === 1
     ? (() => { const [y,m]=months[0].split('-').map(Number); return MONTH_ABBR[m-1]+' '+y; })()
@@ -1009,12 +1022,13 @@ function showMrrCommitModal(bu, months) {
   const total = snaps.reduce((s,r) => s+r.mrr, 0);
   const th = (t,right) => `<th style="text-align:${right?'right':'left'};padding:6px 10px;color:var(--text-muted);font-weight:500;">${t}</th>`;
   const td = (v,right,muted) => `<td style="padding:7px 10px;${right?'text-align:right;':'white-space:normal;word-break:break-word;text-align:left;'}${muted?'color:var(--text-secondary);font-size:12px;':''}">${v}</td>`;
-  const bodyRows = snaps.map(r =>
-    `<tr style="border-bottom:1px solid var(--gridline);">${td(escapeHtml(r.name))}${td(escapeHtml(r.stage),false,true)}${td(r.closing_date??'',false,true)}${td(r.probability+'%',true,true)}${td(fmtINR(r.mrr),true)}</tr>`
-  ).join('') || `<tr><td colspan="5" style="padding:16px;color:var(--text-muted);text-align:center;">No deals in commit.</td></tr>`;
-  const totalRow = `<tr style="border-top:2px solid var(--border);font-weight:600;"><td colspan="4" style="padding:8px 10px;">Total Commit</td><td style="padding:8px 10px;text-align:right;">${fmtINR(total)}</td></tr>`;
+  const bodyRows = snaps.map(r => {
+    const searchKey = `${r.name} ${r.account} ${r.stage}`;
+    return `<tr data-mrr-row="${escapeHtml(searchKey)}" style="border-bottom:1px solid var(--gridline);">${td(escapeHtml(r.name))}${td(escapeHtml(r.account),false,true)}${td(escapeHtml(r.stage),false,true)}${td(r.closing_date??'',false,true)}${td(r.probability+'%',true,true)}${td(fmtINR(r.mrr),true)}</tr>`;
+  }).join('') || `<tr><td colspan="6" style="padding:16px;color:var(--text-muted);text-align:center;">No deals in commit.</td></tr>`;
+  const totalRow = `<tr style="border-top:2px solid var(--border);font-weight:600;"><td colspan="5" style="padding:8px 10px;">Total Commit</td><td style="padding:8px 10px;text-align:right;">${fmtINR(total)}</td></tr>`;
   openMrrModal(`${bu} — MRR Commit · ${periodLabel}`,
-    `${th('Deal')}${th('Stage')}${th('Closing')}${th('Prob.',true)}${th('MRR',true)}`,
+    `${th('Deal')}${th('Account')}${th('Stage')}${th('Closing')}${th('Prob.',true)}${th('MRR',true)}`,
     bodyRows, totalRow);
 }
 
