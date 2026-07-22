@@ -1466,6 +1466,9 @@ const _nrrFmtMonth = m => {
 })();
 
 async function showNrrInvoiceModal(acct, bu, month) {
+  // Reverse-map normalised BU names back to their stored DB form for querying
+  const BU_DB_NAME = { 'India ENT BU': 'India Ent BU' };
+  bu = BU_DB_NAME[bu] ?? bu;
   const modal = document.getElementById('nrr-invoice-modal');
   const body  = document.getElementById('nrr-modal-body');
   const title = document.getElementById('nrr-modal-title');
