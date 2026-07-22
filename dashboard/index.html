@@ -1571,6 +1571,12 @@ async function main() {
   // propagated yet (e.g. override was set after the last sync).
   DEALS = DEALS.map(d => d.bu_override ? { ...d, business_unit: d.bu_override } : d);
 
+  // Normalise inconsistent BU names in revenue_actuals (e.g. "India Ent BU" → "India ENT BU")
+  const BU_NAME_ALIASES = { 'India Ent BU': 'India ENT BU' };
+  REVENUE_ACTUALS = REVENUE_ACTUALS.map(r =>
+    BU_NAME_ALIASES[r.business_unit] ? { ...r, business_unit: BU_NAME_ALIASES[r.business_unit] } : r
+  );
+
   MRR_DATES = [...new Set(MRR_SNAPSHOTS.map(s => s.snapshot_date))].sort();
   NRR_DATES = [...new Set(NRR_SNAPSHOTS.map(s => s.snapshot_date))].sort();
   const knownOrder = BU_ORDER;
