@@ -745,25 +745,37 @@ function renderActualsPage() {
     }, 0);
   }
 
-  // Snapshot projection value per BU for selected months
-  // For MRR: NNR from latest snapshot (deals closing in selected months)
-  // For NRR: sum from latest NRR snapshot (deals closing in selected months)
+  // Commit value per BU for selected months using Farming Commit definition:
+  // Farming deals only, specific stages, min probability 70%, expected amounts,
+  // closing_date falls within selected months — from latest snapshot.
+  const FARMING_COMMIT_STAGES = new Set([
+    'Closed Won','Decision maker bought in','Demo','Differed timeline',
+    'Initial discussion','MRR Live','Negotiation','PO pending','Proposal Out','Revised Pricing'
+  ]);
+  const COMMIT_MIN_PROB = 70;
+
   function buProjection(bu, metric) {
     const snapshots  = metric === 'MRR' ? MRR_SNAPSHOTS : NRR_SNAPSHOTS;
-    const latestDate = metric === 'MRR' ? MRR_DATES[MRR_DATES.length - 1] : NRR_DATES[NRR_DATES.length - 1];
+    const latestDate = metric === 'MRR'
+      ? MRR_DATES[MRR_DATES.length - 1]
+      : NRR_DATES[NRR_DATES.length - 1];
     if (!latestDate) return 0;
-    // Months in selected set as YYYY-MM-01 for closing_date prefix match
-    const latestSnaps = snapshots.filter(s => s.snapshot_date === latestDate && s.business_unit === bu);
-    return latestSnaps.reduce((sum, s) => {
-      // closing_date stored as full date e.g. "2026-07-15" — match to selected months by YYYY-MM prefix
-      const cd = s.closing_date ? s.closing_date.substring(0, 7) : null;
-      if (!cd) return sum;
-      // Find corresponding month in monthSet (stored as "YYYY-MM-01" or "YYYY-MM")
-      const matches = selMonths.some(m => m.startsWith(cd) || cd === m.substring(0, 7));
-      if (!matches) return sum;
-      const amt = metric === 'MRR' ? Number(s.mrr_amount ?? 0) : Number(s.nrr_amount ?? 0);
-      return sum + amt;
-    }, 0);
+    return snapshots
+      .filter(s => {
+        if (s.snapshot_date !== latestDate) return false;
+        if (s.business_unit !== bu) return false;
+        if ((s.deal_type ?? '').toLowerCase() !== 'farming') return false;
+        if (!FARMING_COMMIT_STAGES.has(s.stage)) return false;
+        if ((s.probability ?? 100) < COMMIT_MIN_PROB) return false;
+        // closing_date must fall in one of the selected months
+        const cd = s.closing_date ? s.closing_date.substring(0, 7) : null;
+        if (!cd) return false;
+        return selMonths.some(m => m.startsWith(cd) || cd === m.substring(0, 7));
+      })
+      .reduce((sum, s) => {
+        const amt = metric === 'MRR' ? Number(s.mrr_amount ?? 0) : Number(s.nrr_amount ?? 0);
+        return sum + amt;
+      }, 0);
   }
 
   function varHtml(variance) {
