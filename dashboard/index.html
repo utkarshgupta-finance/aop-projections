@@ -718,13 +718,23 @@ function renderActualsPage() {
   const [yr, mo] = actualsMonth.split('-').map(Number);
   const monthLabel = MONTH_FULL[mo - 1] + ' ' + yr;
 
+  // Previous month in the sorted set (for NNR delta)
+  const prevMonth = monthSet[monthSet.indexOf(actualsMonth) - 1] ?? null;
+  function buActual(bu, month, amtField) {
+    return REVENUE_ACTUALS
+      .filter(r => r.month === month && r.business_unit === bu)
+      .reduce((s, r) => s + Number(r[amtField] ?? 0), 0);
+  }
+
   function buildTable(metric, amtField) {
+    const isMrr = metric === 'MRR';
     const rows = allBUs.map(bu => {
-      const actual = REVENUE_ACTUALS
-        .filter(r => r.month === actualsMonth && r.business_unit === bu)
-        .reduce((s, r) => s + Number(r[amtField] ?? 0), 0);
+      const curAmt  = buActual(bu, actualsMonth, amtField);
+      const prevAmt = prevMonth !== null ? buActual(bu, prevMonth, amtField) : null;
+      // MRR uses NNR (delta); NRR uses absolute amount
+      const actual = isMrr ? (prevAmt !== null ? curAmt - prevAmt : curAmt) : curAmt;
       const target = actualsTargetFor(bu, actualsMonth, metric);
-      const variance = (target !== undefined && actual !== 0) ? actual - target : undefined;
+      const variance = target !== undefined ? actual - target : undefined;
       const dot = `<span style="display:inline-block;width:7px;height:7px;border-radius:2px;background:${`var(${BU_COLOR_VAR[bu] || '--text-muted'})`};margin-right:6px;vertical-align:middle;"></span>`;
 
       const actualCell = actual === 0
@@ -756,8 +766,11 @@ function renderActualsPage() {
     });
 
     // Totals row
-    const totalActual = allBUs.reduce((s, bu) =>
-      s + REVENUE_ACTUALS.filter(r => r.month === actualsMonth && r.business_unit === bu).reduce((a, r) => a + Number(r[amtField] ?? 0), 0), 0);
+    const totalActual = allBUs.reduce((s, bu) => {
+      const cur  = buActual(bu, actualsMonth, amtField);
+      const prev = prevMonth !== null ? buActual(bu, prevMonth, amtField) : null;
+      return s + (isMrr ? (prev !== null ? cur - prev : cur) : cur);
+    }, 0);
     const totalTarget = allBUs.reduce((s, bu) => {
       const t = actualsTargetFor(bu, actualsMonth, metric);
       return t !== undefined ? s + t : s;
@@ -767,7 +780,7 @@ function renderActualsPage() {
     const tvCls = Math.abs(totalVariance) <= 100 ? '' : totalVariance >= 0 ? 'rev-pos' : 'rev-neg';
 
     return `<div style="margin-bottom:32px;">
-      <div style="font-weight:600;font-size:14px;margin-bottom:10px;color:var(--text-primary);">${metric}</div>
+      <div style="font-weight:600;font-size:14px;margin-bottom:10px;color:var(--text-primary);">${metric}${isMrr ? ' <span style="font-weight:400;font-size:12px;color:var(--text-muted);">(Net New MRR vs target)</span>' : ''}</div>
       <div class="table-scroll">
         <table class="rev-table">
           <thead><tr>
@@ -779,7 +792,7 @@ function renderActualsPage() {
           </tr></thead>
           <tbody>
             <tr class="rev-total-row">
-              <td colspan="2">Total ${metric}</td>
+              <td colspan="2">Total ${isMrr ? 'NNR' : metric}</td>
               <td class="num">${fmtINR(totalActual)}</td>
               <td class="num">${fmtINR(totalTarget)}</td>
               <td class="num">${tvCls ? `<span class="${tvCls}">${tvSign}${fmtINR(totalVariance)}</span>` : `${tvSign}${fmtINR(totalVariance)}`}</td>
