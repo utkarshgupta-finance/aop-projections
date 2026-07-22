@@ -840,11 +840,14 @@ function renderActualsPage() {
       const variance = hasTarget ? value - target : undefined;
       const dot = `<span style="display:inline-block;width:7px;height:7px;border-radius:2px;background:var(${BU_COLOR_VAR[bu] || '--text-muted'});margin-right:6px;vertical-align:middle;"></span>`;
 
+      const monthsJson = escapeHtml(JSON.stringify(selMonths));
       let valCell;
-      if (!isProj && singleMonth && metric === 'NRR') {
+      if (!isProj && metric === 'NRR' && singleMonth) {
         valCell = numCell(value, `data-avp-click="nrr" data-avp-bu="${escapeHtml(bu)}" data-avp-month="${escapeHtml(singleMonth)}" title="Click to see invoice details"`);
-      } else if (!isProj && singleMonth && isMrr) {
-        valCell = numCell(value, `data-avp-click="mrr" data-avp-bu="${escapeHtml(bu)}" data-avp-month="${escapeHtml(singleMonth)}" title="Click to see account breakdown"`);
+      } else if (!isProj && isMrr && value !== 0) {
+        valCell = numCell(value, `data-avp-click="mrr-actuals" data-avp-bu="${escapeHtml(bu)}" data-avp-months='${monthsJson}' title="Click to see account breakdown"`);
+      } else if (isProj && isMrr && value !== 0) {
+        valCell = numCell(value, `data-avp-click="mrr-commit" data-avp-bu="${escapeHtml(bu)}" data-avp-months='${monthsJson}' title="Click to see deals"`);
       } else {
         valCell = numCell(value, null);
       }
@@ -925,41 +928,94 @@ function renderActualsPage() {
     });
   });
 
-  // Wire drill-down click handlers (only active for single-month actuals)
+  // Wire drill-down click handlers
   content.querySelectorAll('[data-avp-click="nrr"]').forEach(td => {
     td.addEventListener('click', () => showNrrInvoiceModal('__BU__', td.dataset.avpBu, td.dataset.avpMonth));
   });
-  content.querySelectorAll('[data-avp-click="mrr"]').forEach(td => {
-    td.addEventListener('click', () => showMrrDetailModal(td.dataset.avpBu, td.dataset.avpMonth));
+  content.querySelectorAll('[data-avp-click="mrr-actuals"]').forEach(td => {
+    td.addEventListener('click', () => showMrrActualsModal(td.dataset.avpBu, JSON.parse(td.dataset.avpMonths)));
+  });
+  content.querySelectorAll('[data-avp-click="mrr-commit"]').forEach(td => {
+    td.addEventListener('click', () => showMrrCommitModal(td.dataset.avpBu, JSON.parse(td.dataset.avpMonths)));
   });
 }
 
-function showMrrDetailModal(bu, monthStr) {
+function openMrrModal(titleText, headRow, bodyRows, totalRow) {
   const modal = document.getElementById('mrr-detail-modal');
-  const body  = document.getElementById('mrr-modal-body');
-  const title = document.getElementById('mrr-modal-title');
-  const [yr, mo] = monthStr.split('-').map(Number);
-  title.textContent = `${bu} — MRR breakdown for ${MONTH_FULL[mo - 1]} ${yr}`;
-  const rows = REVENUE_ACTUALS
-    .filter(r => r.month === monthStr && r.business_unit === bu && Number(r.mrr_amount ?? 0) !== 0)
-    .sort((a, b) => Number(b.mrr_amount) - Number(a.mrr_amount));
-  if (!rows.length) {
-    body.innerHTML = `<tr><td colspan="2" style="padding:16px;color:var(--text-muted);text-align:center;">No MRR data for this BU/month.</td></tr>`;
-  } else {
-    const total = rows.reduce((s, r) => s + Number(r.mrr_amount), 0);
-    body.innerHTML = rows.map(r =>
-      `<tr style="border-bottom:1px solid var(--gridline);">
-        <td style="padding:7px 10px;white-space:normal;word-break:break-word;text-align:left;">${escapeHtml(r.account_name ?? '')}</td>
-        <td style="padding:7px 10px;text-align:right;">${fmtINR(Number(r.mrr_amount))}</td>
-      </tr>`
-    ).join('') + `<tr style="border-top:2px solid var(--border);font-weight:600;">
-      <td style="padding:8px 10px;">Total</td>
-      <td style="padding:8px 10px;text-align:right;">${fmtINR(total)}</td>
-    </tr>`;
-  }
+  document.getElementById('mrr-modal-title').textContent = titleText;
+  document.querySelector('#mrr-detail-modal thead tr').innerHTML = headRow;
+  document.getElementById('mrr-modal-body').innerHTML = bodyRows + totalRow;
   modal.style.display = 'flex';
   document.getElementById('mrr-modal-close').onclick = () => { modal.style.display = 'none'; };
   modal.onclick = e => { if (e.target === modal) modal.style.display = 'none'; };
+}
+
+function showMrrActualsModal(bu, months) {
+  const monthSet = [...new Set(REVENUE_ACTUALS.map(r => r.month))].sort();
+  // Aggregate NNR per account across selected months
+  const acctMap = new Map();
+  for (const m of months) {
+    const idx = monthSet.indexOf(m);
+    const prev = idx > 0 ? monthSet[idx - 1] : null;
+    const curRows  = REVENUE_ACTUALS.filter(r => r.month === m && r.business_unit === bu);
+    const prevRows = prev ? REVENUE_ACTUALS.filter(r => r.month === prev && r.business_unit === bu) : [];
+    const prevMap  = new Map(prevRows.map(r => [r.account_name, Number(r.mrr_amount ?? 0)]));
+    for (const r of curRows) {
+      const nnr = Number(r.mrr_amount ?? 0) - (prevMap.get(r.account_name) ?? 0);
+      acctMap.set(r.account_name, (acctMap.get(r.account_name) ?? 0) + nnr);
+    }
+  }
+  const periodLabel = months.length === 1
+    ? (() => { const [y,m] = months[0].split('-').map(Number); return MONTH_ABBR[m-1]+' '+y; })()
+    : (() => { const [y0,m0]=months[0].split('-').map(Number); const [y1,m1]=months[months.length-1].split('-').map(Number); return MONTH_ABBR[m0-1]+' '+y0+' – '+MONTH_ABBR[m1-1]+' '+y1; })();
+  const sorted = [...acctMap.entries()].filter(([,v]) => v !== 0).sort((a,b) => b[1]-a[1]);
+  const total = sorted.reduce((s,[,v]) => s+v, 0);
+  const td = (v,right) => `<td style="padding:7px 10px;${right?'text-align:right;':'white-space:normal;word-break:break-word;text-align:left;'}">${v}</td>`;
+  const bodyRows = sorted.map(([acct, nnr]) =>
+    `<tr style="border-bottom:1px solid var(--gridline);">${td(escapeHtml(acct))}${td(nnr<0?`<span class="rev-neg">${fmtINR(nnr)}</span>`:fmtINR(nnr),true)}</tr>`
+  ).join('') || `<tr><td colspan="2" style="padding:16px;color:var(--text-muted);text-align:center;">No MRR data.</td></tr>`;
+  const totalRow = `<tr style="border-top:2px solid var(--border);font-weight:600;"><td style="padding:8px 10px;">Total NNR</td><td style="padding:8px 10px;text-align:right;">${total<0?`<span class="rev-neg">${fmtINR(total)}</span>`:fmtINR(total)}</td></tr>`;
+  openMrrModal(`${bu} — MRR Actuals (NNR) · ${periodLabel}`,
+    `<th style="text-align:left;padding:6px 10px;color:var(--text-muted);font-weight:500;">Account</th><th style="text-align:right;padding:6px 10px;color:var(--text-muted);font-weight:500;">Net New MRR</th>`,
+    bodyRows, totalRow);
+}
+
+function showMrrCommitModal(bu, months) {
+  const COMMIT_STAGES = new Set(['Closed Won','Decision maker bought in','Demo','Differed timeline','Initial discussion','MRR Live','Negotiation','PO pending','Proposal Out','Revised Pricing']);
+  const latestDate = MRR_DATES[MRR_DATES.length - 1];
+  if (!latestDate) return;
+  const dealMap = new Map(DEALS.map(d => [d.deal_id, d]));
+  const monthSet = [...new Set(REVENUE_ACTUALS.map(r => r.month))].sort();
+  const snaps = MRR_SNAPSHOTS.filter(s => {
+    if (s.snapshot_date !== latestDate) return false;
+    if ((s.probability ?? 100) < 70) return false;
+    const cd = s.closing_date ? s.closing_date.substring(0, 7) : null;
+    if (!cd) return false;
+    if (!months.some(m => m.startsWith(cd) || cd === m.substring(0, 7))) return false;
+    const d = dealMap.get(s.deal_id);
+    if (!d) return false;
+    const dbu = d.bu_override || d.business_unit;
+    if (dbu !== bu) return false;
+    if ((d.deal_type ?? '').toLowerCase() !== 'farming') return false;
+    if (!COMMIT_STAGES.has(d.stage)) return false;
+    return true;
+  }).map(s => {
+    const d = dealMap.get(s.deal_id);
+    return { name: d.deal_name ?? d.account_name ?? s.deal_id, stage: d.stage, closing_date: s.closing_date, probability: s.probability, mrr: Number(s.mrr_amount ?? 0) };
+  }).sort((a,b) => b.mrr - a.mrr);
+  const periodLabel = months.length === 1
+    ? (() => { const [y,m]=months[0].split('-').map(Number); return MONTH_ABBR[m-1]+' '+y; })()
+    : (() => { const [y0,m0]=months[0].split('-').map(Number); const [y1,m1]=months[months.length-1].split('-').map(Number); return MONTH_ABBR[m0-1]+' '+y0+' – '+MONTH_ABBR[m1-1]+' '+y1; })();
+  const total = snaps.reduce((s,r) => s+r.mrr, 0);
+  const th = (t,right) => `<th style="text-align:${right?'right':'left'};padding:6px 10px;color:var(--text-muted);font-weight:500;">${t}</th>`;
+  const td = (v,right,muted) => `<td style="padding:7px 10px;${right?'text-align:right;':'white-space:normal;word-break:break-word;text-align:left;'}${muted?'color:var(--text-secondary);font-size:12px;':''}">${v}</td>`;
+  const bodyRows = snaps.map(r =>
+    `<tr style="border-bottom:1px solid var(--gridline);">${td(escapeHtml(r.name))}${td(escapeHtml(r.stage),false,true)}${td(r.closing_date??'',false,true)}${td(r.probability+'%',true,true)}${td(fmtINR(r.mrr),true)}</tr>`
+  ).join('') || `<tr><td colspan="5" style="padding:16px;color:var(--text-muted);text-align:center;">No deals in commit.</td></tr>`;
+  const totalRow = `<tr style="border-top:2px solid var(--border);font-weight:600;"><td colspan="4" style="padding:8px 10px;">Total Commit</td><td style="padding:8px 10px;text-align:right;">${fmtINR(total)}</td></tr>`;
+  openMrrModal(`${bu} — MRR Commit · ${periodLabel}`,
+    `${th('Deal')}${th('Stage')}${th('Closing')}${th('Prob.',true)}${th('MRR',true)}`,
+    bodyRows, totalRow);
 }
 
 function revenueAmtOf(row) {
