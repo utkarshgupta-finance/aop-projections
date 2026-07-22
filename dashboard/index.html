@@ -754,6 +754,9 @@ function renderActualsPage() {
   ]);
   const COMMIT_MIN_PROB = 70;
 
+  // Build deal lookup once (snapshots have no deal_type/stage/BU — join via DEALS)
+  const dealMap = new Map(DEALS.map(d => [d.deal_id, d]));
+
   function buProjection(bu, metric) {
     const snapshots  = metric === 'MRR' ? MRR_SNAPSHOTS : NRR_SNAPSHOTS;
     const latestDate = metric === 'MRR'
@@ -763,14 +766,18 @@ function renderActualsPage() {
     return snapshots
       .filter(s => {
         if (s.snapshot_date !== latestDate) return false;
-        if (s.business_unit !== bu) return false;
-        if ((s.deal_type ?? '').toLowerCase() !== 'farming') return false;
-        if (!FARMING_COMMIT_STAGES.has(s.stage)) return false;
         if ((s.probability ?? 100) < COMMIT_MIN_PROB) return false;
-        // closing_date must fall in one of the selected months
         const cd = s.closing_date ? s.closing_date.substring(0, 7) : null;
         if (!cd) return false;
-        return selMonths.some(m => m.startsWith(cd) || cd === m.substring(0, 7));
+        if (!selMonths.some(m => m.startsWith(cd) || cd === m.substring(0, 7))) return false;
+        // Join with deals for BU, deal_type, stage
+        const d = dealMap.get(s.deal_id);
+        if (!d) return false;
+        const dbu = d.bu_override || d.business_unit;
+        if (dbu !== bu) return false;
+        if ((d.deal_type ?? '').toLowerCase() !== 'farming') return false;
+        if (!FARMING_COMMIT_STAGES.has(d.stage)) return false;
+        return true;
       })
       .reduce((sum, s) => {
         const amt = metric === 'MRR' ? Number(s.mrr_amount ?? 0) : Number(s.nrr_amount ?? 0);
