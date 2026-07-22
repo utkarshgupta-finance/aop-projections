@@ -651,8 +651,8 @@ function switchPage(page) {
 // ACTUALS VS PROJECTIONS PAGE
 // ============================================================
 let actualsSelectedMonths = new Set(); // selected month strings
-let actualsViewMrr = 'actuals';  // 'actuals' | 'projections'
-let actualsViewNrr = 'actuals';  // 'actuals' | 'projections'
+let actualsViewMrr = 'actuals';  // 'actuals' | 'commit'
+let actualsViewNrr = 'actuals';  // 'actuals' | 'commit'
 
 function monthToQuarterKey(monthStr) {
   const [yr, mo] = monthStr.split('-').map(Number);
@@ -786,7 +786,7 @@ function renderActualsPage() {
   function buildTable(metric, amtField) {
     const isMrr    = metric === 'MRR';
     const viewMode = isMrr ? actualsViewMrr : actualsViewNrr;
-    const isProj   = viewMode === 'projections';
+    const isProj   = viewMode === 'commit';
     const singleMonth = selMonths.length === 1 ? selMonths[0] : null;
 
     const viewToggle = `
@@ -795,13 +795,13 @@ function renderActualsPage() {
           style="padding:3px 10px;font-size:11px;font-weight:600;border:none;cursor:pointer;background:${!isProj ? 'var(--series-1)' : 'var(--surface-1)'};color:${!isProj ? '#fff' : 'var(--text-secondary)'};">
           Actuals
         </button>
-        <button data-avp-view="${isMrr ? 'mrr' : 'nrr'}-projections"
+        <button data-avp-view="${isMrr ? 'mrr' : 'nrr'}-commit"
           style="padding:3px 10px;font-size:11px;font-weight:600;border:none;cursor:pointer;background:${isProj ? 'var(--series-1)' : 'var(--surface-1)'};color:${isProj ? '#fff' : 'var(--text-secondary)'};">
-          Projections
+          Commit
         </button>
       </span>`;
 
-    const colLabel = isProj ? 'Projections' : 'Actuals';
+    const colLabel = isProj ? 'Commit' : 'Actuals';
 
     const rows = allBUs.map(bu => {
       let value;
