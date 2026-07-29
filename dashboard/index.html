@@ -799,9 +799,10 @@ function renderActualsPage() {
 
   function numCell(v, clickAttrs) {
     if (v === 0) return `<td class="num"><span class="rev-zero">-</span></td>`;
-    const inner = v < 0 ? `<span class="rev-neg">${fmtINR(v)}</span>` : fmtINR(v);
+    const cls = v < 0 ? 'rev-neg' : 'rev-pos';
+    const inner = `<span class="${cls}" style="${clickAttrs ? 'cursor:pointer;text-decoration:underline dotted;' : ''}">${fmtINR(v)}</span>`;
     return clickAttrs
-      ? `<td class="num" style="cursor:pointer;color:var(--series-1);" ${clickAttrs}>${fmtINR(v)}</td>`
+      ? `<td class="num" ${clickAttrs}>${inner}</td>`
       : `<td class="num">${inner}</td>`;
   }
 
