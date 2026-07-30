@@ -52,10 +52,10 @@
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--page); color: var(--text-primary); font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
   a { color: inherit; }
-  .wrap { max-width: 1280px; margin: 0 auto; padding: 32px 20px 64px; }
-  .topbar { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 4px; }
-  h1 { font-size: 20px; margin: 0 0 2px; }
-  .subtitle { color: var(--text-secondary); font-size: 13px; margin: 0 0 16px; }
+  .wrap { max-width: 1280px; margin: 0 auto; padding: 16px 20px 48px; }
+  .topbar { display: none; }
+  h1 { font-size: 18px; margin: 0 0 2px; }
+  .subtitle { color: var(--text-secondary); font-size: 13px; margin: 0 0 8px; }
   .settings-link { font-size: 12px; color: var(--text-secondary); text-decoration: none; border: 1px solid var(--border); border-radius: 6px; padding: 5px 10px; }
   .settings-link:hover { color: var(--text-primary); }
   .topbar-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
@@ -74,13 +74,13 @@
   }
   .sync-btn:hover:not(:disabled) { color: var(--text-primary); border-color: var(--text-secondary); }
   .sync-btn:disabled { opacity: 0.55; cursor: default; }
-  .tab-group { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; flex-wrap: wrap; }
-  .tab-group-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.02em; color: var(--text-muted); width: 90px; flex-shrink: 0; }
-  .tabs { display: flex; gap: 4px; flex-wrap: wrap; }
+  .tab-group { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; flex-wrap: wrap; }
+  .tab-group-label { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.02em; color: var(--text-muted); width: 80px; flex-shrink: 0; }
+  .tabs { display: flex; gap: 3px; flex-wrap: wrap; }
   .tab-btn {
     appearance: none; border: 1px solid transparent; background: none; cursor: pointer;
-    font: inherit; font-size: 13px; font-weight: 600; color: var(--text-secondary);
-    padding: 6px 14px; border-radius: 999px;
+    font: inherit; font-size: 12px; font-weight: 600; color: var(--text-secondary);
+    padding: 4px 11px; border-radius: 999px;
   }
   .tab-btn:hover { color: var(--text-primary); border-color: var(--border); }
   .tab-btn.active { color: #fff; background: var(--series-1); }
@@ -169,15 +169,21 @@
   .drilldown-cell:hover { text-decoration: underline; text-decoration-style: dotted; }
   /* ---- Layout: sidebar + pages ---- */
   .app-root { display: flex; min-height: 100vh; }
-  .sidebar { width: 196px; flex-shrink: 0; background: var(--surface-1); border-right: 1px solid var(--border); display: flex; flex-direction: column; position: sticky; top: 0; height: 100vh; overflow-y: auto; }
-  .sidebar-brand { padding: 18px 16px 14px; font-size: 15px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.3; border-bottom: 1px solid var(--border); }
-  .nav-section-label { padding: 14px 16px 4px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: var(--text-muted); }
-  .nav-item { display: block; width: 100%; text-align: left; padding: 10px 16px; border: none; border-left: 3px solid transparent; background: none; font: inherit; font-size: 13px; color: var(--text-secondary); cursor: pointer; text-decoration: none; }
+  .sidebar { width: 220px; flex-shrink: 0; background: var(--surface-1); border-right: 1px solid var(--border); display: flex; flex-direction: column; position: sticky; top: 0; height: 100vh; overflow-y: auto; }
+  .sidebar-brand { padding: 14px 16px 12px; font-size: 15px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.3; border-bottom: 1px solid var(--border); }
+  .sidebar-page-ctx { padding: 14px 16px 12px; border-bottom: 1px solid var(--border); }
+  .sidebar-page-ctx-title { font-size: 15px; font-weight: 700; color: var(--text-primary); margin-bottom: 2px; letter-spacing: -0.01em; }
+  .sidebar-page-ctx-sub { font-size: 11px; color: var(--text-muted); line-height: 1.4; margin-bottom: 0; }
+  .sidebar-page-ctx-actions { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; }
+  .nav-section-label { padding: 12px 16px 4px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: var(--text-muted); }
+  .nav-item { display: block; width: 100%; text-align: left; padding: 9px 16px; border: none; border-left: 3px solid transparent; background: none; font: inherit; font-size: 13px; color: var(--text-secondary); cursor: pointer; text-decoration: none; }
   .nav-item:hover { color: var(--text-primary); background: rgba(0,0,0,0.04); }
   .nav-item.active { color: var(--series-1); font-weight: 600; border-left-color: var(--series-1); background: rgba(42,120,214,0.07); }
+  .nav-item.nav-sub { padding-left: 28px; font-size: 12px; }
   @media (prefers-color-scheme: dark) { .nav-item.active { background: rgba(57,135,229,0.12); } .nav-item:hover { background: rgba(255,255,255,0.04); } }
   .sidebar-spacer { flex: 1; }
-  .nav-item.nav-settings { font-size: 12px; color: var(--text-muted); border-top: 1px solid var(--border); }
+  .nav-item.nav-settings { font-size: 12px; color: var(--text-muted); }
+  .nav-section-bottom { border-top: 1px solid var(--border); padding-top: 4px; }
   .page-shell { flex: 1; min-width: 0; overflow-y: auto; }
   .page-pane { display: none; }
   .page-pane.active { display: block; }
@@ -249,13 +255,40 @@
 <!-- Sidebar navigation -->
 <nav class="sidebar">
   <div class="sidebar-brand">Revenue<br>Dashboard</div>
+
+  <!-- Dynamic page context: title + actions -->
+  <div class="sidebar-page-ctx">
+    <div class="sidebar-page-ctx-title" id="sb-page-title">Revenue</div>
+    <div class="sidebar-page-ctx-sub" id="sb-page-sub">Actual booked revenue by business unit</div>
+    <div class="sidebar-page-ctx-actions" id="sb-page-actions">
+      <!-- Revenue actions (default visible) -->
+      <div id="sb-actions-revenue" class="sb-action-set">
+        <span class="last-sync" id="revenue-last-sync"></span>
+        <button class="sync-btn" id="revenue-setup-btn">Sheet Setup</button>
+      </div>
+      <!-- Actuals actions -->
+      <div id="sb-actions-actuals" class="sb-action-set" style="display:none;">
+        <div class="topbar-actions" id="sb-actuals-chips"></div>
+      </div>
+      <!-- Projections actions -->
+      <div id="sb-actions-projections" class="sb-action-set" style="display:none;">
+        <span class="last-sync" id="last-sync"></span>
+        <select class="quarter-select" id="quarter-select" style="width:100%;"></select>
+        <button class="sync-btn" id="sync-btn" style="width:100%;">Sync Zoho</button>
+      </div>
+    </div>
+  </div>
+
   <div class="nav-section-label">Menu</div>
   <button class="nav-item active" id="nav-revenue">Revenue</button>
   <button class="nav-item" id="nav-actuals">Actuals vs Projections</button>
   <button class="nav-item" id="nav-projections">Projections</button>
   <button class="nav-item" id="nav-ratecalc">Rate Calculator</button>
+
   <div class="sidebar-spacer"></div>
+  <div class="nav-section-label nav-section-bottom">Account</div>
   <a class="nav-item nav-settings" href="settings.html">Settings</a>
+  <a class="nav-item nav-settings nav-sub" href="settings.html#users">Manage Users</a>
 </nav>
 <div class="page-shell">
   <!-- Revenue Page -->
@@ -974,19 +1007,27 @@ function renderTabs() {
 // ============================================================
 // REVENUE PAGE
 // ============================================================
+const PAGE_META = {
+  revenue:    { title: 'Revenue',                  sub: 'Actual booked revenue by business unit' },
+  actuals:    { title: 'Actuals vs Projections',   sub: 'Compare actuals against monthly targets' },
+  projections:{ title: 'Projections',              sub: 'Pipeline snapshot by business unit' },
+  ratecalc:   { title: 'Rate Calculator',          sub: 'NPV-neutral rate adjustment' },
+};
+
 function switchPage(page) {
   currentPage = page;
-  document.getElementById('page-revenue').classList.toggle('active', page === 'revenue');
-  document.getElementById('page-actuals').classList.toggle('active', page === 'actuals');
-  document.getElementById('page-projections').classList.toggle('active', page === 'projections');
-  document.getElementById('page-ratecalc').classList.toggle('active', page === 'ratecalc');
-  document.getElementById('nav-revenue').classList.toggle('active', page === 'revenue');
-  document.getElementById('nav-actuals').classList.toggle('active', page === 'actuals');
-  document.getElementById('nav-projections').classList.toggle('active', page === 'projections');
-  document.getElementById('nav-ratecalc').classList.toggle('active', page === 'ratecalc');
+  ['revenue','actuals','projections','ratecalc'].forEach(p => {
+    document.getElementById('page-' + p).classList.toggle('active', p === page);
+    document.getElementById('nav-' + p).classList.toggle('active', p === page);
+    const el = document.getElementById('sb-actions-' + p);
+    if (el) el.style.display = p === page ? '' : 'none';
+  });
+  const meta = PAGE_META[page] || {};
+  document.getElementById('sb-page-title').textContent = meta.title || '';
+  document.getElementById('sb-page-sub').textContent   = meta.sub   || '';
   if (page === 'revenue') renderRevenuePage();
   else if (page === 'actuals') renderActualsPage();
-  else if (page === 'ratecalc') { /* self-contained, nothing to render */ }
+  else if (page === 'ratecalc') { /* self-contained */ }
   else { renderTabs(); render(); }
 }
 
@@ -1254,7 +1295,7 @@ function renderActualsPage() {
   }
 
   // Render chips + tables
-  const topbar = document.querySelector('#page-actuals .topbar-actions');
+  const topbar = document.getElementById('sb-actuals-chips');
   topbar.innerHTML = `<div class="tabs" style="flex-wrap:wrap;gap:4px;">${chipsHtml}</div>`;
   topbar.querySelectorAll('[data-avp-month-chip]').forEach(btn => {
     btn.addEventListener('click', () => {
