@@ -52,10 +52,10 @@
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--page); color: var(--text-primary); font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
   a { color: inherit; }
-  .wrap { max-width: 1280px; margin: 0 auto; padding: 16px 20px 48px; }
-  .topbar { display: none; }
-  h1 { font-size: 18px; margin: 0 0 2px; }
-  .subtitle { color: var(--text-secondary); font-size: 13px; margin: 0 0 8px; }
+  .wrap { max-width: 1280px; margin: 0 auto; padding: 32px 20px 64px; }
+  .topbar { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 4px; }
+  h1 { font-size: 20px; margin: 0 0 2px; }
+  .subtitle { color: var(--text-secondary); font-size: 13px; margin: 0 0 16px; }
   .settings-link { font-size: 12px; color: var(--text-secondary); text-decoration: none; border: 1px solid var(--border); border-radius: 6px; padding: 5px 10px; }
   .settings-link:hover { color: var(--text-primary); }
   .topbar-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
@@ -74,13 +74,13 @@
   }
   .sync-btn:hover:not(:disabled) { color: var(--text-primary); border-color: var(--text-secondary); }
   .sync-btn:disabled { opacity: 0.55; cursor: default; }
-  .tab-group { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; flex-wrap: wrap; }
-  .tab-group-label { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.02em; color: var(--text-muted); width: 80px; flex-shrink: 0; }
-  .tabs { display: flex; gap: 3px; flex-wrap: wrap; }
+  .tab-group { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; flex-wrap: wrap; }
+  .tab-group-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.02em; color: var(--text-muted); width: 90px; flex-shrink: 0; }
+  .tabs { display: flex; gap: 4px; flex-wrap: wrap; }
   .tab-btn {
     appearance: none; border: 1px solid transparent; background: none; cursor: pointer;
-    font: inherit; font-size: 12px; font-weight: 600; color: var(--text-secondary);
-    padding: 4px 11px; border-radius: 999px;
+    font: inherit; font-size: 13px; font-weight: 600; color: var(--text-secondary);
+    padding: 6px 14px; border-radius: 999px;
   }
   .tab-btn:hover { color: var(--text-primary); border-color: var(--border); }
   .tab-btn.active { color: #fff; background: var(--series-1); }
@@ -169,21 +169,15 @@
   .drilldown-cell:hover { text-decoration: underline; text-decoration-style: dotted; }
   /* ---- Layout: sidebar + pages ---- */
   .app-root { display: flex; min-height: 100vh; }
-  .sidebar { width: 220px; flex-shrink: 0; background: var(--surface-1); border-right: 1px solid var(--border); display: flex; flex-direction: column; position: sticky; top: 0; height: 100vh; overflow-y: auto; }
-  .sidebar-brand { padding: 14px 16px 12px; font-size: 15px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.3; border-bottom: 1px solid var(--border); }
-  .sidebar-page-ctx { padding: 14px 16px 12px; border-bottom: 1px solid var(--border); }
-  .sidebar-page-ctx-title { font-size: 15px; font-weight: 700; color: var(--text-primary); margin-bottom: 2px; letter-spacing: -0.01em; }
-  .sidebar-page-ctx-sub { font-size: 11px; color: var(--text-muted); line-height: 1.4; margin-bottom: 0; }
-  .sidebar-page-ctx-actions { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; }
-  .nav-section-label { padding: 12px 16px 4px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: var(--text-muted); }
-  .nav-item { display: block; width: 100%; text-align: left; padding: 9px 16px; border: none; border-left: 3px solid transparent; background: none; font: inherit; font-size: 13px; color: var(--text-secondary); cursor: pointer; text-decoration: none; }
+  .sidebar { width: 196px; flex-shrink: 0; background: var(--surface-1); border-right: 1px solid var(--border); display: flex; flex-direction: column; position: sticky; top: 0; height: 100vh; overflow-y: auto; }
+  .sidebar-brand { padding: 18px 16px 14px; font-size: 15px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.3; border-bottom: 1px solid var(--border); }
+  .nav-section-label { padding: 14px 16px 4px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: var(--text-muted); }
+  .nav-item { display: block; width: 100%; text-align: left; padding: 10px 16px; border: none; border-left: 3px solid transparent; background: none; font: inherit; font-size: 13px; color: var(--text-secondary); cursor: pointer; text-decoration: none; }
   .nav-item:hover { color: var(--text-primary); background: rgba(0,0,0,0.04); }
   .nav-item.active { color: var(--series-1); font-weight: 600; border-left-color: var(--series-1); background: rgba(42,120,214,0.07); }
-  .nav-item.nav-sub { padding-left: 28px; font-size: 12px; }
   @media (prefers-color-scheme: dark) { .nav-item.active { background: rgba(57,135,229,0.12); } .nav-item:hover { background: rgba(255,255,255,0.04); } }
   .sidebar-spacer { flex: 1; }
-  .nav-item.nav-settings { font-size: 12px; color: var(--text-muted); }
-  .nav-section-bottom { border-top: 1px solid var(--border); padding-top: 4px; }
+  .nav-item.nav-settings { font-size: 12px; color: var(--text-muted); border-top: 1px solid var(--border); }
   .page-shell { flex: 1; min-width: 0; overflow-y: auto; }
   .page-pane { display: none; }
   .page-pane.active { display: block; }
@@ -233,7 +227,6 @@
   .modal-close { appearance: none; border: 1px solid var(--border); background: none; cursor: pointer; font: inherit; font-size: 16px; color: var(--text-muted); padding: 2px 8px; border-radius: 6px; line-height: 1.4; flex-shrink: 0; }
   .modal-close:hover { color: var(--text-primary); border-color: var(--text-secondary); }
 </style>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 </head>
 <body>
 <div class="viz-root app-root">
@@ -255,40 +248,12 @@
 <!-- Sidebar navigation -->
 <nav class="sidebar">
   <div class="sidebar-brand">Revenue<br>Dashboard</div>
-
-  <!-- Dynamic page context: title + actions -->
-  <div class="sidebar-page-ctx">
-    <div class="sidebar-page-ctx-title" id="sb-page-title">Revenue</div>
-    <div class="sidebar-page-ctx-sub" id="sb-page-sub">Actual booked revenue by business unit</div>
-    <div class="sidebar-page-ctx-actions" id="sb-page-actions">
-      <!-- Revenue actions (default visible) -->
-      <div id="sb-actions-revenue" class="sb-action-set">
-        <span class="last-sync" id="revenue-last-sync"></span>
-        <button class="sync-btn" id="revenue-setup-btn">Sheet Setup</button>
-      </div>
-      <!-- Actuals actions -->
-      <div id="sb-actions-actuals" class="sb-action-set" style="display:none;">
-        <div class="topbar-actions" id="sb-actuals-chips"></div>
-      </div>
-      <!-- Projections actions -->
-      <div id="sb-actions-projections" class="sb-action-set" style="display:none;">
-        <span class="last-sync" id="last-sync"></span>
-        <select class="quarter-select" id="quarter-select" style="width:100%;"></select>
-        <button class="sync-btn" id="sync-btn" style="width:100%;">Sync Zoho</button>
-      </div>
-    </div>
-  </div>
-
   <div class="nav-section-label">Menu</div>
   <button class="nav-item active" id="nav-revenue">Revenue</button>
   <button class="nav-item" id="nav-actuals">Actuals vs Projections</button>
   <button class="nav-item" id="nav-projections">Projections</button>
-  <button class="nav-item" id="nav-ratecalc">Rate Calculator</button>
-
   <div class="sidebar-spacer"></div>
-  <div class="nav-section-label nav-section-bottom">Account</div>
   <a class="nav-item nav-settings" href="settings.html">Settings</a>
-  <a class="nav-item nav-settings nav-sub" href="settings.html#users">Manage Users</a>
 </nav>
 <div class="page-shell">
   <!-- Revenue Page -->
@@ -376,341 +341,6 @@
           </tr></thead>
           <tbody id="mrr-modal-body"></tbody>
         </table>
-      </div>
-    </div>
-  </div>
-
-  <!-- Rate Calculator Page -->
-  <div id="page-ratecalc" class="page-pane">
-    <style>
-    /* ── Rate Calculator scoped styles ── */
-    #rc-root{font-family:'DM Sans',sans-serif;color:var(--text-primary);padding:2rem 1.5rem;max-width:980px;margin:0 auto}
-    #rc-root .rc-h1{font-size:21px;font-weight:500;letter-spacing:-.02em;margin-bottom:4px}
-    #rc-root .rc-sub{font-size:13px;color:var(--text-muted);margin-bottom:1.75rem}
-    #rc-root .rc-panel{background:var(--surface-1);border:0.5px solid var(--border);border-radius:16px;padding:1.5rem;margin-bottom:1rem}
-    #rc-root .rc-label{font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--text-muted);margin-bottom:1.25rem}
-    #rc-root .rc-field label{font-size:11px;color:var(--text-secondary);letter-spacing:.02em;display:block;margin-bottom:5px}
-    #rc-root select.rc-sel,#rc-root input.rc-inp{background:var(--surface-2);border:0.5px solid var(--border);border-radius:8px;color:var(--text-primary);font-family:inherit;font-size:13px;padding:8px 10px;outline:none;transition:border-color .15s}
-    #rc-root select.rc-sel:focus,#rc-root input.rc-inp:focus{border-color:var(--series-1)}
-    #rc-root .rc-plan-grid{display:grid;grid-template-columns:1fr 36px 1fr;align-items:center}
-    #rc-root .rc-plan-card{background:var(--surface-1);border:.5px solid var(--border);border-radius:14px;padding:1.25rem;transition:border-color .2s}
-    #rc-root .rc-plan-card-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:.875rem}
-    #rc-root .rc-plan-pg{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-    #rc-root .rc-plan-mini{font-size:10px;color:var(--text-muted);margin-bottom:4px}
-    #rc-root .rc-plan-sel{background:var(--surface-2);border:0.5px solid var(--border);border-radius:8px;color:var(--text-primary);font-family:inherit;font-size:13px;padding:7px 10px;outline:none;width:100%;transition:border-color .15s}
-    #rc-root .rc-plan-sel:focus{border-color:var(--series-1)}
-    #rc-root .rc-arrow-col{display:flex;align-items:center;justify-content:center;color:var(--text-muted)}
-    #rc-root .rc-tag{font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;padding:3px 9px;border-radius:20px}
-    #rc-root .rc-tag-from{background:#eaedfa;color:#4a5abf}
-    #rc-root .rc-tag-to{background:#e6f4ec;color:#2d7a4a}
-    #rc-root .rc-mod-table-wrap{overflow-x:auto}
-    #rc-root .rc-mod-table{width:100%;border-collapse:collapse;font-size:13px}
-    #rc-root .rc-mod-table thead th{font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--text-secondary);padding:8px 10px;text-align:left;border-bottom:.5px solid var(--border);white-space:nowrap;background:var(--surface-1)}
-    #rc-root .rc-mod-table thead th.r{text-align:right}
-    #rc-root .rc-mod-table thead th.c{text-align:center}
-    #rc-root .rc-mod-table tbody tr.rc-mod-row{border-bottom:.5px solid var(--gridline);transition:background .1s}
-    #rc-root .rc-mod-table tbody tr.rc-mod-row:nth-child(even){background:var(--surface-2)}
-    #rc-root .rc-mod-table tbody tr.rc-mod-row:hover{background:var(--surface-2)}
-    #rc-root .rc-mod-table tbody tr.rc-ov-row{border-bottom:.5px solid #e8e6ff}
-    #rc-root .rc-mod-table td{padding:5px 6px;vertical-align:middle}
-    #rc-root .rc-mod-table td input[type=text],#rc-root .rc-mod-table td input[type=number]{width:100%;background:var(--surface-2);border:0.5px solid var(--border);border-radius:6px;color:var(--text-primary);font-family:inherit;font-size:13px;padding:7px 9px;outline:none;transition:border-color .15s}
-    #rc-root .rc-mod-table td input:focus{border-color:var(--series-1);background:var(--surface-1)}
-    #rc-root .rc-mod-table td input.r{text-align:right;font-family:'IBM Plex Mono',monospace;font-size:12px}
-    #rc-root .rc-computed{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--text-secondary);text-align:right;padding-right:10px;white-space:nowrap;background:var(--surface-2)}
-    #rc-root .rc-computed.bold{font-weight:600;color:var(--text-primary)}
-    #rc-root .rc-del-btn{width:26px;height:26px;border-radius:6px;border:none;background:transparent;color:var(--text-muted);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .15s,color .15s;margin:0 auto;padding:0}
-    #rc-root .rc-del-btn:hover{background:#fee2e2;color:#b91c1c}
-    #rc-root .rc-del-btn:disabled{opacity:.3;cursor:default}
-    #rc-root .rc-mod-idx{font-size:11px;color:var(--text-muted);font-weight:500;text-align:center;width:24px}
-    #rc-root .rc-ov-toggle{display:flex;align-items:center;gap:6px;cursor:pointer;user-select:none;padding:2px 0}
-    #rc-root .rc-sw{width:28px;height:16px;background:var(--border);border-radius:8px;position:relative;transition:background .2s;flex-shrink:0}
-    #rc-root .rc-sw.on{background:var(--series-1)}
-    #rc-root .rc-knob{width:12px;height:12px;background:#fff;border-radius:50%;position:absolute;top:2px;left:2px;transition:left .2s;box-shadow:0 1px 2px rgba(0,0,0,.15)}
-    #rc-root .rc-sw.on .rc-knob{left:14px}
-    #rc-root .rc-ov-lbl{font-size:11px;color:var(--text-secondary)}
-    #rc-root .rc-ov-lbl.on{color:var(--series-1);font-weight:500}
-    #rc-root .rc-ov-row td{padding:0}
-    #rc-root .rc-ov-panel{background:var(--surface-2);border-bottom:.5px solid #d8d5f8;padding:10px 12px 12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-    #rc-root .rc-ov-pblock{display:flex;align-items:center;gap:8px;flex:1}
-    #rc-root .rc-ov-tag{font-size:9px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:2px 7px;border-radius:10px;flex-shrink:0}
-    #rc-root .rc-ov-sel{background:var(--surface-1);border:0.5px solid var(--border);border-radius:7px;color:var(--text-primary);font-family:inherit;font-size:12px;padding:5px 8px;outline:none;transition:border-color .15s}
-    #rc-root .rc-ov-badge{display:inline-flex;align-items:center;gap:4px;background:#ece9ff;color:#5a4fcf;font-size:10px;font-weight:600;padding:2px 8px;border-radius:10px;letter-spacing:.04em}
-    #rc-root .rc-add-btn{display:flex;align-items:center;gap:6px;margin-top:.875rem;background:none;border:.5px dashed var(--border);border-radius:8px;padding:8px 14px;cursor:pointer;font-family:inherit;font-size:13px;color:var(--text-secondary);transition:all .15s;width:100%;justify-content:center}
-    #rc-root .rc-add-btn:hover{border-color:var(--series-1);color:var(--series-1)}
-    #rc-root .rc-calc-btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:13px 20px;margin-bottom:1rem;background:var(--text-primary);color:var(--surface-1);border:none;border-radius:12px;font-family:inherit;font-size:14px;font-weight:500;cursor:pointer;transition:all .15s;letter-spacing:.01em}
-    #rc-root .rc-calc-btn:hover{opacity:.88}
-    #rc-root .rc-calc-btn.rc-computing{background:var(--series-1);pointer-events:none}
-    #rc-root .rc-results{display:none;opacity:0;transition:opacity .35s ease}
-    #rc-root .rc-results.visible{display:block;opacity:1}
-    #rc-root .rc-results.stale{opacity:.45;pointer-events:none;position:relative}
-    #rc-root .rc-results.stale::after{content:'Results may be outdated — click Calculate';position:absolute;top:0;left:50%;transform:translateX(-50%);background:#fff3cd;color:#7c6a1a;font-size:11px;font-weight:500;padding:4px 14px;border-radius:0 0 8px 8px;border:0.5px solid #f0e0a0;border-top:none;z-index:5}
-    #rc-root .rc-amt-strip{display:flex;align-items:stretch;background:var(--surface-1);border:.5px solid var(--border);border-radius:14px;overflow:hidden;margin-bottom:1rem}
-    #rc-root .rc-amt-cell{flex:1;padding:1rem 1.25rem;display:flex;flex-direction:column;justify-content:center}
-    #rc-root .rc-amt-cell+.rc-amt-cell{border-left:.5px solid var(--border)}
-    #rc-root .rc-amt-lbl{font-size:10px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:var(--text-secondary);margin-bottom:6px}
-    #rc-root .rc-amt-val{font-family:'IBM Plex Mono',monospace;font-size:22px;font-weight:500;color:var(--text-primary);line-height:1;letter-spacing:-.01em}
-    #rc-root .rc-amt-sub{font-size:11px;color:var(--text-muted);margin-top:5px}
-    #rc-root .rc-result-panel{background:var(--surface-1);border:.5px solid var(--border);border-radius:16px;overflow:hidden;margin-bottom:1rem}
-    #rc-root .rc-bk-wrap{padding:1.25rem 1.25rem 0}
-    #rc-root .rc-bk-title{font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--text-muted);margin-bottom:.875rem}
-    #rc-root .rc-bk-table{width:100%;border-collapse:collapse;font-size:12px}
-    #rc-root .rc-bk-table th{font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.07em;padding:7px 10px;border-bottom:.5px solid var(--border);text-align:left;white-space:nowrap}
-    #rc-root .rc-bk-table th.r{text-align:right}
-    #rc-root .rc-bk-table th.new-col{text-align:right;color:var(--text-primary);font-weight:700;font-size:10px;background:var(--surface-2);padding:7px 12px}
-    #rc-root .rc-bk-table td{padding:10px;border-bottom:.5px solid var(--gridline);vertical-align:middle}
-    #rc-root .rc-bk-table tbody tr:last-child td{border-bottom:none}
-    #rc-root .rc-bk-table tfoot td{border-top:.5px solid var(--border);padding-top:10px;font-weight:600}
-    #rc-root .rc-bk-table td.name{font-weight:500;color:var(--text-primary)}
-    #rc-root .rc-bk-table td.old{color:var(--text-muted);text-decoration:line-through;font-family:'IBM Plex Mono',monospace;text-align:right;font-size:12px}
-    #rc-root .rc-bk-table td.r{text-align:right}
-    #rc-root .rc-bk-table td.new-rate-prom{text-align:right;background:var(--surface-2);padding:10px 12px;font-weight:600;color:var(--text-primary);font-family:'IBM Plex Mono',monospace;font-size:14px}
-    #rc-root .rc-pst{display:flex;align-items:center;gap:4px;font-size:10px;color:var(--text-secondary);white-space:nowrap}
-    #rc-root .rc-pst .arr{color:var(--text-muted)}
-    #rc-root .rc-npv-strip{display:flex;align-items:center;gap:1.25rem;padding:.7rem 1.25rem;background:var(--surface-2);border-top:.5px solid var(--gridline);flex-wrap:wrap}
-    #rc-root .rc-npv-item{display:flex;flex-direction:column;gap:1px}
-    #rc-root .rc-npv-lbl{font-size:9px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.07em}
-    #rc-root .rc-npv-val{font-size:11px;font-family:'IBM Plex Mono',monospace;color:var(--text-secondary)}
-    #rc-root .rc-npv-div{width:.5px;height:18px;background:var(--border);flex-shrink:0}
-    #rc-root .rc-rate-bar{display:flex;align-items:center;gap:.75rem;padding:.75rem 1.25rem;border-top:.5px solid var(--border);flex-wrap:wrap}
-    #rc-root .rc-rate-lbl{font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--text-muted);white-space:nowrap}
-    #rc-root .rc-rate-vals{display:flex;align-items:baseline;gap:6px;flex-wrap:wrap}
-    #rc-root .rc-rv{font-family:'IBM Plex Mono',monospace;font-size:16px;font-weight:500}
-    #rc-root .rc-rv.neutral{color:var(--text-secondary)}
-    #rc-root .rc-rv.uplift{color:#b45309}
-    #rc-root .rc-rv.discount{color:#16803c}
-    #rc-root .rc-rv.mixed{color:var(--series-1)}
-    #rc-root .rc-rate-note{font-size:11px;color:var(--text-muted)}
-    #rc-root .rc-insight{padding:.875rem 1.25rem;border-top:.5px solid var(--border);background:var(--surface-2);display:flex;align-items:flex-start;gap:10px}
-    #rc-root .rc-idot{width:6px;height:6px;border-radius:50%;flex-shrink:0;margin-top:5px}
-    #rc-root .rc-itext{font-size:12px;color:var(--text-secondary);line-height:1.7}
-    #rc-root .rc-itext strong{color:var(--text-primary);font-weight:500}
-    #rc-root .dp{display:inline-block;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600;font-family:'IBM Plex Mono',monospace}
-    #rc-root .dp-pos{background:#dcfce7;color:#16803c}
-    #rc-root .dp-neg{background:#fff0e0;color:#92520a}
-    #rc-root .dp-flat{background:var(--surface-2);color:var(--text-secondary);font-weight:400}
-    #rc-root .dp-na{color:var(--text-muted);font-size:11px}
-    #rc-root .rc-ptp{background:var(--surface-1);border:.5px solid var(--border);border-radius:16px;margin-bottom:1rem;padding:1.25rem}
-    #rc-root .rc-ptp-head{font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--text-muted);margin-bottom:1rem;display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
-    #rc-root .rc-ptp-sub{font-size:10px;font-weight:400;letter-spacing:.02em;text-transform:none;color:var(--text-muted)}
-    #rc-root .rc-ptp-compare{display:flex;align-items:stretch;gap:.75rem;flex-wrap:wrap}
-    #rc-root .rc-ptp-cell{flex:1;min-width:150px;display:flex;flex-direction:column;gap:7px;padding:1rem 1.1rem;border-radius:12px}
-    #rc-root .rc-ptp-old{background:var(--surface-2);border:.5px solid var(--border)}
-    #rc-root .rc-ptp-new{background:#edf5f0;border:.5px solid #d4e7dc}
-    #rc-root .rc-ptp-lbl{font-size:10px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--text-secondary)}
-    #rc-root .rc-ptp-new .rc-ptp-lbl{color:#3d8a5c}
-    #rc-root .rc-ptp-val{font-family:'IBM Plex Mono',monospace;font-size:25px;font-weight:600;letter-spacing:-.01em;line-height:1}
-    #rc-root .rc-ptp-old .rc-ptp-val{color:var(--text-secondary)}
-    #rc-root .rc-ptp-new .rc-ptp-val{color:var(--text-primary)}
-    #rc-root .rc-ptp-foot{font-size:11px;color:var(--text-muted)}
-    #rc-root .rc-ptp-arrow{display:flex;align-items:center;justify-content:center;color:var(--text-muted);flex:0 0 auto}
-    #rc-root .rc-ptp-dcell{flex:1;min-width:150px;display:flex;flex-direction:column;gap:7px;padding:1rem 1.1rem;justify-content:center}
-    #rc-root .rc-ptp-delta{font-family:'IBM Plex Mono',monospace;font-size:21px;font-weight:600;line-height:1}
-    #rc-root .rc-ptp-delta.pos{color:#16803c}
-    #rc-root .rc-ptp-delta.neg{color:#b45309}
-    #rc-root .rc-ptp-delta.flat{color:var(--text-secondary)}
-    #rc-root .rc-mkp-panel{background:var(--surface-1);border:.5px solid var(--border);border-radius:16px;overflow:hidden;margin-bottom:1rem}
-    #rc-root .rc-mkp-header{padding:1.25rem 1.25rem .5rem;display:flex;align-items:flex-start;justify-content:space-between;gap:1rem}
-    #rc-root .rc-mkp-title{font-size:14px;font-weight:500;color:var(--text-primary);letter-spacing:-.01em;display:flex;align-items:center;gap:8px}
-    #rc-root .rc-mkp-badge{font-size:9px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:#b45309;background:#fff0e0;padding:2px 7px;border-radius:10px}
-    #rc-root .rc-mkp-sub{font-size:12px;color:var(--text-secondary);margin-top:4px;line-height:1.5}
-    #rc-root .rc-mkp-table{width:100%;border-collapse:collapse;font-size:13px;margin-top:.5rem}
-    #rc-root .rc-mkp-table thead th{font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--text-secondary);padding:8px 12px;text-align:left;border-bottom:.5px solid var(--border);border-top:.5px solid var(--border);white-space:nowrap;background:var(--surface-2)}
-    #rc-root .rc-mkp-table thead th.r{text-align:right}
-    #rc-root .rc-mkp-table thead th.final-col{text-align:right;color:var(--text-primary);font-weight:700;background:#f5e9d8}
-    #rc-root .rc-mkp-table tbody tr{border-bottom:.5px solid var(--gridline);transition:background .1s}
-    #rc-root .rc-mkp-table tbody tr:hover{background:var(--surface-2)}
-    #rc-root .rc-mkp-table tbody tr:last-child{border-bottom:none}
-    #rc-root .rc-mkp-table td{padding:10px 12px;vertical-align:middle}
-    #rc-root .rc-mkp-table td.name{font-weight:500;color:var(--text-primary)}
-    #rc-root .rc-mkp-table td.r{text-align:right}
-    #rc-root .rc-mkp-table td.npv-new-rate{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--text-secondary);text-align:right}
-    #rc-root .rc-mkp-table td.final-rate{text-align:right;background:#fdf8ee;font-family:'IBM Plex Mono',monospace;font-size:14px;font-weight:600;color:var(--text-primary)}
-    #rc-root .rc-mkp-table td.amount-cell{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--text-secondary);text-align:right}
-    #rc-root .rc-mkp-inp-wrap{display:inline-flex;align-items:center;gap:4px;justify-content:flex-end}
-    #rc-root .rc-mkp-inp{width:80px;background:var(--surface-1);border:0.5px solid var(--border);border-radius:6px;color:#b45309;font-family:inherit;font-size:13px;font-weight:500;padding:6px 9px;outline:none;text-align:right;transition:border-color .15s}
-    #rc-root .rc-mkp-inp:focus{border-color:#b45309}
-    #rc-root .rc-mkp-inp::-webkit-outer-spin-button,#rc-root .rc-mkp-inp::-webkit-inner-spin-button{-webkit-appearance:none}
-    #rc-root .rc-mkp-inp[type=number]{-moz-appearance:textfield}
-    #rc-root .rc-mkp-pct{font-size:12px;color:var(--text-secondary)}
-    #rc-root .rc-mkp-table tfoot td{border-top:.5px solid var(--border);padding:12px;font-weight:600;background:var(--surface-2)}
-    #rc-root .rc-mkp-table tfoot td.final-rate{background:#f5e9d8}
-    #rc-root .rc-bulk-row{display:flex;align-items:center;gap:12px;padding:.875rem 1.25rem;background:#fffaf0;border-top:.5px solid #f5e9d8;border-bottom:.5px solid #f5e9d8;flex-wrap:wrap}
-    #rc-root .rc-bulk-lbl{font-size:11px;color:#7c6a1a;font-weight:500;letter-spacing:.02em}
-    #rc-root .rc-bulk-inp{width:90px;background:#fff;border:0.5px solid #e8d8b8;border-radius:6px;color:#b45309;font-family:inherit;font-size:13px;font-weight:500;padding:6px 10px;outline:none;text-align:right;transition:border-color .15s}
-    #rc-root .rc-bulk-apply{background:#b45309;color:#fff;border:none;border-radius:7px;padding:6px 14px;font-family:inherit;font-size:12px;font-weight:500;cursor:pointer;transition:background .15s}
-    #rc-root .rc-bulk-apply:hover{background:#92420a}
-    #rc-root .rc-mks-strip{display:flex;align-items:stretch;background:#fdf8ee;border-top:.5px solid #f5e9d8}
-    #rc-root .rc-mks-cell{flex:1;padding:.875rem 1.25rem;display:flex;flex-direction:column}
-    #rc-root .rc-mks-cell+.rc-mks-cell{border-left:.5px solid #f5e9d8}
-    #rc-root .rc-mks-lbl{font-size:10px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:#a08850;margin-bottom:4px}
-    #rc-root .rc-mks-val{font-family:'IBM Plex Mono',monospace;font-size:16px;font-weight:600;color:#7c4d09;line-height:1.1}
-    #rc-root .rc-mks-val.pos{color:#16803c}
-    #rc-root .rc-mks-val.neg{color:#b45309}
-    #rc-root .rc-mks-val.flat{color:var(--text-secondary)}
-    #rc-root .rc-mks-sub{font-size:11px;color:#a08850;margin-top:3px}
-    #rc-root .rc-coc-note{font-size:11px;color:var(--text-muted);text-align:right;margin-bottom:1rem}
-    #rc-root .rc-excel-btn{display:flex;align-items:center;gap:8px;background:var(--surface-1);border:0.5px solid var(--border);border-radius:10px;padding:9px 16px;cursor:pointer;white-space:nowrap;transition:border-color .15s;font-family:inherit}
-    #rc-root .rc-excel-btn:hover{border-color:#1d6f42;box-shadow:0 0 0 3px rgba(29,111,66,.08)}
-    #rc-root .rc-excel-btn:disabled{opacity:.4;cursor:default;pointer-events:none}
-    #rc-root .rc-excel-icon{width:28px;height:28px;background:#1d6f42;border-radius:6px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
-    </style>
-
-    <div id="rc-root">
-      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:1rem;margin-bottom:1.75rem">
-        <div>
-          <div class="rc-h1">Rate Calculator</div>
-          <div class="rc-sub">Per-module NPV-neutral rate adjustment with plan overrides</div>
-        </div>
-        <button class="rc-excel-btn" id="rcExcelBtn" onclick="rcExportNPV()" disabled>
-          <div class="rc-excel-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M9.5 1H3.5C3.22 1 3 1.22 3 1.5v13c0 .28.22.5.5.5h9c.28 0 .5-.22.5-.5V4.5L9.5 1z" stroke="white" stroke-width="1" fill="none"/><path d="M9.5 1V4.5H13" stroke="white" stroke-width="1" stroke-linecap="round"/><path d="M5.5 8.5h5M5.5 11h5M5.5 6h2" stroke="white" stroke-width="1" stroke-linecap="round"/></svg></div>
-          <div><div style="font-size:12px;font-weight:500;color:var(--text-primary)">NPV Workings</div><div style="font-size:10px;color:var(--text-muted)">Download .xlsx</div></div>
-        </button>
-      </div>
-
-      <!-- Global plan shift -->
-      <div class="rc-panel">
-        <div class="rc-label">Global default plan shift</div>
-        <div class="rc-plan-grid">
-          <div class="rc-plan-card">
-            <div class="rc-plan-card-head"><span style="font-size:12px;font-weight:500;color:var(--text-primary)">Default initial plan</span><span class="rc-tag rc-tag-from">FROM</span></div>
-            <div class="rc-plan-pg">
-              <div><div class="rc-plan-mini">Billing frequency</div>
-                <select class="rc-plan-sel" id="rcGFromFreq" onchange="rcMarkStale()">
-                  <option value="1">Monthly</option><option value="3">Quarterly</option>
-                  <option value="6">Half-yearly</option><option value="12">Yearly</option>
-                </select>
-              </div>
-              <div><div class="rc-plan-mini">Payment timing</div>
-                <select class="rc-plan-sel" id="rcGFromTiming" onchange="rcMarkStale()">
-                  <option value="prepaid">Prepaid</option><option value="postpaid">Postpaid</option>
-                </select>
-              </div>
-            </div>
-          </div>
-          <div class="rc-arrow-col"><svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M3 9h12M11 5l4 4-4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
-          <div class="rc-plan-card">
-            <div class="rc-plan-card-head"><span style="font-size:12px;font-weight:500;color:var(--text-primary)">Default final plan</span><span class="rc-tag rc-tag-to">TO</span></div>
-            <div class="rc-plan-pg">
-              <div><div class="rc-plan-mini">Billing frequency</div>
-                <select class="rc-plan-sel" id="rcGToFreq" onchange="rcMarkStale()">
-                  <option value="1">Monthly</option><option value="3" selected>Quarterly</option>
-                  <option value="6">Half-yearly</option><option value="12">Yearly</option>
-                </select>
-              </div>
-              <div><div class="rc-plan-mini">Payment timing</div>
-                <select class="rc-plan-sel" id="rcGToTiming" onchange="rcMarkStale()">
-                  <option value="prepaid">Prepaid</option><option value="postpaid" selected>Postpaid</option>
-                </select>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Modules -->
-      <div class="rc-panel">
-        <div class="rc-label">Modules &amp; Pricing</div>
-        <div class="rc-mod-table-wrap">
-          <table class="rc-mod-table">
-            <thead><tr>
-              <th style="width:30px"></th>
-              <th style="width:26px" class="c">#</th>
-              <th>Module Name</th>
-              <th class="r" style="width:80px">Qty</th>
-              <th class="r" style="width:130px">Rate / unit (₹)</th>
-              <th class="r" style="width:140px">Amount (₹)</th>
-              <th class="c" style="width:90px">Override plan</th>
-            </tr></thead>
-            <tbody id="rcModBody"></tbody>
-          </table>
-        </div>
-        <button class="rc-add-btn" id="rcAddModBtn" onclick="rcAddModule()">
-          <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 2v10M2 7h10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
-          Add module
-        </button>
-      </div>
-
-      <button class="rc-calc-btn" id="rcCalcBtn" onclick="rcOnCalculate()">
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M13.5 8H2.5M9.5 4l4 4-4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        Calculate NPV-Neutral Rates
-      </button>
-      <div class="rc-coc-note">Cost of capital: <strong style="color:var(--text-secondary)">15% per annum</strong> (1.17% monthly)</div>
-
-      <!-- Results -->
-      <div class="rc-results" id="rcResults">
-        <!-- Amount strip -->
-        <div class="rc-amt-strip">
-          <div class="rc-amt-cell"><div class="rc-amt-lbl">Total per Year</div><div class="rc-amt-val" id="rcSumYear">—</div><div class="rc-amt-sub" id="rcSumYearSub"></div></div>
-          <div class="rc-amt-cell"><div class="rc-amt-lbl">Total per Month</div><div class="rc-amt-val" style="font-size:18px" id="rcSumMonth">—</div><div class="rc-amt-sub" id="rcSumMonthSub"></div></div>
-          <div class="rc-amt-cell"><div class="rc-amt-lbl" id="rcSumCycLbl">Per Billing Cycle</div><div class="rc-amt-val" style="font-size:18px" id="rcSumCycle">—</div><div class="rc-amt-sub" id="rcSumCycleSub"></div></div>
-        </div>
-
-        <!-- NPV breakdown -->
-        <div class="rc-result-panel">
-          <div class="rc-bk-wrap">
-            <div class="rc-bk-title">Per-module NPV breakdown</div>
-            <table class="rc-bk-table">
-              <thead><tr>
-                <th>Module</th><th>Plan shift</th>
-                <th class="r">Current rate</th><th class="r">Time-value adj.</th>
-                <th class="new-col">New rate (NPV-neutral) →</th>
-              </tr></thead>
-              <tbody id="rcBkBody"></tbody>
-              <tfoot id="rcBkFoot"></tfoot>
-            </table>
-          </div>
-          <div class="rc-npv-strip">
-            <div class="rc-npv-item"><div class="rc-npv-lbl">Initial NPV</div><div class="rc-npv-val" id="rcNpvInit">—</div></div>
-            <div class="rc-npv-div"></div>
-            <div class="rc-npv-item"><div class="rc-npv-lbl">Final NPV</div><div class="rc-npv-val" id="rcNpvFinal">—</div></div>
-            <div class="rc-npv-div"></div>
-            <div class="rc-npv-item"><div class="rc-npv-lbl">NPV preserved</div><div class="rc-npv-val" id="rcNpvDiff">—</div></div>
-          </div>
-          <div class="rc-rate-bar"><div class="rc-rate-lbl">NPV-neutral rate adj.</div><div class="rc-rate-vals" id="rcRateSummary"><span class="rc-rv neutral">—</span></div></div>
-          <div class="rc-insight"><div class="rc-idot" id="rcInsightDot" style="background:var(--text-muted)"></div><div class="rc-itext" id="rcInsightText">Add modules and configure plans to see the result.</div></div>
-        </div>
-
-        <!-- Plan total comparison -->
-        <div class="rc-ptp">
-          <div class="rc-ptp-head">Plan total comparison<span class="rc-ptp-sub">Annual revenue · before any markup</span></div>
-          <div class="rc-ptp-compare">
-            <div class="rc-ptp-cell rc-ptp-old"><div class="rc-ptp-lbl">Old plan total</div><div class="rc-ptp-val" id="rcPtpOld">—</div><div class="rc-ptp-foot">Current rates · old plan</div></div>
-            <div class="rc-ptp-arrow"><svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M3 10h13M12 5l5 5-5 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
-            <div class="rc-ptp-cell rc-ptp-new"><div class="rc-ptp-lbl">New plan total</div><div class="rc-ptp-val" id="rcPtpNew">—</div><div class="rc-ptp-foot">NPV-neutral rates · new plan</div></div>
-            <div class="rc-ptp-dcell"><div class="rc-ptp-lbl">Difference</div><div class="rc-ptp-delta flat" id="rcPtpDelta">—</div><div class="rc-ptp-foot" id="rcPtpDeltaFoot"></div></div>
-          </div>
-        </div>
-
-        <!-- Annual markup -->
-        <div class="rc-mkp-panel">
-          <div class="rc-mkp-header"><div>
-            <div class="rc-mkp-title">Annual Markup<span class="rc-mkp-badge">Optional</span></div>
-            <div class="rc-mkp-sub">Apply yearly price increases on top of NPV-neutral rates. These are independent of the NPV calculations above.</div>
-          </div></div>
-          <div class="rc-bulk-row">
-            <span class="rc-bulk-lbl">Apply uniform markup to all modules:</span>
-            <input type="number" class="rc-bulk-inp" id="rcBulkMarkup" placeholder="0.0" step="0.1" min="0">
-            <span style="font-size:12px;color:var(--text-secondary)">%</span>
-            <button class="rc-bulk-apply" onclick="rcApplyBulkMarkup()">Apply to all</button>
-          </div>
-          <table class="rc-mkp-table">
-            <thead><tr>
-              <th>Module</th><th class="r">New rate (NPV-neutral)</th>
-              <th class="r" style="width:130px">Annual markup %</th>
-              <th class="final-col">Final rate →</th>
-              <th class="r">Final monthly amount</th>
-            </tr></thead>
-            <tbody id="rcMkpBody"></tbody>
-            <tfoot id="rcMkpFoot"></tfoot>
-          </table>
-          <div class="rc-mks-strip">
-            <div class="rc-mks-cell"><div class="rc-mks-lbl">Old plan total</div><div class="rc-mks-val" id="rcMksOld">—</div><div class="rc-mks-sub">Current rates · annual</div></div>
-            <div class="rc-mks-cell"><div class="rc-mks-lbl">New plan · pre-markup</div><div class="rc-mks-val" id="rcMksPre">—</div><div class="rc-mks-sub">NPV-neutral rates · annual</div></div>
-            <div class="rc-mks-cell"><div class="rc-mks-lbl">New plan · post-markup</div><div class="rc-mks-val" id="rcMksPost">—</div><div class="rc-mks-sub" id="rcMksUpSub">No markup applied</div></div>
-            <div class="rc-mks-cell"><div class="rc-mks-lbl">Blended markup %</div><div class="rc-mks-val" id="rcMksBlend">—</div><div class="rc-mks-sub">Weighted by module amount</div></div>
-            <div class="rc-mks-cell"><div class="rc-mks-lbl">Net difference</div><div class="rc-mks-val flat" id="rcMksDiff">—</div><div class="rc-mks-sub" id="rcMksDiffSub">old → post-markup</div></div>
-          </div>
-        </div>
       </div>
     </div>
   </div>
@@ -1007,27 +637,16 @@ function renderTabs() {
 // ============================================================
 // REVENUE PAGE
 // ============================================================
-const PAGE_META = {
-  revenue:    { title: 'Revenue',                  sub: 'Actual booked revenue by business unit' },
-  actuals:    { title: 'Actuals vs Projections',   sub: 'Compare actuals against monthly targets' },
-  projections:{ title: 'Projections',              sub: 'Pipeline snapshot by business unit' },
-  ratecalc:   { title: 'Rate Calculator',          sub: 'NPV-neutral rate adjustment' },
-};
-
 function switchPage(page) {
   currentPage = page;
-  ['revenue','actuals','projections','ratecalc'].forEach(p => {
-    document.getElementById('page-' + p).classList.toggle('active', p === page);
-    document.getElementById('nav-' + p).classList.toggle('active', p === page);
-    const el = document.getElementById('sb-actions-' + p);
-    if (el) el.style.display = p === page ? '' : 'none';
-  });
-  const meta = PAGE_META[page] || {};
-  document.getElementById('sb-page-title').textContent = meta.title || '';
-  document.getElementById('sb-page-sub').textContent   = meta.sub   || '';
+  document.getElementById('page-revenue').classList.toggle('active', page === 'revenue');
+  document.getElementById('page-actuals').classList.toggle('active', page === 'actuals');
+  document.getElementById('page-projections').classList.toggle('active', page === 'projections');
+  document.getElementById('nav-revenue').classList.toggle('active', page === 'revenue');
+  document.getElementById('nav-actuals').classList.toggle('active', page === 'actuals');
+  document.getElementById('nav-projections').classList.toggle('active', page === 'projections');
   if (page === 'revenue') renderRevenuePage();
   else if (page === 'actuals') renderActualsPage();
-  else if (page === 'ratecalc') { /* self-contained */ }
   else { renderTabs(); render(); }
 }
 
@@ -1180,10 +799,9 @@ function renderActualsPage() {
 
   function numCell(v, clickAttrs) {
     if (v === 0) return `<td class="num"><span class="rev-zero">-</span></td>`;
-    const cls = v < 0 ? 'rev-neg' : 'rev-pos';
-    const inner = `<span class="${cls}" style="${clickAttrs ? 'cursor:pointer;text-decoration:underline dotted;' : ''}">${fmtINR(v)}</span>`;
+    const inner = v < 0 ? `<span class="rev-neg">${fmtINR(v)}</span>` : fmtINR(v);
     return clickAttrs
-      ? `<td class="num" ${clickAttrs}>${inner}</td>`
+      ? `<td class="num" style="cursor:pointer;color:var(--series-1);" ${clickAttrs}>${fmtINR(v)}</td>`
       : `<td class="num">${inner}</td>`;
   }
 
@@ -1245,21 +863,10 @@ function renderActualsPage() {
       </tr>`;
     });
 
-    let totalValue;
-    if (isProj) {
-      totalValue = allBUs.reduce((s, bu) => s + buProjection(bu, metric), 0);
-    } else if (isMrr) {
-      // Portfolio-level NNR: total MRR all accounts, not sum of BU NNRs (avoids double-count / gaps)
-      totalValue = selMonths.reduce((sum, m) => {
-        const idx = monthSet.indexOf(m);
-        const prev = idx > 0 ? monthSet[idx - 1] : null;
-        const cur = REVENUE_ACTUALS.filter(r => r.month === m).reduce((s, r) => s + Number(r.mrr_amount ?? 0), 0);
-        const prv = prev !== null ? REVENUE_ACTUALS.filter(r => r.month === prev).reduce((s, r) => s + Number(r.mrr_amount ?? 0), 0) : 0;
-        return sum + (cur - prv);
-      }, 0);
-    } else {
-      totalValue = allBUs.reduce((s, bu) => s + selMonths.reduce((a, m) => a + buActual(bu, m, amtField), 0), 0);
-    }
+    const totalValue = allBUs.reduce((s, bu) => {
+      if (isProj) return s + buProjection(bu, metric);
+      return s + (isMrr ? buNnrForRange(bu, selMonths) : selMonths.reduce((a, m) => a + buActual(bu, m, amtField), 0));
+    }, 0);
     const totalTarget = allBUs.reduce((s, bu) =>
       s + selMonths.reduce((a, m) => { const t = actualsTargetFor(bu, m, metric); return t !== undefined ? a + t : a; }, 0), 0);
     const totalVariance = totalValue - totalTarget;
@@ -1295,7 +902,7 @@ function renderActualsPage() {
   }
 
   // Render chips + tables
-  const topbar = document.getElementById('sb-actuals-chips');
+  const topbar = document.querySelector('#page-actuals .topbar-actions');
   topbar.innerHTML = `<div class="tabs" style="flex-wrap:wrap;gap:4px;">${chipsHtml}</div>`;
   topbar.querySelectorAll('[data-avp-month-chip]').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -2090,7 +1697,6 @@ async function main() {
   document.getElementById('nav-revenue').addEventListener('click', () => switchPage('revenue'));
   document.getElementById('nav-actuals').addEventListener('click', () => switchPage('actuals'));
   document.getElementById('nav-projections').addEventListener('click', () => switchPage('projections'));
-  document.getElementById('nav-ratecalc').addEventListener('click', () => switchPage('ratecalc'));
 
   // "Sheet Setup" button shows the setup instructions inline
   document.getElementById('revenue-setup-btn').addEventListener('click', () => {
@@ -4326,449 +3932,6 @@ function downloadXLSX(filename, headers, rows) {
 }
 
 main();
-
-// ══════════════════════════════════════════════════════════════════════════════
-// RATE CALCULATOR — self-contained, all names prefixed rc
-// ══════════════════════════════════════════════════════════════════════════════
-(function() {
-const RC_MAX = 10;
-const RC_FREQ_LABELS = {1:'Monthly',3:'Quarterly',6:'Half-yearly',12:'Yearly'};
-const RC_TIMING_LABELS = {prepaid:'Prepaid',postpaid:'Postpaid'};
-const RC_ANNUAL_COC = 0.15;
-const RC_MONTHLY_R = (Math.pow(1 + RC_ANNUAL_COC, 1/12) - 1) * 100;
-
-let rcModules = [], rcNextId = 1;
-let rcLastResults = [];
-let rcHasCalc = false;
-
-function rcGF() { return { freq: parseInt(document.getElementById('rcGFromFreq').value), timing: document.getElementById('rcGFromTiming').value }; }
-function rcGT() { return { freq: parseInt(document.getElementById('rcGToFreq').value),   timing: document.getElementById('rcGToTiming').value }; }
-
-function rcPlanNPV(periodMonths, timing, monthlyAmt, r) {
-  const n = 12 / periodMonths; let v = 0;
-  for (let i = 0; i < n; i++) {
-    const t = timing === 'prepaid' ? i * periodMonths : (i + 1) * periodMonths;
-    v += (monthlyAmt * periodMonths) / Math.pow(1 + r / 100, t);
-  }
-  return v;
-}
-function rcAvgCT(periodMonths, timing) {
-  const n = 12 / periodMonths; let s = 0;
-  for (let i = 0; i < n; i++) s += timing === 'prepaid' ? i * periodMonths : (i + 1) * periodMonths;
-  return s / n;
-}
-function rcMult(ff, ft, tf, tt, r) { return rcPlanNPV(ff, ft, 1, r) / rcPlanNPV(tf, tt, 1, r); }
-function rcCashFlows(periodMonths, timing, monthlyAmt, r) {
-  const n = 12 / periodMonths; const rows = []; let totalPV = 0;
-  for (let i = 0; i < n; i++) {
-    const t = timing === 'prepaid' ? i * periodMonths : (i + 1) * periodMonths;
-    const payment = monthlyAmt * periodMonths;
-    const discFactor = 1 / Math.pow(1 + r / 100, t);
-    const pv = payment * discFactor;
-    totalPV += pv;
-    rows.push({ period: i + 1, monthPaid: t, payment, discFactor, pv });
-  }
-  return { rows, totalPV };
-}
-
-function rcFmtR(n) { return '₹' + Math.abs(n).toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2}); }
-function rcFmtRShort(n) {
-  if (n >= 1e7) return '₹' + (n/1e7).toFixed(2) + ' Cr';
-  if (n >= 1e5) return '₹' + (n/1e5).toFixed(2) + ' L';
-  return rcFmtR(n);
-}
-function rcFmtP(n) { return (n >= 0 ? '+' : '') + n.toFixed(3) + '%'; }
-function rcDp(pct, naIfZero=false) {
-  if (naIfZero && Math.abs(pct) < 0.001) return '<span class="dp-na">—</span>';
-  const cls = Math.abs(pct) < 0.001 ? 'dp-flat' : pct > 0 ? 'dp-pos' : 'dp-neg';
-  return `<span class="dp ${cls}">${rcFmtP(pct)}</span>`;
-}
-function rcPlanLabel(freq, timing) { return RC_FREQ_LABELS[freq] + ' · ' + RC_TIMING_LABELS[timing]; }
-
-function rcMarkStale() {
-  if (rcHasCalc) document.getElementById('rcResults').classList.add('stale');
-}
-
-function rcUpdateRowComputed(m, trEl) {
-  const tr = trEl || document.querySelector(`#rcModBody tr.rc-mod-row[data-id="${m.id}"]`);
-  if (!tr) return;
-  const qty = parseFloat(m.qty) || 0, rate = parseFloat(m.rate) || 0;
-  const amtTd = tr.querySelector('[data-field="amt"]');
-  if (amtTd) amtTd.textContent = qty * rate > 0 ? rcFmtR(qty * rate) : '—';
-}
-
-function rcRefreshMeta() {
-  const rows = document.querySelectorAll('#rcModBody tr.rc-mod-row');
-  rows.forEach((tr, i) => {
-    const idx = tr.querySelector('.rc-mod-idx'); if (idx) idx.textContent = i + 1;
-    const btn = tr.querySelector('.rc-del-btn'); if (btn) btn.disabled = rcModules.length <= 1;
-  });
-}
-
-function rcBuildRow(m, idx) {
-  const tr = document.createElement('tr');
-  tr.className = 'rc-mod-row'; tr.dataset.id = m.id;
-
-  const delTd = document.createElement('td');
-  const delBtn = document.createElement('button');
-  delBtn.className = 'rc-del-btn';
-  delBtn.innerHTML = '<svg width="11" height="11" viewBox="0 0 11 11" fill="none"><path d="M1.5 1.5l8 8M9.5 1.5l-8 8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>';
-  delBtn.onclick = () => rcRemoveModule(m.id);
-  delTd.appendChild(delBtn); tr.appendChild(delTd);
-
-  const idxTd = document.createElement('td');
-  idxTd.className = 'rc-mod-idx'; idxTd.textContent = idx + 1; tr.appendChild(idxTd);
-
-  function mkInp(field, type, ph, extraCls='') {
-    const td = document.createElement('td');
-    const inp = document.createElement('input');
-    inp.type = type; inp.placeholder = ph;
-    if (m[field] !== '') inp.value = m[field];
-    if (extraCls) inp.className = extraCls;
-    if (type === 'number') { inp.min = '0'; inp.step = '0.01'; }
-    inp.oninput = () => { m[field] = inp.value; rcUpdateRowComputed(m); rcMarkStale(); };
-    td.appendChild(inp); return td;
-  }
-  tr.appendChild(mkInp('name', 'text', 'Module name…'));
-  tr.appendChild(mkInp('qty', 'number', '0', 'r'));
-  tr.appendChild(mkInp('rate', 'number', '0.00', 'r'));
-
-  const amtTd = document.createElement('td');
-  amtTd.className = 'rc-computed bold'; amtTd.dataset.field = 'amt'; tr.appendChild(amtTd);
-
-  const ovTd = document.createElement('td');
-  ovTd.style.textAlign = 'center';
-  const tog = document.createElement('div');
-  tog.className = 'rc-ov-toggle'; tog.style.justifyContent = 'center';
-  const sw = document.createElement('div');
-  sw.className = 'rc-sw' + (m.override ? ' on' : '');
-  sw.innerHTML = '<div class="rc-knob"></div>';
-  const lbl = document.createElement('span');
-  lbl.className = 'rc-ov-lbl' + (m.override ? ' on' : '');
-  lbl.textContent = m.override ? 'On' : 'Off';
-  tog.appendChild(sw); tog.appendChild(lbl);
-  tog.onclick = () => rcToggleOverride(m.id);
-  ovTd.appendChild(tog); tr.appendChild(ovTd);
-
-  const ovRow = document.createElement('tr');
-  ovRow.className = 'rc-ov-row'; ovRow.dataset.ovFor = m.id;
-  ovRow.style.display = m.override ? '' : 'none';
-  const ovCell = document.createElement('td');
-  ovCell.colSpan = 7; ovCell.style.padding = '0';
-  const ovPanel = document.createElement('div');
-  ovPanel.className = 'rc-ov-panel';
-  const badge = document.createElement('span');
-  badge.className = 'rc-ov-badge';
-  badge.innerHTML = '<svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 5h6M6 3l2 2-2 2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg> Module override';
-  ovPanel.appendChild(badge);
-
-  function mkOvSel(field, options, defaultVal) {
-    const sel = document.createElement('select');
-    sel.className = 'rc-ov-sel';
-    options.forEach(([val, txt]) => {
-      const opt = document.createElement('option');
-      opt.value = val; opt.textContent = txt;
-      if (String(val) === String(m[field] || defaultVal)) opt.selected = true;
-      sel.appendChild(opt);
-    });
-    sel.onchange = () => { m[field] = isNaN(parseInt(sel.value)) ? sel.value : parseInt(sel.value); rcMarkStale(); };
-    return sel;
-  }
-  const fb = document.createElement('div'); fb.className = 'rc-ov-pblock';
-  const ft = document.createElement('span'); ft.className = 'rc-ov-tag rc-tag-from'; ft.textContent = 'FROM';
-  fb.append(ft, mkOvSel('ovFromFreq', [[1,'Monthly'],[3,'Quarterly'],[6,'Half-yearly'],[12,'Yearly']], rcGF().freq),
-               mkOvSel('ovFromTiming', [['prepaid','Prepaid'],['postpaid','Postpaid']], rcGF().timing));
-  const arr = document.createElement('span'); arr.className = 'ov-arrow'; arr.textContent = '→';
-  const tb = document.createElement('div'); tb.className = 'rc-ov-pblock';
-  const tt2 = document.createElement('span'); tt2.className = 'rc-ov-tag rc-tag-to'; tt2.textContent = 'TO';
-  tb.append(tt2, mkOvSel('ovToFreq', [[1,'Monthly'],[3,'Quarterly'],[6,'Half-yearly'],[12,'Yearly']], rcGT().freq),
-                 mkOvSel('ovToTiming', [['prepaid','Prepaid'],['postpaid','Postpaid']], rcGT().timing));
-  ovPanel.append(fb, arr, tb);
-  ovCell.appendChild(ovPanel); ovRow.appendChild(ovCell);
-  rcUpdateRowComputed(m, tr);
-  return [tr, ovRow];
-}
-
-function rcToggleOverride(id) {
-  const m = rcModules.find(x => x.id === id); if (!m) return;
-  m.override = !m.override;
-  if (m.override) {
-    const gf = rcGF(), gt = rcGT();
-    if (!m.ovFromFreq)   m.ovFromFreq   = gf.freq;
-    if (!m.ovFromTiming) m.ovFromTiming = gf.timing;
-    if (!m.ovToFreq)     m.ovToFreq     = gt.freq;
-    if (!m.ovToTiming)   m.ovToTiming   = gt.timing;
-  }
-  const tr = document.querySelector(`#rcModBody tr.rc-mod-row[data-id="${id}"]`);
-  if (tr) {
-    const sw  = tr.querySelector('.rc-sw');
-    const lbl = tr.querySelector('.rc-ov-lbl');
-    if (m.override) { sw.classList.add('on'); lbl.classList.add('on'); lbl.textContent = 'On'; }
-    else            { sw.classList.remove('on'); lbl.classList.remove('on'); lbl.textContent = 'Off'; }
-  }
-  const ovRow = document.querySelector(`#rcModBody tr[data-ov-for="${id}"]`);
-  if (ovRow) ovRow.style.display = m.override ? '' : 'none';
-  rcMarkStale();
-}
-
-window.rcAddModule = function(name='', qty='', rate='') {
-  if (rcModules.length >= RC_MAX) return;
-  const m = { id: rcNextId++, name, qty, rate, override: false, ovFromFreq:null, ovFromTiming:null, ovToFreq:null, ovToTiming:null };
-  rcModules.push(m);
-  const tbody = document.getElementById('rcModBody');
-  const [tr, ovRow] = rcBuildRow(m, rcModules.length - 1);
-  tbody.appendChild(tr); tbody.appendChild(ovRow);
-  rcRefreshMeta(); rcMarkStale();
-};
-
-function rcRemoveModule(id) {
-  if (rcModules.length <= 1) return;
-  rcModules = rcModules.filter(x => x.id !== id);
-  document.querySelector(`#rcModBody tr.rc-mod-row[data-id="${id}"]`)?.remove();
-  document.querySelector(`#rcModBody tr[data-ov-for="${id}"]`)?.remove();
-  rcRefreshMeta(); rcMarkStale();
-}
-
-window.rcOnCalculate = function() {
-  const btn = document.getElementById('rcCalcBtn');
-  btn.classList.add('rc-computing');
-  btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" style="animation:spin .6s linear infinite"><circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.5" stroke-dasharray="28" stroke-dashoffset="8" stroke-linecap="round" fill="none"/></svg> Computing…';
-  setTimeout(() => {
-    rcCalculate(); rcHasCalc = true;
-    const area = document.getElementById('rcResults');
-    area.classList.remove('stale'); area.classList.add('visible');
-    document.getElementById('rcExcelBtn').disabled = false;
-    btn.classList.remove('rc-computing');
-    btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2.5 8.5l3.5 3.5 7.5-7.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg> Recalculate';
-    area.scrollIntoView({ behavior:'smooth', block:'start' });
-  }, 300);
-};
-
-function rcCalculate() {
-  const r = RC_MONTHLY_R, gf = rcGF(), gt = rcGT();
-  let totalAmt = 0, totalNpvInit = 0, totalNpvFinal = 0, totalAdj = 0;
-  const results = rcModules.map(m => {
-    const qty = parseFloat(m.qty) || 0, rate = parseFloat(m.rate) || 0, amt = qty * rate;
-    const ff = m.override ? parseInt(m.ovFromFreq)  : gf.freq;
-    const ft = m.override ? m.ovFromTiming           : gf.timing;
-    const tf = m.override ? parseInt(m.ovToFreq)    : gt.freq;
-    const tt = m.override ? m.ovToTiming             : gt.timing;
-    const mul = amt > 0 ? rcMult(ff, ft, tf, tt, r) : 1;
-    const rc2 = (mul - 1) * 100;
-    const adjRate = rate * mul;
-    const prevMkp = (rcLastResults.find(x => x.m.id === m.id) || {}).markupPct || 0;
-    const npvInit  = amt > 0 ? rcPlanNPV(ff, ft, amt, r) : 0;
-    const npvFinal = amt > 0 ? rcPlanNPV(tf, tt, amt * mul, r) : 0;
-    totalAmt += amt; totalAdj += adjRate * qty; totalNpvInit += npvInit; totalNpvFinal += npvFinal;
-    return { m, ff, ft, tf, tt, rate, adjRate, amt, qty, mul, rc: rc2, npvInit, npvFinal, markupPct: prevMkp };
-  });
-  rcLastResults = results;
-
-  document.getElementById('rcNpvInit').textContent  = totalAmt > 0 ? rcFmtR(totalNpvInit) : '—';
-  document.getElementById('rcNpvFinal').textContent = totalAmt > 0 ? rcFmtR(totalNpvFinal) : '—';
-  const npvDiff = totalNpvFinal - totalNpvInit;
-  document.getElementById('rcNpvDiff').textContent  = totalAmt > 0 ? (Math.abs(npvDiff) < 0.01 ? '✓ Yes (∆ ₹0.00)' : `∆ ${rcFmtR(npvDiff)}`) : '—';
-
-  // Amount strip
-  const gt2 = gt;
-  document.getElementById('rcSumYear').textContent  = totalAmt > 0 ? rcFmtRShort(totalAmt * 12) : '—';
-  document.getElementById('rcSumYearSub').textContent = totalAmt > 0 ? 'Annual revenue (current rates)' : '';
-  document.getElementById('rcSumMonth').textContent = totalAmt > 0 ? rcFmtR(totalAmt) : '—';
-  document.getElementById('rcSumMonthSub').textContent = totalAmt > 0 ? 'Monthly revenue (current rates)' : '';
-  document.getElementById('rcSumCycLbl').textContent = 'Per ' + (RC_FREQ_LABELS[gt2.freq]||'Billing') + ' Cycle';
-  document.getElementById('rcSumCycle').textContent = totalAmt > 0 ? rcFmtR(totalAmt * gt2.freq) : '—';
-  document.getElementById('rcSumCycleSub').textContent = totalAmt > 0 ? (RC_FREQ_LABELS[gt2.freq]||'') + ' (TO plan, current rates)' : '';
-
-  if (totalAmt === 0) {
-    document.getElementById('rcRateSummary').innerHTML = '<span class="rc-rv neutral">—</span>';
-    document.getElementById('rcBkBody').innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text-muted);padding:1.5rem;font-size:13px">Enter module details and click Calculate</td></tr>';
-    document.getElementById('rcBkFoot').innerHTML = '';
-    document.getElementById('rcInsightText').innerHTML = 'Add modules and configure plans to see the result.';
-    document.getElementById('rcInsightDot').style.background = 'var(--text-muted)';
-    document.getElementById('rcMkpBody').innerHTML = '';
-    document.getElementById('rcMkpFoot').innerHTML = '';
-    ['rcMksOld','rcMksPre','rcMksPost','rcMksBlend','rcMksDiff'].forEach(id => document.getElementById(id).textContent = '—');
-    rcUpdatePtp(0, 0); return;
-  }
-
-  const rcs = results.filter(x => x.amt > 0).map(x => x.rc);
-  const minRc = Math.min(...rcs), maxRc = Math.max(...rcs);
-  const allSame = Math.abs(maxRc - minRc) < 0.001;
-  const sumEl = document.getElementById('rcRateSummary');
-  if (allSame) {
-    const cls = Math.abs(minRc) < 0.001 ? 'neutral' : minRc > 0 ? 'uplift' : 'discount';
-    sumEl.innerHTML = `<span class="rc-rv ${cls}">${rcFmtP(minRc)}</span><span class="rc-rate-note">uniform across all modules</span>`;
-  } else {
-    sumEl.innerHTML = `<span class="rc-rv mixed">${rcFmtP(minRc)}</span><span class="rc-rate-note">to</span><span class="rc-rv mixed">${rcFmtP(maxRc)}</span><span class="rc-rate-note">varies per module</span>`;
-  }
-
-  const bkBody = document.getElementById('rcBkBody');
-  bkBody.innerHTML = '';
-  results.forEach(({m, ff, ft, tf, tt, rate, adjRate, amt, rc: rc2}, i) => {
-    if (amt === 0) return;
-    const name = m.name || `Module ${i+1}`;
-    const ovBadge = m.override ? ' <span style="font-size:9px;background:#ece9ff;color:#5a4fcf;padding:1px 5px;border-radius:8px;font-weight:600">OV</span>' : '';
-    const tr = document.createElement('tr');
-    tr.innerHTML = `<td class="name">${name}${ovBadge}</td>
-      <td><span class="rc-pst">${RC_FREQ_LABELS[ff].slice(0,3)}·${RC_TIMING_LABELS[ft].slice(0,4)} <span class="arr">→</span> ${RC_FREQ_LABELS[tf].slice(0,3)}·${RC_TIMING_LABELS[tt].slice(0,4)}</span></td>
-      <td class="old">${rate > 0 ? rcFmtR(rate) : '—'}</td>
-      <td class="r">${rate > 0 ? rcDp(rc2) : '—'}</td>
-      <td class="new-rate-prom">${rate > 0 ? rcFmtR(adjRate) : '—'}</td>`;
-    bkBody.appendChild(tr);
-  });
-  const overallRC = totalNpvInit > 0 ? (totalNpvFinal / totalNpvInit - 1) * 100 : 0;
-  document.getElementById('rcBkFoot').innerHTML = `<tr><td colspan="2" style="color:var(--text-secondary);font-size:11px;font-weight:400">Total NPV impact</td><td class="old" style="text-align:right">${rcFmtR(totalNpvInit)}</td><td class="r">${rcDp(overallRC, true)}</td><td class="new-rate-prom">${rcFmtR(totalNpvFinal)}</td></tr>`;
-
-  const avgFT = results.reduce((s,x) => s + (x.amt>0 ? rcAvgCT(x.ff,x.ft)*x.amt : 0), 0) / totalAmt;
-  const avgTT = results.reduce((s,x) => s + (x.amt>0 ? rcAvgCT(x.tf,x.tt)*x.amt : 0), 0) / totalAmt;
-  const hasOv = rcModules.some(x => x.override);
-  const dot = document.getElementById('rcInsightDot'), txt = document.getElementById('rcInsightText');
-  if (allSame && Math.abs(minRc) < 0.001) {
-    dot.style.background = 'var(--text-muted)';
-    txt.innerHTML = 'All modules shift to equivalent plans — no rate adjustment needed.';
-  } else if (hasOv && !allSame) {
-    dot.style.background = 'var(--series-1)';
-    txt.innerHTML = `Modules have <strong>different plan shifts</strong> — each rate is adjusted independently so every module is NPV-neutral.`;
-  } else if (avgTT - avgFT < -0.01) {
-    dot.style.background = '#16803c';
-    txt.innerHTML = `On average, the new plans collect cash <strong>earlier</strong>. Rate adjustments shown are discounts you can pass to users — your NPV stays whole.`;
-  } else {
-    dot.style.background = '#b45309';
-    txt.innerHTML = `On average, the new plans collect cash <strong>later</strong>. Apply the rate uplifts shown per module to recover the time-value cost.`;
-  }
-
-  rcUpdatePtp(totalAmt * 12, totalAdj * 12);
-  rcRenderMarkup();
-}
-
-function rcUpdatePtp(oldY, newY) {
-  const oEl = document.getElementById('rcPtpOld'), nEl = document.getElementById('rcPtpNew');
-  const dEl = document.getElementById('rcPtpDelta'), dFt = document.getElementById('rcPtpDeltaFoot');
-  if (!(oldY > 0)) { oEl.textContent = nEl.textContent = '—'; dEl.textContent = '—'; dEl.className = 'rc-ptp-delta flat'; dFt.textContent = ''; return; }
-  oEl.textContent = rcFmtRShort(oldY); nEl.textContent = rcFmtRShort(newY);
-  const diff = newY - oldY, pct = (newY / oldY - 1) * 100;
-  if (Math.abs(diff) < 0.01) { dEl.className = 'rc-ptp-delta flat'; dEl.textContent = '₹0.00'; dFt.textContent = 'Same as old plan'; }
-  else { dEl.className = 'rc-ptp-delta ' + (diff > 0 ? 'pos' : 'neg'); dEl.textContent = (diff > 0 ? '+' : '−') + rcFmtRShort(Math.abs(diff)); dFt.textContent = `${pct > 0 ? '+' : ''}${pct.toFixed(2)}% vs old plan`; }
-}
-
-function rcRenderMarkup() {
-  const body = document.getElementById('rcMkpBody'), foot = document.getElementById('rcMkpFoot');
-  body.innerHTML = '';
-  const valid = rcLastResults.filter(x => x.amt > 0);
-  if (!valid.length) { body.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text-muted);padding:1.5rem;font-size:13px">No modules</td></tr>'; foot.innerHTML = ''; return; }
-  valid.forEach((res, i) => {
-    const { m, adjRate } = res;
-    const name = m.name || `Module ${i+1}`;
-    const tr = document.createElement('tr'); tr.dataset.modId = m.id;
-    tr.innerHTML = `<td class="name">${name}</td><td class="npv-new-rate">${rcFmtR(adjRate)}</td>
-      <td class="r"><div class="rc-mkp-inp-wrap"><input type="number" class="rc-mkp-inp" data-mid="${m.id}" placeholder="0.0" step="0.1" min="0" value="${res.markupPct||''}"><span class="rc-mkp-pct">%</span></div></td>
-      <td class="final-rate" data-field="finalRate">—</td><td class="amount-cell" data-field="finalAmt">—</td>`;
-    body.appendChild(tr);
-  });
-  body.querySelectorAll('.rc-mkp-inp').forEach(inp => {
-    inp.addEventListener('input', e => {
-      const mid = parseInt(e.target.dataset.mid);
-      const res = rcLastResults.find(x => x.m.id === mid);
-      if (res) { res.markupPct = parseFloat(e.target.value) || 0; rcUpdateMkpRow(mid); rcUpdateMkpSummary(); }
-    });
-  });
-  valid.forEach(res => rcUpdateMkpRow(res.m.id));
-  rcUpdateMkpSummary();
-}
-
-function rcUpdateMkpRow(modId) {
-  const res = rcLastResults.find(x => x.m.id === modId); if (!res) return;
-  const finalRate = res.adjRate * (1 + (res.markupPct||0) / 100);
-  const finalAmt  = finalRate * res.qty;
-  res.finalRate = finalRate; res.finalAmt = finalAmt;
-  const tr = document.querySelector(`#rcMkpBody tr[data-mod-id="${modId}"]`); if (!tr) return;
-  tr.querySelector('[data-field="finalRate"]').textContent = rcFmtR(finalRate);
-  tr.querySelector('[data-field="finalAmt"]').textContent  = rcFmtR(finalAmt);
-}
-
-function rcUpdateMkpSummary() {
-  let totalOld = 0, totalPre = 0, totalPost = 0;
-  rcLastResults.forEach(res => {
-    if (!res.amt) return;
-    totalOld  += res.amt;
-    totalPre  += res.adjRate * res.qty;
-    totalPost += res.finalAmt !== undefined ? res.finalAmt : res.adjRate * res.qty;
-  });
-  const oldY = totalOld * 12, preY = totalPre * 12, postY = totalPost * 12;
-  const blended = totalPre > 0 ? (totalPost / totalPre - 1) * 100 : 0;
-  const mkUpY = postY - preY, diffY = postY - oldY, diffPct = oldY > 0 ? (postY / oldY - 1) * 100 : 0;
-  document.getElementById('rcMksOld').textContent   = rcFmtRShort(oldY);
-  document.getElementById('rcMksPre').textContent   = rcFmtRShort(preY);
-  document.getElementById('rcMksPost').textContent  = rcFmtRShort(postY);
-  document.getElementById('rcMksBlend').textContent = rcFmtP(blended);
-  const upSub = document.getElementById('rcMksUpSub');
-  if (Math.abs(blended) < 0.001) { upSub.textContent = 'No markup applied'; upSub.style.color='#a08850'; }
-  else { upSub.textContent = `+${rcFmtRShort(mkUpY)}/yr from markup`; upSub.style.color='#16803c'; }
-  const diffEl = document.getElementById('rcMksDiff'), diffSub = document.getElementById('rcMksDiffSub');
-  if (Math.abs(diffY) < 0.01) { diffEl.className = 'rc-mks-val flat'; diffEl.textContent = '₹0.00'; diffSub.textContent = 'No change vs old plan'; }
-  else { diffEl.className = 'rc-mks-val ' + (diffY > 0 ? 'pos' : 'neg'); diffEl.textContent = (diffY > 0 ? '+' : '−') + rcFmtRShort(Math.abs(diffY)); diffSub.textContent = `${diffPct > 0 ? '+' : ''}${diffPct.toFixed(2)}% vs old plan`; }
-  document.getElementById('rcMkpFoot').innerHTML = `<tr><td style="color:var(--text-secondary);font-size:11px;font-weight:400">Total monthly</td><td class="npv-new-rate" style="font-weight:600">${rcFmtR(totalPre)}</td><td class="r" style="color:var(--text-secondary);font-size:11px">${blended > 0 ? '+' + blended.toFixed(2) + '%' : '—'}</td><td class="final-rate">${rcFmtR(totalPost)}</td><td class="amount-cell" style="font-weight:600;color:var(--text-primary)">${rcFmtR(totalPost)}</td></tr>`;
-}
-
-window.rcApplyBulkMarkup = function() {
-  const val = parseFloat(document.getElementById('rcBulkMarkup').value) || 0;
-  document.querySelectorAll('#rcMkpBody .rc-mkp-inp').forEach(inp => {
-    inp.value = val;
-    const mid = parseInt(inp.dataset.mid);
-    const res = rcLastResults.find(x => x.m.id === mid);
-    if (res) { res.markupPct = val; rcUpdateMkpRow(mid); }
-  });
-  rcUpdateMkpSummary();
-};
-
-window.rcExportNPV = function() {
-  if (!window.XLSX) { alert('XLSX library not loaded'); return; }
-  const r = RC_MONTHLY_R, gf = rcGF(), gt = rcGT();
-  const wb = XLSX.utils.book_new();
-  const sumData = [
-    ['Plan Rate Calculator — NPV Workings'],
-    [`Generated: ${new Date().toLocaleString('en-IN')}`],
-    [''],['ASSUMPTIONS'],
-    ['Annual Cost of Capital','15%'],
-    ['Monthly Discount Rate', parseFloat(r.toFixed(6)) + '%'],
-    ['Global FROM Plan', rcPlanLabel(gf.freq, gf.timing)],
-    ['Global TO Plan',   rcPlanLabel(gt.freq, gt.timing)],
-    [''],['NPV-NEUTRAL RATE ADJUSTMENT'],
-    ['Module','FROM Plan','TO Plan','Current Rate (₹)','New Rate (₹)','Time-Value Adj. %'],
-  ];
-  rcLastResults.forEach(({m, ff, ft, tf, tt, rate, adjRate, rc: rc2, amt}, i) => {
-    if (!amt) return;
-    sumData.push([m.name||`Module ${i+1}`, rcPlanLabel(ff,ft), rcPlanLabel(tf,tt), rate, parseFloat(adjRate.toFixed(4)), parseFloat(rc2.toFixed(4))]);
-  });
-  const ws1 = XLSX.utils.aoa_to_sheet(sumData);
-  ws1['!cols'] = [{wch:24},{wch:24},{wch:24},{wch:20},{wch:20},{wch:18}];
-  XLSX.utils.book_append_sheet(wb, ws1, 'Summary');
-
-  const wkData = [['NPV WORKINGS'],[''],['Monthly Discount Rate:', parseFloat(r.toFixed(6))+'%'],['']];
-  rcLastResults.forEach(({m, ff, ft, tf, tt, rate, adjRate, amt, mul, rc: rc2, npvInit, npvFinal}, idx) => {
-    if (!amt) return;
-    const name = m.name || `Module ${idx+1}`;
-    wkData.push([`MODULE: ${name.toUpperCase()}`]);
-    const fromCF = rcCashFlows(ff, ft, 1, r), toCF = rcCashFlows(tf, tt, 1, r);
-    wkData.push([`FROM: ${rcPlanLabel(ff,ft)}`,'','','','',`TO: ${rcPlanLabel(tf,tt)}`]);
-    wkData.push(['Period','Month paid','Payment','Disc. factor','PV','','Period','Month paid','Payment','Disc. factor','PV']);
-    const mx = Math.max(fromCF.rows.length, toCF.rows.length);
-    for (let i = 0; i < mx; i++) {
-      const fr = fromCF.rows[i], tr2 = toCF.rows[i];
-      wkData.push([fr?fr.period:'', fr?(fr.monthPaid===0?'Month 0':('Month '+fr.monthPaid)):'', fr?parseFloat(fr.payment.toFixed(4)):'', fr?parseFloat(fr.discFactor.toFixed(6)):'', fr?parseFloat(fr.pv.toFixed(4)):'', '', tr2?tr2.period:'', tr2?(tr2.monthPaid===0?'Month 0':('Month '+tr2.monthPaid)):'', tr2?parseFloat(tr2.payment.toFixed(4)):'', tr2?parseFloat(tr2.discFactor.toFixed(6)):'', tr2?parseFloat(tr2.pv.toFixed(4)):'' ]);
-    }
-    wkData.push(['Multiplier', parseFloat(mul.toFixed(6))], ['Rate adj %', parseFloat(rc2.toFixed(4))+'%'], ['New Rate', parseFloat(adjRate.toFixed(4))], ['NPV diff', parseFloat((npvFinal-npvInit).toFixed(4)),'← ~0'], ['']);
-  });
-  const ws2 = XLSX.utils.aoa_to_sheet(wkData);
-  ws2['!cols'] = Array(11).fill({wch:18});
-  XLSX.utils.book_append_sheet(wb, ws2, 'NPV Workings');
-  XLSX.writeFile(wb, 'NPV_Workings.xlsx');
-};
-
-// Init two default rows
-rcAddModule('CRM', 50, 500);
-rcAddModule('Analytics', 20, 300);
-})();
 </script>
 </body>
 </html>
