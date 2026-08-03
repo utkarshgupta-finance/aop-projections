@@ -697,9 +697,15 @@ function renderActualsPage() {
     return;
   }
 
-  // Default to most recent month if nothing selected or selection invalid
+  // Default to the latest COMPLETED month (not future months that exist in the
+  // data as committed/projected rows) if nothing selected or selection invalid
   actualsSelectedMonths = new Set([...actualsSelectedMonths].filter(m => monthSet.includes(m)));
-  if (!actualsSelectedMonths.size) actualsSelectedMonths.add(monthSet[monthSet.length - 1]);
+  if (!actualsSelectedMonths.size) {
+    const now = new Date();
+    const curYm = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const past = monthSet.filter(m => m.substring(0, 7) < curYm);
+    actualsSelectedMonths.add(past.length ? past[past.length - 1] : monthSet[monthSet.length - 1]);
+  }
 
   const selMonths = [...actualsSelectedMonths].sort();
 
