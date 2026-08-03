@@ -863,10 +863,22 @@ function renderActualsPage() {
       </tr>`;
     });
 
-    const totalValue = allBUs.reduce((s, bu) => {
-      if (isProj) return s + buProjection(bu, metric);
-      return s + (isMrr ? buNnrForRange(bu, selMonths) : selMonths.reduce((a, m) => a + buActual(bu, m, amtField), 0));
-    }, 0);
+    let totalValue;
+    if (isProj) {
+      totalValue = allBUs.reduce((s, bu) => s + buProjection(bu, metric), 0);
+    } else if (isMrr) {
+      // Portfolio-level NNR across ALL accounts (matches Revenue tab's Net New MRR),
+      // not the sum of per-BU NNRs which misses accounts outside allBUs
+      totalValue = selMonths.reduce((sum, m) => {
+        const idx = monthSet.indexOf(m);
+        const prev = idx > 0 ? monthSet[idx - 1] : null;
+        const cur = REVENUE_ACTUALS.filter(r => r.month === m).reduce((s, r) => s + Number(r.mrr_amount ?? 0), 0);
+        const prv = prev !== null ? REVENUE_ACTUALS.filter(r => r.month === prev).reduce((s, r) => s + Number(r.mrr_amount ?? 0), 0) : 0;
+        return sum + (cur - prv);
+      }, 0);
+    } else {
+      totalValue = allBUs.reduce((s, bu) => s + selMonths.reduce((a, m) => a + buActual(bu, m, amtField), 0), 0);
+    }
     const totalTarget = allBUs.reduce((s, bu) =>
       s + selMonths.reduce((a, m) => { const t = actualsTargetFor(bu, m, metric); return t !== undefined ? a + t : a; }, 0), 0);
     const totalVariance = totalValue - totalTarget;
