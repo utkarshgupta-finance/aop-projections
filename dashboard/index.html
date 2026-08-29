@@ -251,7 +251,7 @@
   <div class="nav-section-label">Menu</div>
   <button class="nav-item active" id="nav-revenue">Revenue</button>
   <button class="nav-item" id="nav-actuals">Actuals vs Projections</button>
-  <button class="nav-item" id="nav-projections">Projections</button>
+  <button class="nav-item" id="nav-projections">Commits</button>
   <div class="sidebar-spacer"></div>
   <a class="nav-item nav-settings" href="settings.html">Settings</a>
 </nav>
@@ -350,7 +350,7 @@
     <div class="wrap">
       <div class="topbar">
         <div>
-          <h1>Projections</h1>
+          <h1>Commits</h1>
           <p class="subtitle" id="subtitle">Loading latest snapshot...</p>
         </div>
         <div class="topbar-actions">
@@ -408,10 +408,12 @@ function computePeriodTabs(qKey) {
 const VIEW_MODES = [
   { key: 'review',  label: 'Commits' },
   { key: 'summary', label: 'Summary' },
+  { key: 'hunting', label: 'Hunting Pipeline' },
 ];
-// Projections are Farming-only; the Hunting pipeline is out of scope.
 const TYPE_TABS = [
-  { key: 'Farming', label: 'Farming' },
+  { key: 'combined', label: 'Combined' },
+  { key: 'Farming',  label: 'Farming' },
+  { key: 'Hunting',  label: 'Hunting' },
 ];
 const METRIC_TABS = [
   { key: 'MRR', label: 'MRR' },
@@ -423,11 +425,12 @@ let PIPELINE_VIEWS = [], CRM_STAGES = [];
 let activePipelineView = null; // null = no filter applied (show all with prob>=70)
 let activeCommitView = null;   // active view for the Commits tab
 let commitGroupBy = 'deal';    // 'deal' | 'account' | 'bu'
+let commitMonth = null;        // 'YYYY-MM' closing-date month in Commits view, null = all months
 let MRR_DATES = [], NRR_DATES = [], BU_TAB_LIST = [];
 let currentViewMode   = 'review';
 let currentQuarter    = '2026-Q3';
 let currentMetric     = 'MRR';
-let currentTypeTab    = 'Farming';
+let currentTypeTab    = 'combined';
 let currentPeriodTab  = 'Q';
 let currentBU         = '';
 let buViewMode        = 'table';
@@ -2087,14 +2090,15 @@ function render() {
   document.querySelectorAll('#period-tabs .tab-btn').forEach(b => b.classList.toggle('active', b.dataset.period === currentPeriodTab));
   document.querySelectorAll('#type-tabs .tab-btn').forEach(b => b.classList.toggle('active', b.dataset.type === currentTypeTab));
   document.querySelectorAll('#bu-tabs .tab-btn').forEach(b => b.classList.toggle('active', b.dataset.bu === currentBU));
-  // Hide period tabs in Commits view — that view handles filtering itself.
-  // Type is always hidden: Farming is the only deal type shown.
+  // Hide the global type tabs in Commits/Summary — those views handle filtering themselves.
+  // The Commits view renders its own month tabs, so keep the period group visible there.
   const inCommits = currentViewMode === 'review';
-  document.getElementById('period-group').style.display = inCommits ? 'none' : '';
-  document.getElementById('type-group').style.display   = 'none';
+  document.getElementById('period-group').style.display = currentViewMode === 'hunting' ? 'none' : '';
+  document.getElementById('type-group').style.display   = (inCommits || currentViewMode === 'summary') ? 'none' : '';
 
   if (currentViewMode === 'summary') { renderSummaryView(); return; }
   if (currentViewMode === 'bu-detail') { renderBUDetailView(); return; }
+  if (currentViewMode === 'hunting') { renderHuntingView(); return; }
   renderReviewView();
 }
 
@@ -2114,6 +2118,7 @@ function renderReviewView() {
     `<button class="stage-capsule${commitGroupBy === key ? ' active' : ''}" id="${id}">${label}</button>`;
 
   content.innerHTML = `
+    <div style="margin-bottom:10px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;" id="commit-month-tabs"></div>
     <div style="margin-bottom:10px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;" id="commit-views-bar"></div>
     <div style="margin-bottom:12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
       <span style="font-size:12px;color:var(--text-muted);font-weight:600;letter-spacing:.03em;">GROUP BY</span>
@@ -2148,6 +2153,7 @@ function renderReviewView() {
       <div id="nrr-deals-table"></div>
     </div>`;
 
+  renderCommitMonthTabs();
   renderCommitViewsBar();
 
   tableCtx = { dealsById, latestDate: mrrLatest, snapshots: MRR_SNAPSHOTS, metric: 'MRR',
@@ -2299,9 +2305,18 @@ function renderDealsTableWith({ dealsById, snapshots, metric, tableId, buFilterI
   }
 
   const minProb = commitView ? commitView.min_probability : 0;
+
+  // Effective closing-date window. A selected month tab scopes the view to that
+  // closing month; the saved view's own range applies when no month is picked.
+  const monthRange = commitMonth ? monthDateRange(commitMonth) : null;
+  const closeStart = monthRange ? monthRange.start : commitView?.closing_date_start;
+  const closeEnd   = monthRange ? monthRange.end   : commitView?.closing_date_end;
+  const inCloseRange = closingDate => {
+    if (closeStart && (!closingDate || closingDate < closeStart)) return false;
+    if (closeEnd   && (!closingDate || closingDate > closeEnd))   return false;
+    return true;
+  };
   const matchesCommitView = d => {
-    // Farming-only: hunting and other deal types are out of scope for projections
-    if ((d.deal_type ?? '').toLowerCase() !== 'farming') return false;
     if (commitView?.deal_types?.length && !commitView.deal_types.includes(d.deal_type)) return false;
     // Stage filter only applies to deals that have a stage value
     if (commitView?.stages?.length && d.stage && !commitView.stages.includes(d.stage)) return false;
@@ -2316,8 +2331,7 @@ function renderDealsTableWith({ dealsById, snapshots, metric, tableId, buFilterI
     const e = byDate?.get(date);
     if (e === undefined) return undefined;
     if ((e.probability ?? 100) < minProb) return null;
-    if (commitView?.closing_date_start && (!e.closing_date || e.closing_date < commitView.closing_date_start)) return null;
-    if (commitView?.closing_date_end   && (!e.closing_date || e.closing_date > commitView.closing_date_end))   return null;
+    if (!inCloseRange(e.closing_date)) return null;
     return e.amount;
   };
 
@@ -2340,9 +2354,7 @@ function renderDealsTableWith({ dealsById, snapshots, metric, tableId, buFilterI
   // Include a deal if it has at least one snapshot that passes prob + closing_date filter
   const snapPassesFilter = e => {
     if ((e.probability ?? 100) < minProb) return false;
-    if (commitView?.closing_date_start && (!e.closing_date || e.closing_date < commitView.closing_date_start)) return false;
-    if (commitView?.closing_date_end   && (!e.closing_date || e.closing_date > commitView.closing_date_end))   return false;
-    return true;
+    return inCloseRange(e.closing_date);
   };
 
   let tabDeals = DEALS
@@ -2742,10 +2754,9 @@ function renderSummaryView() {
 
     const vcs = activePipelineView?.column_settings || {};
     const fCfg = { visible: true, probability: 70, mode: 'expected', ...(vcs.farming || {}) };
-    const hCfg = { visible: false, probability: 70, mode: 'expected', ...(vcs.hunting || {}) };
+    const hCfg = { visible: true, probability: 70, mode: 'expected', ...(vcs.hunting || {}) };
     const showFarming = fCfg.visible;
-    // Projections are Farming-only; totals and variance fall back to farming below.
-    const showHunting = false;
+    const showHunting = hCfg.visible;
     const showCol = key => vcs[key]?.visible !== false; // simple cols default to visible
 
     const totFarming  = rows.reduce((a, r) => a + r.farming, 0);
@@ -2977,6 +2988,47 @@ function renderPipelineViewsBar() {
     rerender: renderSummaryView,
     context: 'summary',
   });
+}
+
+// Distinct closing-date months present in the snapshot data (i.e. synced from Zoho),
+// sorted ascending. These drive the Commits view month tabs, so a newly synced
+// closing month shows up as a tab automatically with no config change.
+function commitMonthsAvailable() {
+  const set = new Set();
+  for (const s of [...MRR_SNAPSHOTS, ...NRR_SNAPSHOTS]) {
+    if (s.closing_date) set.add(s.closing_date.substring(0, 7));
+  }
+  return [...set].sort();
+}
+
+// Inclusive [start, end] date strings covering a whole 'YYYY-MM' month.
+function monthDateRange(ym) {
+  const [yr, mo] = ym.split('-').map(Number);
+  const lastDay = new Date(yr, mo, 0).getDate();
+  return { start: `${ym}-01`, end: `${ym}-${String(lastDay).padStart(2, '0')}` };
+}
+
+function renderCommitMonthTabs() {
+  const el = document.getElementById('commit-month-tabs');
+  if (!el) return;
+  const months = commitMonthsAvailable();
+  if (!months.length) { el.innerHTML = ''; return; }
+
+  const label = ym => {
+    const [yr, mo] = ym.split('-').map(Number);
+    return MONTH_ABBR[mo - 1] + ' ' + String(yr).slice(2);
+  };
+  el.innerHTML =
+    `<span style="font-size:12px;color:var(--text-muted);font-weight:600;letter-spacing:.03em;">CLOSING MONTH</span>` +
+    `<button class="stage-capsule${commitMonth === null ? ' active' : ''}" data-commit-month="">All</button>` +
+    months.map(m =>
+      `<button class="stage-capsule${commitMonth === m ? ' active' : ''}" data-commit-month="${escapeHtml(m)}">${label(m)}</button>`
+    ).join('');
+
+  el.querySelectorAll('[data-commit-month]').forEach(btn => btn.addEventListener('click', () => {
+    commitMonth = btn.dataset.commitMonth || null;
+    renderReviewView();
+  }));
 }
 
 function renderCommitViewsBar() {
