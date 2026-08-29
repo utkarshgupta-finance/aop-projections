@@ -380,12 +380,14 @@ const BU_ORDER = ['KAM BU', 'MEA BU', 'SEA BU', 'BAT BU', 'India MM BU', 'India 
 const MONTH_ABBR = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 const MONTH_FULL = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 
+// Fiscal year starts in April: Q1 = Apr–Jun, Q2 = Jul–Sep, Q3 = Oct–Dec, Q4 = Jan–Mar.
+// Keys stay calendar-based because the targets tables are keyed on them (e.g. '2026-Q3').
 const QUARTERS = [
-  { key: '2026-Q2', label: 'Q2 2026', year: 2026, q: 2, months: [4,5,6] },
-  { key: '2026-Q3', label: 'Q3 2026', year: 2026, q: 3, months: [7,8,9] },
-  { key: '2026-Q4', label: 'Q4 2026', year: 2026, q: 4, months: [10,11,12] },
-  { key: '2027-Q1', label: 'Q1 2027', year: 2027, q: 1, months: [1,2,3] },
-  { key: '2027-Q2', label: 'Q2 2027', year: 2027, q: 2, months: [4,5,6] },
+  { key: '2026-Q2', label: 'Q1 FY27 (Apr–Jun 26)', year: 2026, q: 2, months: [4,5,6] },
+  { key: '2026-Q3', label: 'Q2 FY27 (Jul–Sep 26)', year: 2026, q: 3, months: [7,8,9] },
+  { key: '2026-Q4', label: 'Q3 FY27 (Oct–Dec 26)', year: 2026, q: 4, months: [10,11,12] },
+  { key: '2027-Q1', label: 'Q4 FY27 (Jan–Mar 27)', year: 2027, q: 1, months: [1,2,3] },
+  { key: '2027-Q2', label: 'Q1 FY28 (Apr–Jun 27)', year: 2027, q: 2, months: [4,5,6] },
 ];
 
 function computePeriodTabs(qKey) {
@@ -406,12 +408,10 @@ function computePeriodTabs(qKey) {
 const VIEW_MODES = [
   { key: 'review',  label: 'Commits' },
   { key: 'summary', label: 'Summary' },
-  { key: 'hunting', label: 'Hunting Pipeline' },
 ];
+// Projections are Farming-only; the Hunting pipeline is out of scope.
 const TYPE_TABS = [
-  { key: 'combined', label: 'Combined' },
-  { key: 'Farming',  label: 'Farming' },
-  { key: 'Hunting',  label: 'Hunting' },
+  { key: 'Farming', label: 'Farming' },
 ];
 const METRIC_TABS = [
   { key: 'MRR', label: 'MRR' },
@@ -427,7 +427,7 @@ let MRR_DATES = [], NRR_DATES = [], BU_TAB_LIST = [];
 let currentViewMode   = 'review';
 let currentQuarter    = '2026-Q3';
 let currentMetric     = 'MRR';
-let currentTypeTab    = 'combined';
+let currentTypeTab    = 'Farming';
 let currentPeriodTab  = 'Q';
 let currentBU         = '';
 let buViewMode        = 'table';
@@ -603,7 +603,6 @@ function snapIsCommitted(s, periodTab) {
 // ---- Tab rendering ----
 function renderTabs() {
   const PERIOD_TABS = computePeriodTabs(currentQuarter);
-  const isHunting = currentViewMode === 'hunting';
   const isReview  = currentViewMode === 'review';
 
   // Quarter selector
@@ -618,17 +617,14 @@ function renderTabs() {
     renderTabs(); render();
   }));
 
-  // Period tabs (hidden in Hunting mode)
-  document.getElementById('period-group').style.display = isHunting ? 'none' : '';
+  // Period tabs
+  document.getElementById('period-group').style.display = '';
   const periodEl = document.getElementById('period-tabs');
   periodEl.innerHTML = PERIOD_TABS.map(t => `<button class="tab-btn ${t.key === currentPeriodTab ? 'active' : ''}" data-period="${t.key}">${escapeHtml(t.label)}</button>`).join('');
   periodEl.querySelectorAll('.tab-btn').forEach(btn => btn.addEventListener('click', () => { currentPeriodTab = btn.dataset.period; render(); }));
 
-  // Type tabs (only in Review mode)
-  document.getElementById('type-group').style.display = isReview ? '' : 'none';
-  const typeEl = document.getElementById('type-tabs');
-  typeEl.innerHTML = TYPE_TABS.map(t => `<button class="tab-btn ${t.key === currentTypeTab ? 'active' : ''}" data-type="${t.key}">${t.label}</button>`).join('');
-  typeEl.querySelectorAll('.tab-btn').forEach(btn => btn.addEventListener('click', () => { currentTypeTab = btn.dataset.type; render(); }));
+  // Type tabs hidden — Farming is the only type, so the picker has nothing to choose
+  document.getElementById('type-group').style.display = 'none';
 
   // BU tabs hidden — BU filtering is via the dropdown in the deals table
   document.getElementById('bu-group').style.display = 'none';
@@ -690,8 +686,11 @@ function actualsTargetFor(bu, monthStr, metric) {
 function renderActualsPage() {
   const content = document.getElementById('actuals-content');
 
-  // Build sorted list of available months from REVENUE_ACTUALS
+  // Build sorted list of available months from REVENUE_ACTUALS.
+  // monthSet keeps Mar 2026 because NNR needs it as April's baseline; the
+  // selectable chips start at Apr 2026 (FY27) since Mar is out of scope here.
   const monthSet = [...new Set(REVENUE_ACTUALS.map(r => r.month))].sort();
+  const chipMonths = monthSet.filter(m => m.substring(0, 7) >= '2026-04');
   if (!monthSet.length) {
     content.innerHTML = `<p style="color:var(--text-muted);padding:20px 0;">No revenue data loaded yet.</p>`;
     return;
@@ -699,18 +698,18 @@ function renderActualsPage() {
 
   // Default to the latest COMPLETED month (not future months that exist in the
   // data as committed/projected rows) if nothing selected or selection invalid
-  actualsSelectedMonths = new Set([...actualsSelectedMonths].filter(m => monthSet.includes(m)));
+  actualsSelectedMonths = new Set([...actualsSelectedMonths].filter(m => chipMonths.includes(m)));
   if (!actualsSelectedMonths.size) {
     const now = new Date();
     const curYm = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-    const past = monthSet.filter(m => m.substring(0, 7) < curYm);
-    actualsSelectedMonths.add(past.length ? past[past.length - 1] : monthSet[monthSet.length - 1]);
+    const past = chipMonths.filter(m => m.substring(0, 7) < curYm);
+    actualsSelectedMonths.add(past.length ? past[past.length - 1] : chipMonths[chipMonths.length - 1]);
   }
 
   const selMonths = [...actualsSelectedMonths].sort();
 
   // Build month chips
-  const chipsHtml = monthSet.slice().reverse().map(m => {
+  const chipsHtml = chipMonths.slice().reverse().map(m => {
     const [yr, mo] = m.split('-').map(Number);
     const label = MONTH_ABBR[mo - 1] + ' ' + yr.toString().slice(2);
     const active = actualsSelectedMonths.has(m) ? 'active' : '';
@@ -1120,22 +1119,27 @@ function renderRevenuePage() {
     return;
   }
 
-  // Derive sorted unique months
+  // Derive sorted unique months.
+  // Mar 2026 predates FY27 and is kept only for the MRR monthly view, where it is
+  // the baseline month for April's net-new figure. Every other view starts at
+  // Apr 2026 so the fiscal buckets (Q1 = Apr–Jun) stay clean.
   const allMonths = [...new Set(REVENUE_ACTUALS.map(r => r.month))].sort();
-  const months = allMonths;
+  const keepPreFY = revenueMetric === 'MRR' && revenuePeriod === 'monthly';
+  const months = keepPreFY ? allMonths : allMonths.filter(m => m.substring(0, 7) >= '2026-04');
 
-  // Group months into buckets based on revenuePeriod
-  function monthToQ(m) {
+  // Group months into fiscal buckets. FY runs Apr–Mar and is labelled by the
+  // calendar year it ends in: Apr 2026–Mar 2027 = FY27.
+  // Q1 = Apr–Jun, Q2 = Jul–Sep, Q3 = Oct–Dec, Q4 = Jan–Mar. H1 = Apr–Sep, H2 = Oct–Mar.
+  function fiscalParts(m) {
+    const yr = parseInt(m.split('-')[0], 10);
     const mo = parseInt(m.split('-')[1], 10);
-    const yr = m.split('-')[0];
-    return yr + '-Q' + Math.ceil(mo / 3);
+    const fy = mo >= 4 ? yr + 1 : yr;        // FY ending year
+    const fIdx = mo >= 4 ? mo - 4 : mo + 8;  // 0..11 with Apr = 0
+    return { fy, q: Math.floor(fIdx / 3) + 1, h: fIdx < 6 ? 1 : 2 };
   }
-  function monthToH(m) {
-    const mo = parseInt(m.split('-')[1], 10);
-    const yr = m.split('-')[0];
-    return yr + '-H' + (mo <= 6 ? 1 : 2);
-  }
-  function monthToY(m) { return m.split('-')[0]; }
+  function monthToQ(m) { const p = fiscalParts(m); return p.fy + '-Q' + p.q; }
+  function monthToH(m) { const p = fiscalParts(m); return p.fy + '-H' + p.h; }
+  function monthToY(m) { return String(fiscalParts(m).fy); }
 
   // Build columns based on selected period view
   // Returns array of {key, label, months:[...], isGroup:bool}
@@ -1152,8 +1156,8 @@ function renderRevenuePage() {
         qMap.get(k).push(m);
       }
       return [...qMap.entries()].map(([k, ms]) => {
-        const [yr, q] = k.split('-Q');
-        return { key: k, label: `Q${q} ${yr}`, months: ms, isGroup: true };
+        const [fy, q] = k.split('-Q');
+        return { key: k, label: `Q${q} FY${fy.slice(2)}`, months: ms, isGroup: true };
       });
     }
     if (revenuePeriod === 'halfyearly') {
@@ -1164,18 +1168,18 @@ function renderRevenuePage() {
         hMap.get(k).push(m);
       }
       return [...hMap.entries()].map(([k, ms]) => {
-        const [yr, h] = k.split('-H');
-        return { key: k, label: `H${h} ${yr}`, months: ms, isGroup: true };
+        const [fy, h] = k.split('-H');
+        return { key: k, label: `H${h} FY${fy.slice(2)}`, months: ms, isGroup: true };
       });
     }
-    // annual
+    // annual (fiscal year)
     const yMap = new Map();
     for (const m of months) {
       const k = monthToY(m);
       if (!yMap.has(k)) yMap.set(k, []);
       yMap.get(k).push(m);
     }
-    return [...yMap.entries()].map(([k, ms]) => ({ key: k, label: k, months: ms, isGroup: true }));
+    return [...yMap.entries()].map(([k, ms]) => ({ key: k, label: `FY${k.slice(2)}`, months: ms, isGroup: true }));
   }
 
   // sum revenue for a set of months from a map (account→month→row) or flat rows
@@ -2083,14 +2087,14 @@ function render() {
   document.querySelectorAll('#period-tabs .tab-btn').forEach(b => b.classList.toggle('active', b.dataset.period === currentPeriodTab));
   document.querySelectorAll('#type-tabs .tab-btn').forEach(b => b.classList.toggle('active', b.dataset.type === currentTypeTab));
   document.querySelectorAll('#bu-tabs .tab-btn').forEach(b => b.classList.toggle('active', b.dataset.bu === currentBU));
-  // Hide period/type global tabs when in Commits view — views handle filtering there
+  // Hide period tabs in Commits view — that view handles filtering itself.
+  // Type is always hidden: Farming is the only deal type shown.
   const inCommits = currentViewMode === 'review';
   document.getElementById('period-group').style.display = inCommits ? 'none' : '';
-  document.getElementById('type-group').style.display   = (inCommits || currentViewMode === 'summary') ? 'none' : '';
+  document.getElementById('type-group').style.display   = 'none';
 
   if (currentViewMode === 'summary') { renderSummaryView(); return; }
   if (currentViewMode === 'bu-detail') { renderBUDetailView(); return; }
-  if (currentViewMode === 'hunting') { renderHuntingView(); return; }
   renderReviewView();
 }
 
@@ -2296,6 +2300,8 @@ function renderDealsTableWith({ dealsById, snapshots, metric, tableId, buFilterI
 
   const minProb = commitView ? commitView.min_probability : 0;
   const matchesCommitView = d => {
+    // Farming-only: hunting and other deal types are out of scope for projections
+    if ((d.deal_type ?? '').toLowerCase() !== 'farming') return false;
     if (commitView?.deal_types?.length && !commitView.deal_types.includes(d.deal_type)) return false;
     // Stage filter only applies to deals that have a stage value
     if (commitView?.stages?.length && d.stage && !commitView.stages.includes(d.stage)) return false;
@@ -2736,9 +2742,10 @@ function renderSummaryView() {
 
     const vcs = activePipelineView?.column_settings || {};
     const fCfg = { visible: true, probability: 70, mode: 'expected', ...(vcs.farming || {}) };
-    const hCfg = { visible: true, probability: 70, mode: 'expected', ...(vcs.hunting || {}) };
+    const hCfg = { visible: false, probability: 70, mode: 'expected', ...(vcs.hunting || {}) };
     const showFarming = fCfg.visible;
-    const showHunting = hCfg.visible;
+    // Projections are Farming-only; totals and variance fall back to farming below.
+    const showHunting = false;
     const showCol = key => vcs[key]?.visible !== false; // simple cols default to visible
 
     const totFarming  = rows.reduce((a, r) => a + r.farming, 0);
