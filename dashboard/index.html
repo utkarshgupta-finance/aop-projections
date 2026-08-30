@@ -251,7 +251,8 @@
   <div class="nav-section-label">Menu</div>
   <button class="nav-item active" id="nav-revenue">Revenue</button>
   <button class="nav-item" id="nav-actuals">Actuals vs Projections</button>
-  <button class="nav-item" id="nav-projections">Commits</button>
+  <button class="nav-item" id="nav-projections">Farming Commit</button>
+  <button class="nav-item" id="nav-hunting">Hunting Pipeline</button>
   <div class="sidebar-spacer"></div>
   <a class="nav-item nav-settings" href="settings.html">Settings</a>
 </nav>
@@ -350,7 +351,7 @@
     <div class="wrap">
       <div class="topbar">
         <div>
-          <h1>Commits</h1>
+          <h1>Farming Commit</h1>
           <p class="subtitle" id="subtitle">Loading latest snapshot...</p>
         </div>
         <div class="topbar-actions">
@@ -359,8 +360,8 @@
           <button class="sync-btn" id="sync-btn">Sync Zoho</button>
         </div>
       </div>
-      <div class="tab-group view"><span class="tab-group-label">View</span><div class="tabs" id="view-tabs"></div></div>
-      <div class="tab-group period" id="period-group"><span class="tab-group-label">Period</span><div class="tabs" id="period-tabs"></div></div>
+      <div class="tab-group view" id="view-group"><span class="tab-group-label">View</span><div class="tabs" id="view-tabs"></div></div>
+      <div class="tab-group period" id="period-group" style="display:none;"><span class="tab-group-label">Period</span><div class="tabs" id="period-tabs"></div></div>
       <div class="tab-group type" id="type-group"><span class="tab-group-label">Type</span><div class="tabs" id="type-tabs"></div></div>
       <div class="tab-group bu" id="bu-group"><span class="tab-group-label">Business Unit</span><div class="tabs" id="bu-tabs"></div></div>
       <div class="tab-divider"></div>
@@ -405,10 +406,10 @@ function computePeriodTabs(qKey) {
   ];
 }
 
+// Hunting Pipeline is its own left-menu page, not a view mode here.
 const VIEW_MODES = [
   { key: 'review',  label: 'Commits' },
   { key: 'summary', label: 'Summary' },
-  { key: 'hunting', label: 'Hunting Pipeline' },
 ];
 const TYPE_TABS = [
   { key: 'combined', label: 'Combined' },
@@ -424,7 +425,7 @@ let DEALS = [], MRR_SNAPSHOTS = [], NRR_SNAPSHOTS = [], BU_TARGETS = [], TARGET_
 let PIPELINE_VIEWS = [], CRM_STAGES = [];
 let activePipelineView = null; // null = no filter applied (show all with prob>=70)
 let commitGroupBy = 'deal';    // 'deal' | 'account' | 'bu'
-let commitMonth = null;        // 'YYYY-MM' closing-date month in Commits view, null = all months
+let commitMonths = new Set();  // selected 'YYYY-MM' closing months; empty = all months
 // Global filter for the Commits view: same shape as a pipeline view, but applied
 // across the whole view instead of being saved as a named view. Stored in the
 // shared app_settings table so every user sees the same filter. null = no filter.
@@ -473,7 +474,7 @@ function commitFilterIsActive(f) {
 // from the selected closing-month tab.
 function effectiveCommitFilter() {
   const g = commitFilterIsActive(commitGlobalFilter) ? commitGlobalFilter : null;
-  if (!g) return commitMonth ? { min_probability: 0, ...monthClosingFields() } : null;
+  if (!g) return commitMonths.size ? { min_probability: 0, ...monthClosingFields() } : null;
 
   const merged = {
     deal_types:      g.deal_types || [],
@@ -492,10 +493,11 @@ function effectiveCommitFilter() {
   return merged;
 }
 
+// Selected months may be non-contiguous (e.g. Jul + Sep), which a start/end range
+// cannot express, so they travel as an explicit month list.
 function monthClosingFields() {
-  if (!commitMonth) return { closing_date_start: null, closing_date_end: null };
-  const r = monthDateRange(commitMonth);
-  return { closing_date_start: r.start, closing_date_end: r.end };
+  if (!commitMonths.size) return { closing_date_start: null, closing_date_end: null, closing_months: null };
+  return { closing_date_start: null, closing_date_end: null, closing_months: [...commitMonths] };
 }
 let MRR_DATES = [], NRR_DATES = [], BU_TAB_LIST = [];
 let currentViewMode   = 'review';
@@ -692,8 +694,10 @@ function renderTabs() {
     renderTabs(); render();
   }));
 
-  // Period tabs
-  document.getElementById('period-group').style.display = '';
+  // Period tabs are retired from the UI: the Commits view scopes by closing month
+  // and Summary/BU detail run on the full quarter (currentPeriodTab stays 'Q').
+  // The markup stays so those views keep their period-derived targets.
+  document.getElementById('period-group').style.display = 'none';
   const periodEl = document.getElementById('period-tabs');
   periodEl.innerHTML = PERIOD_TABS.map(t => `<button class="tab-btn ${t.key === currentPeriodTab ? 'active' : ''}" data-period="${t.key}">${escapeHtml(t.label)}</button>`).join('');
   periodEl.querySelectorAll('.tab-btn').forEach(btn => btn.addEventListener('click', () => { currentPeriodTab = btn.dataset.period; render(); }));
@@ -710,15 +714,31 @@ function renderTabs() {
 // ============================================================
 function switchPage(page) {
   currentPage = page;
+  // Farming Commit and Hunting Pipeline share the projections pane; they differ
+  // by view mode, so the nav highlight is tracked per page rather than per pane.
+  const usesProjectionsPane = page === 'projections' || page === 'hunting';
   document.getElementById('page-revenue').classList.toggle('active', page === 'revenue');
   document.getElementById('page-actuals').classList.toggle('active', page === 'actuals');
-  document.getElementById('page-projections').classList.toggle('active', page === 'projections');
+  document.getElementById('page-projections').classList.toggle('active', usesProjectionsPane);
   document.getElementById('nav-revenue').classList.toggle('active', page === 'revenue');
   document.getElementById('nav-actuals').classList.toggle('active', page === 'actuals');
   document.getElementById('nav-projections').classList.toggle('active', page === 'projections');
-  if (page === 'revenue') renderRevenuePage();
-  else if (page === 'actuals') renderActualsPage();
-  else { renderTabs(); render(); }
+  document.getElementById('nav-hunting').classList.toggle('active', page === 'hunting');
+
+  if (page === 'revenue') { renderRevenuePage(); return; }
+  if (page === 'actuals') { renderActualsPage(); return; }
+
+  const heading = document.querySelector('#page-projections h1');
+  if (page === 'hunting') {
+    currentViewMode = 'hunting';
+    if (heading) heading.textContent = 'Hunting Pipeline';
+  } else {
+    // Returning to Farming Commit: hunting is no longer a view mode here.
+    if (currentViewMode === 'hunting') currentViewMode = 'review';
+    if (heading) heading.textContent = 'Farming Commit';
+  }
+  renderTabs();
+  render();
 }
 
 // ============================================================
@@ -1794,6 +1814,7 @@ async function main() {
   document.getElementById('nav-revenue').addEventListener('click', () => switchPage('revenue'));
   document.getElementById('nav-actuals').addEventListener('click', () => switchPage('actuals'));
   document.getElementById('nav-projections').addEventListener('click', () => switchPage('projections'));
+  document.getElementById('nav-hunting').addEventListener('click', () => switchPage('hunting'));
 
   // "Sheet Setup" button shows the setup instructions inline
   document.getElementById('revenue-setup-btn').addEventListener('click', () => {
@@ -2164,11 +2185,14 @@ function render() {
   document.querySelectorAll('#period-tabs .tab-btn').forEach(b => b.classList.toggle('active', b.dataset.period === currentPeriodTab));
   document.querySelectorAll('#type-tabs .tab-btn').forEach(b => b.classList.toggle('active', b.dataset.type === currentTypeTab));
   document.querySelectorAll('#bu-tabs .tab-btn').forEach(b => b.classList.toggle('active', b.dataset.bu === currentBU));
-  // Hide the global type tabs in Commits/Summary — those views handle filtering themselves.
-  // The Commits view renders its own month tabs, so keep the period group visible there.
+  // Hide the global type tabs in Commits/Summary — those views handle filtering
+  // themselves. Period tabs are retired. Hunting is its own page, so the View
+  // picker (Commits/Summary) is hidden there.
+  const isHunting = currentViewMode === 'hunting';
   const inCommits = currentViewMode === 'review';
-  document.getElementById('period-group').style.display = currentViewMode === 'hunting' ? 'none' : '';
-  document.getElementById('type-group').style.display   = (inCommits || currentViewMode === 'summary') ? 'none' : '';
+  document.getElementById('period-group').style.display = 'none';
+  document.getElementById('view-group').style.display   = isHunting ? 'none' : '';
+  document.getElementById('type-group').style.display   = (inCommits || currentViewMode === 'summary' || isHunting) ? 'none' : '';
 
   if (currentViewMode === 'summary') { renderSummaryView(); return; }
   if (currentViewMode === 'bu-detail') { renderBUDetailView(); return; }
@@ -2378,11 +2402,13 @@ function renderDealsTableWith({ dealsById, snapshots, metric, tableId, buFilterI
 
   const minProb = commitView ? commitView.min_probability : 0;
 
-  // Closing-date window, already resolved by effectiveCommitFilter()
-  // (global filter → selected month → saved view).
-  const closeStart = commitView?.closing_date_start;
-  const closeEnd   = commitView?.closing_date_end;
+  // Closing-date scope, already resolved by effectiveCommitFilter(): either an
+  // explicit list of selected months, or the global filter's start/end range.
+  const closeMonths = commitView?.closing_months;
+  const closeStart  = commitView?.closing_date_start;
+  const closeEnd    = commitView?.closing_date_end;
   const inCloseRange = closingDate => {
+    if (closeMonths?.length) return closingDate ? closeMonths.includes(closingDate.substring(0, 7)) : false;
     if (closeStart && (!closingDate || closingDate < closeStart)) return false;
     if (closeEnd   && (!closingDate || closingDate > closeEnd))   return false;
     return true;
@@ -3108,40 +3134,31 @@ function renderCommitMonthTabs() {
   const settingsBtn =
     `<button class="stage-capsule${gActive ? ' active' : ''}" id="commit-settings-btn" title="Global filter for the Commits view" style="margin-left:auto;">⚙ Settings</button>`;
   const filterChip = gActive
-    ? `<span style="font-size:11px;color:var(--text-muted);white-space:nowrap;">Global filter: ${escapeHtml(commitGlobalFilterSummary())}</span>` +
-      `<button class="stage-capsule" id="commit-filter-clear" title="Clear global filter" style="font-size:11px;padding:3px 8px;">✕ Clear</button>`
+    ? `<span style="font-size:11px;color:var(--text-muted);white-space:nowrap;">Global filter: ${escapeHtml(commitGlobalFilterSummary())}</span>`
     : '';
 
+  // Months are multi-select: each capsule toggles, and "All" clears the selection.
   const monthTabs = (months.length && !rangeOverride)
     ? `<span style="font-size:12px;color:var(--text-muted);font-weight:600;letter-spacing:.03em;">CLOSING MONTH</span>` +
-      `<button class="stage-capsule${commitMonth === null ? ' active' : ''}" data-commit-month="">All</button>` +
+      `<button class="stage-capsule${commitMonths.size === 0 ? ' active' : ''}" data-commit-month="">All</button>` +
       months.map(m =>
-        `<button class="stage-capsule${commitMonth === m ? ' active' : ''}" data-commit-month="${escapeHtml(m)}">${label(m)}</button>`
+        `<button class="stage-capsule${commitMonths.has(m) ? ' active' : ''}" data-commit-month="${escapeHtml(m)}">${label(m)}</button>`
       ).join('')
     : '';
 
   el.innerHTML = monthTabs + filterChip + settingsBtn;
 
   el.querySelectorAll('[data-commit-month]').forEach(btn => btn.addEventListener('click', () => {
-    commitMonth = btn.dataset.commitMonth || null;
+    const m = btn.dataset.commitMonth;
+    if (!m) commitMonths.clear();                                    // "All"
+    else if (commitMonths.has(m)) commitMonths.delete(m);
+    else commitMonths.add(m);
     renderReviewView();
   }));
+
   const settingsEl = el.querySelector('#commit-settings-btn');
   if (settingsEl) settingsEl.onclick = () =>
     openViewBuilder(commitGlobalFilter, 'commits', { asGlobalFilter: true });
-
-  const clearBtn = el.querySelector('#commit-filter-clear');
-  if (clearBtn) clearBtn.onclick = async () => {
-    const prev = commitGlobalFilter;
-    commitGlobalFilter = null;
-    try {
-      await saveCommitGlobalFilter();
-    } catch (err) {
-      commitGlobalFilter = prev;
-      alert('Failed to clear the global filter: ' + err.message);
-    }
-    renderReviewView();
-  };
 }
 
 // asGlobalFilter: render the same builder form, but apply the result as the Commits
@@ -3418,7 +3435,7 @@ function openViewBuilder(view, context, { asGlobalFilter = false } = {}) {
       }
       commitGroupBy = commitGlobalFilter.group_by;
       // A global closing-date range supersedes the month tabs, so drop any month pick.
-      if (commitGlobalFilter.closing_date_start || commitGlobalFilter.closing_date_end) commitMonth = null;
+      if (commitGlobalFilter.closing_date_start || commitGlobalFilter.closing_date_end) commitMonths.clear();
       overlay.style.display = 'none';
       renderReviewView();
       return;
