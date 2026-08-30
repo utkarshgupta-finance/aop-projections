@@ -113,35 +113,7 @@ function quarterLabel(qKey) {
   return (QUARTERS.find(q => q.key === qKey) || QUARTERS[1]).label;
 }
 
-let session = null;
 let settingsQuarter = '2026-Q3';
-
-function loadSession() {
-  const raw = sessionStorage.getItem('mrr_settings_session');
-  if (raw) session = JSON.parse(raw);
-}
-function saveSession() {
-  if (session) sessionStorage.setItem('mrr_settings_session', JSON.stringify(session));
-  else sessionStorage.removeItem('mrr_settings_session');
-}
-
-async function login(email, password) {
-  const res = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
-    method: 'POST',
-    headers: { apikey: SUPABASE_KEY, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, password }),
-  });
-  const body = await safeJson(res);
-  if (!res.ok) throw new Error((body && (body.error_description || body.msg)) || 'Login failed');
-  session = { access_token: body.access_token, refresh_token: body.refresh_token, user: body.user };
-  saveSession();
-}
-
-function logout() {
-  session = null;
-  saveSession();
-  render();
-}
 
 async function safeJson(res) {
   const text = await res.text();
@@ -149,35 +121,19 @@ async function safeJson(res) {
   try { return JSON.parse(text); } catch (e) { return null; }
 }
 
-async function refreshToken() {
-  const res = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=refresh_token`, {
-    method: 'POST',
-    headers: { apikey: SUPABASE_KEY, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ refresh_token: session.refresh_token }),
-  });
-  const body = await safeJson(res);
-  if (!res.ok) throw new Error((body && (body.error_description || body.msg)) || 'Session expired — please log in again');
-  session.access_token = body.access_token;
-  session.refresh_token = body.refresh_token;
-  saveSession();
-}
-
-async function authedFetch(path, options = {}) {
-  const doFetch = () => fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
+// Settings writes go with the anon key — the page has no login.
+// TODO(access-control): route these through a real role check once role-based
+// access control is built; the matching RLS policies need tightening too.
+async function writeFetch(path, options = {}) {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
     ...options,
     headers: {
       apikey: SUPABASE_KEY,
-      Authorization: `Bearer ${session.access_token}`,
+      Authorization: `Bearer ${SUPABASE_KEY}`,
       'Content-Type': 'application/json',
       ...options.headers,
     },
   });
-
-  let res = await doFetch();
-  if (res.status === 401) {
-    await refreshToken();
-    res = await doFetch();
-  }
   if (!res.ok) {
     const text = await res.text();
     throw new Error(`Request failed: ${res.status} ${text}`);
@@ -195,39 +151,6 @@ async function sbRead(path) {
 
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-}
-
-function renderLogin() {
-  document.getElementById('content').innerHTML = `
-    <div class="card" style="max-width:360px;">
-      <h2>Log in</h2>
-      <p class="desc">Settings changes require a Supabase account. Ask the project owner for credentials.</p>
-      <div class="field">
-        <label for="email">Email</label>
-        <input type="email" id="email" autocomplete="username">
-      </div>
-      <div class="field">
-        <label for="password">Password</label>
-        <input type="password" id="password" autocomplete="current-password">
-      </div>
-      <button id="login-btn">Log in</button>
-      <div class="msg" id="login-msg"></div>
-    </div>
-  `;
-  document.getElementById('login-btn').addEventListener('click', async () => {
-    const email = document.getElementById('email').value.trim();
-    const password = document.getElementById('password').value;
-    const msg = document.getElementById('login-msg');
-    msg.textContent = '';
-    msg.className = 'msg';
-    try {
-      await login(email, password);
-      render();
-    } catch (err) {
-      msg.textContent = err.message;
-      msg.className = 'msg error';
-    }
-  });
 }
 
 async function renderSettings() {
@@ -271,11 +194,6 @@ async function renderSettings() {
   const qLabel = quarterLabel(settingsQuarter);
 
   content.innerHTML = `
-    <div class="who">
-      <span>Logged in as ${escapeHtml(session.user?.email || '')}</span>
-      <button class="secondary" id="logout-btn">Log out</button>
-    </div>
-
     <div class="quarter-row">
       <label>Quarter:</label>
       <select id="quarter-sel">
@@ -406,7 +324,6 @@ async function renderSettings() {
     await renderSettings();
   });
 
-  document.getElementById('logout-btn').addEventListener('click', logout);
 
   // BU Override save
   if (overrideDeals.length > 0) {
@@ -426,7 +343,7 @@ async function renderSettings() {
           const patch = { bu_override: sel.value || null };
           if (sel.value) patch.business_unit = sel.value;
           console.log('[BU Override] patching deal', dealId, patch);
-          await authedFetch(`deals?deal_id=eq.${encodeURIComponent(dealId)}`, {
+          await writeFetch(`deals?deal_id=eq.${encodeURIComponent(dealId)}`, {
             method: 'PATCH',
             body: JSON.stringify(patch),
           });
@@ -456,7 +373,7 @@ async function renderSettings() {
       target_amount: Number(document.querySelector(`[data-mrr-target="${bu}"]`).value),
     }));
     try {
-      await authedFetch('bu_targets?on_conflict=business_unit,period', {
+      await writeFetch('bu_targets?on_conflict=business_unit,period', {
         method: 'POST',
         headers: { Prefer: 'resolution=merge-duplicates' },
         body: JSON.stringify(rows),
@@ -480,7 +397,7 @@ async function renderSettings() {
       target_amount: Number(document.querySelector(`[data-nrr-target="${bu}"]`).value),
     }));
     try {
-      await authedFetch('nrr_targets?on_conflict=business_unit,period', {
+      await writeFetch('nrr_targets?on_conflict=business_unit,period', {
         method: 'POST',
         headers: { Prefer: 'resolution=merge-duplicates' },
         body: JSON.stringify(rows),
@@ -511,7 +428,7 @@ async function renderSettings() {
       }
     }
     try {
-      await authedFetch('target_settings?on_conflict=business_unit,period', {
+      await writeFetch('target_settings?on_conflict=business_unit,period', {
         method: 'POST',
         headers: { Prefer: 'resolution=merge-duplicates' },
         body: JSON.stringify(rows),
@@ -542,7 +459,7 @@ async function renderSettings() {
       }
     }
     try {
-      await authedFetch('nrr_target_settings?on_conflict=business_unit,period', {
+      await writeFetch('nrr_target_settings?on_conflict=business_unit,period', {
         method: 'POST',
         headers: { Prefer: 'resolution=merge-duplicates' },
         body: JSON.stringify(rows),
@@ -557,11 +474,9 @@ async function renderSettings() {
 }
 
 function render() {
-  if (session) renderSettings();
-  else renderLogin();
+  renderSettings();
 }
 
-loadSession();
 render();
 </script>
 </body>
