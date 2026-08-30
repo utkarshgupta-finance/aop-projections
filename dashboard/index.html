@@ -426,6 +426,68 @@ let activePipelineView = null; // null = no filter applied (show all with prob>=
 let activeCommitView = null;   // active view for the Commits tab
 let commitGroupBy = 'deal';    // 'deal' | 'account' | 'bu'
 let commitMonth = null;        // 'YYYY-MM' closing-date month in Commits view, null = all months
+// Global filter for the Commits view: same shape as a pipeline view, but applied
+// across the whole view instead of being saved as a named view. Persisted locally
+// so it survives reloads. null = no global filter.
+let commitGlobalFilter = null;
+
+const COMMIT_GLOBAL_FILTER_KEY = 'aop.commitGlobalFilter';
+
+function loadCommitGlobalFilter() {
+  try {
+    const raw = localStorage.getItem(COMMIT_GLOBAL_FILTER_KEY);
+    commitGlobalFilter = raw ? JSON.parse(raw) : null;
+  } catch { commitGlobalFilter = null; }
+}
+
+function saveCommitGlobalFilter() {
+  try {
+    if (commitGlobalFilter) localStorage.setItem(COMMIT_GLOBAL_FILTER_KEY, JSON.stringify(commitGlobalFilter));
+    else localStorage.removeItem(COMMIT_GLOBAL_FILTER_KEY);
+  } catch { /* storage unavailable — filter stays in-memory for this session */ }
+}
+
+// True if the filter actually constrains anything (an all-defaults filter is treated as absent).
+function commitFilterIsActive(f) {
+  if (!f) return false;
+  return Boolean(f.deal_types?.length || f.stages?.length || f.min_probability ||
+    f.closing_date_start || f.closing_date_end ||
+    (f.mrr_mode && f.mrr_mode !== 'expected') || (f.nrr_mode && f.nrr_mode !== 'expected'));
+}
+
+// The filter the Commits tables actually run on: the active saved view as the base,
+// with the global filter's settings taking precedence over it. The closing-date
+// window resolves global filter → selected month → saved view.
+function effectiveCommitFilter() {
+  const view = activeCommitView;
+  const g = commitFilterIsActive(commitGlobalFilter) ? commitGlobalFilter : null;
+  if (!view && !g) return commitMonth ? { min_probability: 0, ...monthClosingFields() } : null;
+
+  const merged = {
+    deal_types:      g?.deal_types?.length ? g.deal_types : (view?.deal_types || []),
+    stages:          g?.stages?.length     ? g.stages     : (view?.stages || []),
+    min_probability: g?.min_probability ?? view?.min_probability ?? 0,
+    mrr_mode:        g?.mrr_mode || view?.mrr_mode || 'expected',
+    nrr_mode:        g?.nrr_mode || view?.nrr_mode || 'expected',
+  };
+
+  if (g?.closing_date_start || g?.closing_date_end) {
+    merged.closing_date_start = g.closing_date_start || null;
+    merged.closing_date_end   = g.closing_date_end   || null;
+  } else if (commitMonth) {
+    Object.assign(merged, monthClosingFields());
+  } else {
+    merged.closing_date_start = view?.closing_date_start || null;
+    merged.closing_date_end   = view?.closing_date_end   || null;
+  }
+  return merged;
+}
+
+function monthClosingFields() {
+  if (!commitMonth) return { closing_date_start: null, closing_date_end: null };
+  const r = monthDateRange(commitMonth);
+  return { closing_date_start: r.start, closing_date_end: r.end };
+}
 let MRR_DATES = [], NRR_DATES = [], BU_TAB_LIST = [];
 let currentViewMode   = 'review';
 let currentQuarter    = '2026-Q3';
@@ -1762,6 +1824,7 @@ async function main() {
 
   MRR_DATES = [...new Set(MRR_SNAPSHOTS.map(s => s.snapshot_date))].sort();
   NRR_DATES = [...new Set(NRR_SNAPSHOTS.map(s => s.snapshot_date))].sort();
+  loadCommitGlobalFilter();
   const knownOrder = BU_ORDER;
   const seen = new Set(DEALS.map(d => d.business_unit || 'UNMAPPED'));
   BU_TAB_LIST = [
@@ -2157,7 +2220,7 @@ function renderReviewView() {
   renderCommitViewsBar();
 
   tableCtx = { dealsById, latestDate: mrrLatest, snapshots: MRR_SNAPSHOTS, metric: 'MRR',
-    groupBy: commitGroupBy, commitView: activeCommitView };
+    groupBy: commitGroupBy, commitView: effectiveCommitFilter() };
   renderDealsTable();
   renderNRRDealsTable();
 
@@ -2306,11 +2369,10 @@ function renderDealsTableWith({ dealsById, snapshots, metric, tableId, buFilterI
 
   const minProb = commitView ? commitView.min_probability : 0;
 
-  // Effective closing-date window. A selected month tab scopes the view to that
-  // closing month; the saved view's own range applies when no month is picked.
-  const monthRange = commitMonth ? monthDateRange(commitMonth) : null;
-  const closeStart = monthRange ? monthRange.start : commitView?.closing_date_start;
-  const closeEnd   = monthRange ? monthRange.end   : commitView?.closing_date_end;
+  // Closing-date window, already resolved by effectiveCommitFilter()
+  // (global filter → selected month → saved view).
+  const closeStart = commitView?.closing_date_start;
+  const closeEnd   = commitView?.closing_date_end;
   const inCloseRange = closingDate => {
     if (closeStart && (!closingDate || closingDate < closeStart)) return false;
     if (closeEnd   && (!closingDate || closingDate > closeEnd))   return false;
@@ -3008,27 +3070,61 @@ function monthDateRange(ym) {
   return { start: `${ym}-01`, end: `${ym}-${String(lastDay).padStart(2, '0')}` };
 }
 
+// Short human summary of the global filter, for the on-screen chip.
+function commitGlobalFilterSummary() {
+  const f = commitGlobalFilter;
+  if (!commitFilterIsActive(f)) return '';
+  const parts = [];
+  if (f.deal_types?.length) parts.push(f.deal_types.join('/'));
+  if (f.stages?.length) parts.push(`${f.stages.length} stage${f.stages.length > 1 ? 's' : ''}`);
+  if (f.min_probability) parts.push(`≥${f.min_probability}%`);
+  if (f.closing_date_start || f.closing_date_end) parts.push(`${f.closing_date_start || '…'} → ${f.closing_date_end || '…'}`);
+  if (f.mrr_mode === 'adjusted' || f.nrr_mode === 'adjusted') parts.push('adjusted');
+  return parts.join(' · ');
+}
+
 function renderCommitMonthTabs() {
   const el = document.getElementById('commit-month-tabs');
   if (!el) return;
   const months = commitMonthsAvailable();
-  if (!months.length) { el.innerHTML = ''; return; }
+  const gActive = commitFilterIsActive(commitGlobalFilter);
+  // A global closing-date range replaces the month tabs entirely.
+  const rangeOverride = gActive && (commitGlobalFilter.closing_date_start || commitGlobalFilter.closing_date_end);
 
   const label = ym => {
     const [yr, mo] = ym.split('-').map(Number);
     return MONTH_ABBR[mo - 1] + ' ' + String(yr).slice(2);
   };
-  el.innerHTML =
-    `<span style="font-size:12px;color:var(--text-muted);font-weight:600;letter-spacing:.03em;">CLOSING MONTH</span>` +
-    `<button class="stage-capsule${commitMonth === null ? ' active' : ''}" data-commit-month="">All</button>` +
-    months.map(m =>
-      `<button class="stage-capsule${commitMonth === m ? ' active' : ''}" data-commit-month="${escapeHtml(m)}">${label(m)}</button>`
-    ).join('');
+
+  const settingsBtn =
+    `<button class="stage-capsule${gActive ? ' active' : ''}" id="commit-settings-btn" title="Global filter for the Commits view" style="margin-left:auto;">⚙ Settings</button>`;
+  const filterChip = gActive
+    ? `<span style="font-size:11px;color:var(--text-muted);white-space:nowrap;">Global filter: ${escapeHtml(commitGlobalFilterSummary())}</span>` +
+      `<button class="stage-capsule" id="commit-filter-clear" title="Clear global filter" style="font-size:11px;padding:3px 8px;">✕ Clear</button>`
+    : '';
+
+  const monthTabs = (months.length && !rangeOverride)
+    ? `<span style="font-size:12px;color:var(--text-muted);font-weight:600;letter-spacing:.03em;">CLOSING MONTH</span>` +
+      `<button class="stage-capsule${commitMonth === null ? ' active' : ''}" data-commit-month="">All</button>` +
+      months.map(m =>
+        `<button class="stage-capsule${commitMonth === m ? ' active' : ''}" data-commit-month="${escapeHtml(m)}">${label(m)}</button>`
+      ).join('')
+    : '';
+
+  el.innerHTML = monthTabs + filterChip + settingsBtn;
 
   el.querySelectorAll('[data-commit-month]').forEach(btn => btn.addEventListener('click', () => {
     commitMonth = btn.dataset.commitMonth || null;
     renderReviewView();
   }));
+  el.querySelector('#commit-settings-btn').onclick = () =>
+    openViewBuilder(commitGlobalFilter, 'commits', { asGlobalFilter: true });
+  const clearBtn = el.querySelector('#commit-filter-clear');
+  if (clearBtn) clearBtn.onclick = () => {
+    commitGlobalFilter = null;
+    saveCommitGlobalFilter();
+    renderReviewView();
+  };
 }
 
 function renderCommitViewsBar() {
@@ -3045,18 +3141,21 @@ function renderCommitViewsBar() {
   });
 }
 
-function openViewBuilder(view, context) {
-  const viewContext = view?.view_context || context || 'summary';
+// asGlobalFilter: render the same builder form, but apply the result as the Commits
+// view's global filter instead of saving it as a named pipeline view.
+function openViewBuilder(view, context, { asGlobalFilter = false } = {}) {
+  const viewContext = asGlobalFilter ? 'commits' : (view?.view_context || context || 'summary');
   const allDealTypes = [...new Set(DEALS.map(d => d.deal_type).filter(Boolean))].sort();
   // Use CRM_STAGES table if populated; otherwise fall back to what's in DEALS
   const allStages = CRM_STAGES.length
     ? CRM_STAGES.map(s => s.stage_name)
     : [...new Set(DEALS.map(d => d.stage).filter(Boolean))].sort();
 
-  const editId = view?.id || null;
+  const editId = asGlobalFilter ? null : (view?.id || null);
   const name = view?.name || '';
   const selStages = new Set(view?.stages || []);
-  const curGroupBy = view?.group_by || 'deal';
+  // The global filter drives commitGroupBy directly, so reflect the live value there.
+  const curGroupBy = asGlobalFilter ? commitGroupBy : (view?.group_by || 'deal');
   const closingStart = view?.closing_date_start || '';
   const closingEnd   = view?.closing_date_end   || '';
   const curMrrMode = view?.mrr_mode || 'expected';
@@ -3152,15 +3251,20 @@ function openViewBuilder(view, context) {
   const panel = document.getElementById('vb-panel');
   panel.innerHTML = `
     <div style="display:flex;align-items:center;margin-bottom:16px;">
-      <h3 style="margin:0;font-size:15px;">${editId ? 'Edit View' : (viewContext === 'commits' ? 'New Commits View' : 'New Summary View')}</h3>
+      <h3 style="margin:0;font-size:15px;">${asGlobalFilter ? 'Commits Global Filter' : editId ? 'Edit View' : (viewContext === 'commits' ? 'New Commits View' : 'New Summary View')}</h3>
       <button id="vb-close" style="margin-left:auto;background:none;border:none;font-size:18px;cursor:pointer;color:var(--text-muted);">✕</button>
     </div>
 
+    ${asGlobalFilter ? `
+    <p style="font-size:12px;color:var(--text-muted);margin:0 0 14px;line-height:1.5;">
+      Applies to the whole Commits view, across all months. A closing date range set here
+      replaces the closing-month tabs.
+    </p>` : `
     <div style="margin-bottom:14px;">
       <label style="font-size:12px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:5px;">VIEW NAME</label>
       <input id="vb-name" type="text" value="${escapeHtml(name)}" placeholder="e.g. MRR Commit"
         style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:6px;background:var(--surface-1);color:var(--text);font-size:13px;box-sizing:border-box;outline:none;">
-    </div>
+    </div>`}
 
     ${viewContext === 'commits' ? `
     <div style="margin-bottom:14px;">
@@ -3224,9 +3328,11 @@ function openViewBuilder(view, context) {
 
     <div style="display:flex;gap:8px;">
       <button id="vb-save" style="padding:8px 18px;border-radius:8px;border:none;background:var(--series-1,#3b82f6);color:#fff;font-size:13px;font-weight:600;cursor:pointer;">
-        ${editId ? 'Update View' : 'Save View'}
+        ${asGlobalFilter ? 'Apply Filter' : editId ? 'Update View' : 'Save View'}
       </button>
-      ${editId ? `<button id="vb-delete" style="padding:8px 18px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--bad,#ef4444);font-size:13px;cursor:pointer;">Delete</button>` : ''}
+      ${asGlobalFilter
+        ? `<button id="vb-clear-global" style="padding:8px 18px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--text);font-size:13px;cursor:pointer;">Clear Filter</button>`
+        : editId ? `<button id="vb-delete" style="padding:8px 18px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--bad,#ef4444);font-size:13px;cursor:pointer;">Delete</button>` : ''}
       <button id="vb-cancel" style="margin-left:auto;padding:8px 18px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--text);font-size:13px;cursor:pointer;">Cancel</button>
     </div>`;
 
@@ -3271,11 +3377,38 @@ function openViewBuilder(view, context) {
     btn.onclick = () => { panel.querySelectorAll('.vb-hunting-mode').forEach(b => b.classList.remove('active')); btn.classList.add('active'); };
   });
 
+  panel.querySelector('#vb-clear-global')?.addEventListener('click', () => {
+    commitGlobalFilter = null;
+    saveCommitGlobalFilter();
+    overlay.style.display = 'none';
+    renderReviewView();
+  });
+
   panel.querySelector('#vb-save').onclick = async () => {
+    const stages = [...panel.querySelectorAll('.vb-stage-cap.active')].map(b => b.dataset.val);
+
+    if (asGlobalFilter) {
+      commitGlobalFilter = {
+        stages,
+        deal_types: [...panel.querySelectorAll('.vb-type-cap.active')].map(b => b.dataset.val),
+        min_probability: Math.max(0, Math.min(100, parseInt(panel.querySelector('#vb-prob').value) || 0)),
+        closing_date_start: panel.querySelector('#vb-date-start')?.value || null,
+        closing_date_end:   panel.querySelector('#vb-date-end')?.value   || null,
+        mrr_mode: panel.querySelector('.vb-mrr-btn.active')?.dataset?.mrr || 'expected',
+        nrr_mode: panel.querySelector('.vb-nrr-btn.active')?.dataset?.nrr || 'expected',
+      };
+      const grp = panel.querySelector('.vb-grp-btn.active')?.dataset?.grp;
+      if (grp) commitGroupBy = grp;
+      // A global closing-date range supersedes the month tabs, so drop any month pick.
+      if (commitGlobalFilter.closing_date_start || commitGlobalFilter.closing_date_end) commitMonth = null;
+      saveCommitGlobalFilter();
+      overlay.style.display = 'none';
+      renderReviewView();
+      return;
+    }
+
     const viewName = panel.querySelector('#vb-name').value.trim();
     if (!viewName) { alert('Please enter a view name.'); return; }
-
-    const stages = [...panel.querySelectorAll('.vb-stage-cap.active')].map(b => b.dataset.val);
 
     let column_settings = null;
     let deal_types = [], min_probability = 0, visible_columns = [], group_by = 'deal';
