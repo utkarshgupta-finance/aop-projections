@@ -423,7 +423,6 @@ const METRIC_TABS = [
 let DEALS = [], MRR_SNAPSHOTS = [], NRR_SNAPSHOTS = [], BU_TARGETS = [], TARGET_SETTINGS = [], NRR_TARGETS = [], NRR_TARGET_SETTINGS = [], BASELINE = [], HUNTING_PIPELINE = [], HUNTING_SNAPSHOTS = [];
 let PIPELINE_VIEWS = [], CRM_STAGES = [];
 let activePipelineView = null; // null = no filter applied (show all with prob>=70)
-let activeCommitView = null;   // active view for the Commits tab
 let commitGroupBy = 'deal';    // 'deal' | 'account' | 'bu'
 let commitMonth = null;        // 'YYYY-MM' closing-date month in Commits view, null = all months
 // Global filter for the Commits view: same shape as a pipeline view, but applied
@@ -469,30 +468,26 @@ function commitFilterIsActive(f) {
     (f.mrr_mode && f.mrr_mode !== 'expected') || (f.nrr_mode && f.nrr_mode !== 'expected'));
 }
 
-// The filter the Commits tables actually run on: the active saved view as the base,
-// with the global filter's settings taking precedence over it. The closing-date
-// window resolves global filter → selected month → saved view.
+// The filter the Commits tables actually run on: the global filter, with the
+// closing-date window taken from the global filter when it sets one, otherwise
+// from the selected closing-month tab.
 function effectiveCommitFilter() {
-  const view = activeCommitView;
   const g = commitFilterIsActive(commitGlobalFilter) ? commitGlobalFilter : null;
-  if (!view && !g) return commitMonth ? { min_probability: 0, ...monthClosingFields() } : null;
+  if (!g) return commitMonth ? { min_probability: 0, ...monthClosingFields() } : null;
 
   const merged = {
-    deal_types:      g?.deal_types?.length ? g.deal_types : (view?.deal_types || []),
-    stages:          g?.stages?.length     ? g.stages     : (view?.stages || []),
-    min_probability: g?.min_probability ?? view?.min_probability ?? 0,
-    mrr_mode:        g?.mrr_mode || view?.mrr_mode || 'expected',
-    nrr_mode:        g?.nrr_mode || view?.nrr_mode || 'expected',
+    deal_types:      g.deal_types || [],
+    stages:          g.stages || [],
+    min_probability: g.min_probability ?? 0,
+    mrr_mode:        g.mrr_mode || 'expected',
+    nrr_mode:        g.nrr_mode || 'expected',
   };
 
-  if (g?.closing_date_start || g?.closing_date_end) {
+  if (g.closing_date_start || g.closing_date_end) {
     merged.closing_date_start = g.closing_date_start || null;
     merged.closing_date_end   = g.closing_date_end   || null;
-  } else if (commitMonth) {
-    Object.assign(merged, monthClosingFields());
   } else {
-    merged.closing_date_start = view?.closing_date_start || null;
-    merged.closing_date_end   = view?.closing_date_end   || null;
+    Object.assign(merged, monthClosingFields());
   }
   return merged;
 }
@@ -2198,7 +2193,6 @@ function renderReviewView() {
 
   content.innerHTML = `
     <div style="margin-bottom:10px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;" id="commit-month-tabs"></div>
-    <div style="margin-bottom:10px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;" id="commit-views-bar"></div>
     <div style="margin-bottom:12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
       <span style="font-size:12px;color:var(--text-muted);font-weight:600;letter-spacing:.03em;">GROUP BY</span>
       ${grpCap('grp-deal','Deal','deal')}
@@ -2233,7 +2227,6 @@ function renderReviewView() {
     </div>`;
 
   renderCommitMonthTabs();
-  renderCommitViewsBar();
 
   tableCtx = { dealsById, latestDate: mrrLatest, snapshots: MRR_SNAPSHOTS, metric: 'MRR',
     groupBy: commitGroupBy, commitView: effectiveCommitFilter() };
@@ -3151,20 +3144,6 @@ function renderCommitMonthTabs() {
   };
 }
 
-function renderCommitViewsBar() {
-  const commitViews = PIPELINE_VIEWS.filter(v => v.view_context === 'commits');
-  _renderViewsBar({
-    barId: 'commit-views-bar', views: commitViews,
-    activeView: activeCommitView,
-    setActive: v => {
-      activeCommitView = v;
-      if (v?.group_by) commitGroupBy = v.group_by;
-    },
-    rerender: renderReviewView,
-    context: 'commits',
-  });
-}
-
 // asGlobalFilter: render the same builder form, but apply the result as the Commits
 // view's global filter instead of saving it as a named pipeline view.
 function openViewBuilder(view, context, { asGlobalFilter = false } = {}) {
@@ -3501,7 +3480,6 @@ function openViewBuilder(view, context, { asGlobalFilter = false } = {}) {
       await sbPost(`pipeline_views?id=eq.${editId}`, null, 'DELETE');
       PIPELINE_VIEWS = await sb('pipeline_views?select=*&order=display_order.asc');
       if (activePipelineView?.id === editId) activePipelineView = null;
-      if (activeCommitView?.id === editId) activeCommitView = null;
       overlay.style.display = 'none';
       if (viewContext === 'commits') renderReviewView(); else renderSummaryView();
     } catch (err) {
