@@ -137,6 +137,24 @@
   th .sort-arrow { color: var(--text-muted); margin-left: 3px; }
   td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
   td.name-cell { white-space: normal; min-width: 200px; }
+
+  /* Frozen first two columns (Account, Deal Name). Widths are fixed so the
+     second column's left offset matches the first column's width exactly.
+     Backgrounds are opaque so scrolled cells pass underneath, and the header
+     row sits above the body cells at the intersection. */
+  table.freeze-2 .col-freeze-1,
+  table.freeze-2 .col-freeze-2 { position: sticky; background: var(--surface-1); }
+  table.freeze-2 .col-freeze-1 { left: 0;     width: 200px; min-width: 200px; max-width: 200px; z-index: 2; }
+  table.freeze-2 .col-freeze-2 { left: 200px; width: 220px; min-width: 220px; max-width: 220px; z-index: 2; }
+  table.freeze-2 .col-freeze-2::after {
+    content: ''; position: absolute; top: 0; right: 0; bottom: 0; width: 1px; background: var(--border);
+  }
+  table.freeze-2 thead .col-freeze-1,
+  table.freeze-2 thead .col-freeze-2 { z-index: 4; }
+  table.freeze-2 tr:hover .col-freeze-1,
+  table.freeze-2 tr:hover .col-freeze-2 { background: var(--surface-2, var(--surface-1)); }
+  table.freeze-2 .total-row .col-freeze-1,
+  table.freeze-2 .total-row .col-freeze-2 { background: var(--surface-1); }
   .name-chain { color: var(--text-muted); }
   .name-chain .arrow { margin: 0 4px; }
   .muted { color: var(--text-muted); }
@@ -171,6 +189,22 @@
   .app-root { display: flex; min-height: 100vh; }
   .sidebar { width: 196px; flex-shrink: 0; background: var(--surface-1); border-right: 1px solid var(--border); display: flex; flex-direction: column; position: sticky; top: 0; height: 100vh; overflow-y: auto; }
   .sidebar-brand { padding: 18px 16px 14px; font-size: 15px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.3; border-bottom: 1px solid var(--border); }
+
+  /* Collapsible sidebar: collapsed shows only the toggle, reclaiming the width. */
+  .sidebar { transition: width 0.16s ease; }
+  .sidebar-toggle {
+    position: absolute; top: 10px; right: 8px; width: 24px; height: 24px; padding: 0;
+    border: 1px solid var(--border); border-radius: 6px; background: var(--surface-1);
+    color: var(--text-muted); font-size: 13px; line-height: 1; cursor: pointer;
+  }
+  .sidebar-toggle:hover { color: var(--text-primary); }
+  /* No position:relative here — .sidebar is already position:sticky, which itself
+     establishes the containing block for the absolutely positioned toggle. */
+  body.sidebar-collapsed .sidebar { width: 40px; overflow: visible; }
+  body.sidebar-collapsed .sidebar-brand,
+  body.sidebar-collapsed .nav-section-label,
+  body.sidebar-collapsed .nav-item { display: none; }
+  body.sidebar-collapsed .sidebar-toggle { right: 7px; }
   .nav-section-label { padding: 14px 16px 4px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: var(--text-muted); }
   .nav-item { display: block; width: 100%; text-align: left; padding: 10px 16px; border: none; border-left: 3px solid transparent; background: none; font: inherit; font-size: 13px; color: var(--text-secondary); cursor: pointer; text-decoration: none; }
   .nav-item:hover { color: var(--text-primary); background: rgba(0,0,0,0.04); }
@@ -247,6 +281,7 @@
 </div>
 <!-- Sidebar navigation -->
 <nav class="sidebar">
+  <button class="sidebar-toggle" id="sidebar-toggle" title="Collapse menu" aria-label="Collapse menu" aria-expanded="true">‹</button>
   <div class="sidebar-brand">Revenue<br>Dashboard</div>
   <div class="nav-section-label">Menu</div>
   <button class="nav-item active" id="nav-revenue">Revenue</button>
@@ -1816,6 +1851,24 @@ async function main() {
   document.getElementById('nav-projections').addEventListener('click', () => switchPage('projections'));
   document.getElementById('nav-hunting').addEventListener('click', () => switchPage('hunting'));
 
+  // Sidebar collapse — remembered per browser so the choice survives reloads.
+  const sidebarToggle = document.getElementById('sidebar-toggle');
+  const applySidebarCollapsed = collapsed => {
+    document.body.classList.toggle('sidebar-collapsed', collapsed);
+    sidebarToggle.textContent = collapsed ? '›' : '‹';
+    sidebarToggle.title = collapsed ? 'Expand menu' : 'Collapse menu';
+    sidebarToggle.setAttribute('aria-label', sidebarToggle.title);
+    sidebarToggle.setAttribute('aria-expanded', String(!collapsed));
+  };
+  let sidebarCollapsed = false;
+  try { sidebarCollapsed = localStorage.getItem('aop.sidebarCollapsed') === '1'; } catch { /* default expanded */ }
+  applySidebarCollapsed(sidebarCollapsed);
+  sidebarToggle.addEventListener('click', () => {
+    sidebarCollapsed = !sidebarCollapsed;
+    applySidebarCollapsed(sidebarCollapsed);
+    try { localStorage.setItem('aop.sidebarCollapsed', sidebarCollapsed ? '1' : '0'); } catch { /* not persisted */ }
+  });
+
   // "Sheet Setup" button shows the setup instructions inline
   document.getElementById('revenue-setup-btn').addEventListener('click', () => {
     const el = document.getElementById('revenue-content');
@@ -2665,13 +2718,12 @@ function renderDealsTableWith({ dealsById, snapshots, metric, tableId, buFilterI
       }
       return `<td class="num ${cls}">${fmtINR(v)}</td>`;
     }).join('');
+    // deal_id is kept in the data (and drives the Zoho link) but is not shown.
     const link = ZOHO_DEAL_URL(deal.deal_id);
     return `<tr>
-      <td><a class="zoho-link" href="${link}" target="_blank" rel="noopener">${escapeHtml(deal.deal_id)}</a></td>
-      <td class="name-cell"><a class="zoho-link" href="${link}" target="_blank" rel="noopener">${nameChainHtml(deal)}</a></td>
-      <td class="name-cell">${escapeHtml(deal.account_name || '')}</td>
+      <td class="name-cell col-freeze-1">${escapeHtml(deal.account_name || '')}</td>
+      <td class="name-cell col-freeze-2"><a class="zoho-link" href="${link}" target="_blank" rel="noopener">${nameChainHtml(deal)}</a></td>
       <td>${buCell}</td>
-      <td>${escapeHtml(deal.deal_type || '')}</td>
       ${dateCells}
     </tr>`;
   }).join('');
@@ -2683,19 +2735,17 @@ function renderDealsTableWith({ dealsById, snapshots, metric, tableId, buFilterI
   }).join('');
 
   const totalRow = tabDeals.length
-    ? `<tr class="total-row"><td colspan="5">Total (${tabDeals.length} deal${tabDeals.length === 1 ? '' : 's'})</td>${totalCells}</tr>`
+    ? `<tr class="total-row"><td class="col-freeze-1" colspan="1">Total (${tabDeals.length} deal${tabDeals.length === 1 ? '' : 's'})</td><td class="col-freeze-2"></td><td></td>${totalCells}</tr>`
     : '';
 
-  dealsTable.innerHTML = `<div class="table-scroll"><table>
+  dealsTable.innerHTML = `<div class="table-scroll"><table class="freeze-2">
     <thead><tr>
-      <th data-sort="deal_id">Deal ID${arrow('deal_id')}</th>
-      <th data-sort="deal_name">Deal Name${arrow('deal_name')}</th>
-      <th data-sort="account_name">Account${arrow('account_name')}</th>
+      <th class="col-freeze-1" data-sort="account_name">Account${arrow('account_name')}</th>
+      <th class="col-freeze-2" data-sort="deal_name">Deal Name${arrow('deal_name')}</th>
       <th data-sort="business_unit">Business Unit${arrow('business_unit')}</th>
-      <th data-sort="deal_type">Type${arrow('deal_type')}</th>
       ${dateHeaders}
     </tr></thead>
-    <tbody>${totalRow}${rows || `<tr><td colspan="${5 + dates.length}" class="muted">No matching deals.</td></tr>`}</tbody>
+    <tbody>${totalRow}${rows || `<tr><td colspan="${3 + dates.length}" class="muted">No matching deals.</td></tr>`}</tbody>
   </table></div>`;
 
   dealsTable.querySelectorAll('th[data-sort]').forEach(th => {
