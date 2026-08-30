@@ -433,110 +433,9 @@ let commitGlobalFilter = null;
 
 const COMMIT_GLOBAL_FILTER_KEY = 'commits.global_filter';
 
-// ---- Admin gate -------------------------------------------------------------
-// Interim gate until real access control is built. It reuses the Supabase Auth
-// session that the Settings page creates, so only someone who has signed in
-// there sees admin-only controls; anonymous viewers do not.
-//
-// TODO(access-control): replace with a real role lookup (e.g. a user_roles table
-// checked server-side) and add an RLS policy restricting app_settings writes to
-// admins. Right now the gate is UI-only — the REST endpoint is still writable
-// with the anon key, same as pipeline_views.
-const ADMIN_EMAILS = []; // empty = any signed-in user is treated as admin for now
-
-// Shares the Settings page's session key so signing in on either page counts.
-// sessionStorage keeps the token out of long-lived storage, matching the choice
-// settings.html already made; the trade-off is that signing in is per-tab.
-const AUTH_SESSION_KEY = 'mrr_settings_session';
-
-function authSession() {
-  try {
-    const raw = sessionStorage.getItem(AUTH_SESSION_KEY);
-    return raw ? JSON.parse(raw) : null;
-  } catch { return null; }
-}
-
-async function adminLogin(email, password) {
-  const res = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
-    method: 'POST',
-    headers: { apikey: SUPABASE_KEY, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, password }),
-  });
-  const body = await res.json().catch(() => null);
-  if (!res.ok) throw new Error(body?.error_description || body?.msg || 'Sign in failed');
-  sessionStorage.setItem(AUTH_SESSION_KEY, JSON.stringify({
-    access_token: body.access_token, refresh_token: body.refresh_token, user: body.user,
-  }));
-}
-
-function adminSignOut() {
-  try { sessionStorage.removeItem(AUTH_SESSION_KEY); } catch { /* nothing to clear */ }
-}
-
-// Compact sign-in prompt so an admin can unlock admin-only controls without
-// leaving the dashboard. onDone runs after a successful sign in.
-function openAdminSignIn(onDone) {
-  const overlay = document.getElementById('vb-overlay');
-  const panel = document.getElementById('vb-panel');
-  panel.innerHTML = `
-    <div style="display:flex;align-items:center;margin-bottom:14px;">
-      <h3 style="margin:0;font-size:15px;">Admin sign in</h3>
-      <button id="al-close" style="margin-left:auto;background:none;border:none;font-size:18px;cursor:pointer;color:var(--text-muted);">✕</button>
-    </div>
-    <p style="font-size:12px;color:var(--text-muted);margin:0 0 14px;line-height:1.5;">
-      Sign in to change admin-only settings. Uses the same account as the Settings page.
-    </p>
-    <div style="margin-bottom:10px;">
-      <label style="font-size:12px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:5px;">EMAIL</label>
-      <input id="al-email" type="email" autocomplete="username"
-        style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:6px;background:var(--surface-1);color:var(--text);font-size:13px;box-sizing:border-box;outline:none;">
-    </div>
-    <div style="margin-bottom:14px;">
-      <label style="font-size:12px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:5px;">PASSWORD</label>
-      <input id="al-pass" type="password" autocomplete="current-password"
-        style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:6px;background:var(--surface-1);color:var(--text);font-size:13px;box-sizing:border-box;outline:none;">
-    </div>
-    <p id="al-err" style="display:none;font-size:12px;color:var(--bad,#ef4444);margin:0 0 12px;"></p>
-    <div style="display:flex;gap:8px;">
-      <button id="al-submit" style="padding:8px 18px;border-radius:8px;border:none;background:var(--series-1,#3b82f6);color:#fff;font-size:13px;font-weight:600;cursor:pointer;">Sign in</button>
-      <button id="al-cancel" style="margin-left:auto;padding:8px 18px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--text);font-size:13px;cursor:pointer;">Cancel</button>
-    </div>`;
-
-  overlay.style.display = 'flex';
-  const close = () => { overlay.style.display = 'none'; };
-  panel.querySelector('#al-close').onclick = close;
-  panel.querySelector('#al-cancel').onclick = close;
-  overlay.onclick = e => { if (e.target === overlay) close(); };
-
-  const errEl = panel.querySelector('#al-err');
-  const submit = async () => {
-    const btn = panel.querySelector('#al-submit');
-    errEl.style.display = 'none';
-    btn.disabled = true; btn.textContent = 'Signing in…';
-    try {
-      await adminLogin(panel.querySelector('#al-email').value.trim(), panel.querySelector('#al-pass').value);
-      close();
-      onDone?.();
-    } catch (err) {
-      errEl.textContent = err.message;
-      errEl.style.display = '';
-      btn.disabled = false; btn.textContent = 'Sign in';
-    }
-  };
-  panel.querySelector('#al-submit').onclick = submit;
-  panel.querySelector('#al-pass').addEventListener('keydown', e => { if (e.key === 'Enter') submit(); });
-  setTimeout(() => panel.querySelector('#al-email').focus(), 50);
-}
-
-function currentUserEmail() {
-  return authSession()?.user?.email || null;
-}
-
-function isAdmin() {
-  const email = currentUserEmail();
-  if (!email) return false;
-  return ADMIN_EMAILS.length === 0 || ADMIN_EMAILS.includes(email.toLowerCase());
-}
+// TODO(access-control): the global filter below is editable by anyone using the
+// dashboard. Role-based access control will gate it (and restrict app_settings
+// writes at the database level) when it is built.
 
 async function loadCommitGlobalFilter() {
   try {
@@ -553,7 +452,7 @@ async function saveCommitGlobalFilter() {
     key: COMMIT_GLOBAL_FILTER_KEY,
     value: commitGlobalFilter,
     updated_at: new Date().toISOString(),
-    updated_by: currentUserEmail(),
+    updated_by: null, // set once role-based access control identifies the user
   };
   if (commitGlobalFilter) {
     await sbPost('app_settings?on_conflict=key', payload, 'POST', { Prefer: 'resolution=merge-duplicates,return=minimal' });
@@ -3213,17 +3112,11 @@ function renderCommitMonthTabs() {
     return MONTH_ABBR[mo - 1] + ' ' + String(yr).slice(2);
   };
 
-  // The global filter is admin-only to edit, but its effect is visible to everyone,
-  // so non-admins still see the chip describing what is filtered — just no controls.
-  // When nobody is signed in, offer a sign-in so an admin can reach the settings.
-  const admin = isAdmin();
-  const settingsBtn = admin
-    ? `<button class="stage-capsule${gActive ? ' active' : ''}" id="commit-settings-btn" title="Global filter for the Commits view · signed in as ${escapeHtml(currentUserEmail())}" style="margin-left:auto;">⚙ Settings</button>` +
-      `<button class="stage-capsule" id="commit-signout-btn" title="Sign out of admin" style="font-size:11px;padding:3px 8px;">Sign out</button>`
-    : `<button class="stage-capsule" id="commit-signin-btn" title="Sign in to change admin settings" style="margin-left:auto;font-size:11px;padding:3px 10px;">🔒 Admin sign in</button>`;
+  const settingsBtn =
+    `<button class="stage-capsule${gActive ? ' active' : ''}" id="commit-settings-btn" title="Global filter for the Commits view" style="margin-left:auto;">⚙ Settings</button>`;
   const filterChip = gActive
-    ? `<span style="font-size:11px;color:var(--text-muted);white-space:nowrap;${admin ? '' : 'margin-left:auto;'}">Global filter: ${escapeHtml(commitGlobalFilterSummary())}</span>` +
-      (admin ? `<button class="stage-capsule" id="commit-filter-clear" title="Clear global filter" style="font-size:11px;padding:3px 8px;">✕ Clear</button>` : '')
+    ? `<span style="font-size:11px;color:var(--text-muted);white-space:nowrap;">Global filter: ${escapeHtml(commitGlobalFilterSummary())}</span>` +
+      `<button class="stage-capsule" id="commit-filter-clear" title="Clear global filter" style="font-size:11px;padding:3px 8px;">✕ Clear</button>`
     : '';
 
   const monthTabs = (months.length && !rangeOverride)
@@ -3243,16 +3136,6 @@ function renderCommitMonthTabs() {
   const settingsEl = el.querySelector('#commit-settings-btn');
   if (settingsEl) settingsEl.onclick = () =>
     openViewBuilder(commitGlobalFilter, 'commits', { asGlobalFilter: true });
-
-  const signInEl = el.querySelector('#commit-signin-btn');
-  if (signInEl) signInEl.onclick = () => openAdminSignIn(() => {
-    renderReviewView();
-    // Drop straight into the settings the sign-in was for.
-    openViewBuilder(commitGlobalFilter, 'commits', { asGlobalFilter: true });
-  });
-
-  const signOutEl = el.querySelector('#commit-signout-btn');
-  if (signOutEl) signOutEl.onclick = () => { adminSignOut(); renderReviewView(); };
 
   const clearBtn = el.querySelector('#commit-filter-clear');
   if (clearBtn) clearBtn.onclick = async () => {
@@ -3536,7 +3419,6 @@ function openViewBuilder(view, context, { asGlobalFilter = false } = {}) {
     const stages = [...panel.querySelectorAll('.vb-stage-cap.active')].map(b => b.dataset.val);
 
     if (asGlobalFilter) {
-      if (!isAdmin()) { alert('Only an admin can change the global filter.'); return; }
       const prev = commitGlobalFilter;
       commitGlobalFilter = {
         stages,
